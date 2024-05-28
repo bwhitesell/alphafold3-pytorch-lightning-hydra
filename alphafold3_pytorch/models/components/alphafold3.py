@@ -1802,9 +1802,9 @@ class DiffusionModule(Module):
 class DiffusionLossBreakdown(NamedTuple):
     """The DiffusionLossBreakdown class."""
 
-    mse: Float[""]  # type: ignore
-    bond: Float[""]  # type: ignore
-    smooth_lddt: Float[""]  # type: ignore
+    diffusion_mse: Float[""]  # type: ignore
+    diffusion_bond: Float[""]  # type: ignore
+    diffusion_smooth_lddt: Float[""]  # type: ignore
 
 
 class ElucidatedAtomDiffusionReturn(NamedTuple):
@@ -2903,14 +2903,17 @@ class ConfidenceHead(Module):
 class LossBreakdown(NamedTuple):
     """The LossBreakdown class."""
 
-    diffusion: Float[""]  # type: ignore
+    total_loss: Float[""]  # type: ignore
+    total_diffusion: Float[""]  # type: ignore
     distogram: Float[""]  # type: ignore
     pae: Float[""]  # type: ignore
     pde: Float[""]  # type: ignore
     plddt: Float[""]  # type: ignore
     resolved: Float[""]  # type: ignore
     confidence: Float[""]  # type: ignore
-    diffusion_loss_breakdown: DiffusionLossBreakdown
+    diffusion_mse: Float[""]  # type: ignore
+    diffusion_bond: Float[""]  # type: ignore
+    diffusion_smooth_lddt: Float[""]  # type: ignore
 
 
 class AlphaFold3(Module):
@@ -3551,14 +3554,15 @@ class AlphaFold3(Module):
             return loss
 
         loss_breakdown = LossBreakdown(
+            total_loss=loss,
+            total_diffusion=diffusion_loss,
             pae=pae_loss,
             pde=pde_loss,
             plddt=plddt_loss,
             resolved=resolved_loss,
             distogram=distogram_loss,
-            diffusion=diffusion_loss,
             confidence=confidence_loss,
-            diffusion_loss_breakdown=diffusion_loss_breakdown,
+            **diffusion_loss_breakdown._asdict(),
         )
 
         return loss, loss_breakdown

@@ -27,6 +27,8 @@ Getting a fair number of emails. You can chat with me about this work <a href="h
 
 - <a href="https://github.com/engelberger">Felipe</a> for contributing Weighted Rigid Align, Express Coordinates In Frame, Compute Alignment Error, and Centre Random Augmentation modules!
 
+- <a href="https://github.com/amorehead">Alex</a> for fixing various issues in the transcribed algorithms
+
 ## Contents
 
 - [Installation](#installation)

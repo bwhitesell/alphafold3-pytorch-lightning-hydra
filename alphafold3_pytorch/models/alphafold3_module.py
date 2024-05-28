@@ -6,6 +6,7 @@ from lightning import LightningModule
 from torch import Tensor
 from torchmetrics import MeanMetric, MinMetric
 
+from alphafold3_pytorch.models.components.alphafold3 import LossBreakdown
 from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.model_utils import default_lambda_lr_fn
 from alphafold3_pytorch.utils.typing import Bool, Float, Int, typecheck
@@ -105,13 +106,13 @@ class AlphaFold3LitModule(LightningModule):
     def is_main(self):
         return self.trainer.global_rank == 0
 
-    def forward(self, batch: AlphaFold3Input) -> Tensor:
+    def forward(self, batch: AlphaFold3Input) -> Tuple[Float[""], LossBreakdown]:  # type: ignore
         """Perform a forward pass through the model `self.net`.
 
         :param x: A batch of `AlphaFold3Input` data.
-        :return: A tensor of losses.
+        :return: A tensor of losses as well as a breakdown of the component losses.
         """
-        return self.net(**batch)
+        return self.net(**batch, return_loss_breakdown=True)
 
     def on_train_start(self) -> None:
         """Lightning hook that is called when training begins."""
@@ -120,14 +121,14 @@ class AlphaFold3LitModule(LightningModule):
         self.val_loss.reset()
         self.val_loss_best.reset()
 
-    def model_step(self, batch: AlphaFold3Input) -> Tuple[Tensor, Tensor, Tensor]:
+    def model_step(self, batch: AlphaFold3Input) -> Tuple[Float[""], LossBreakdown]:  # type: ignore
         """Perform a single model step on a batch of data.
 
         :param batch: A batch of `AlphaFold3Input` data.
-        :return: A tensor of losses.
+        :return: A tensor of losses as well as a breakdown of the component losses.
         """
-        loss = self.forward(batch)
-        return loss
+        loss, loss_breakdown = self.forward(batch)
+        return loss, loss_breakdown
 
     def training_step(self, batch: AlphaFold3Input, batch_idx: int) -> Tensor:
         """Perform a single training step on a batch of data from the training set.
@@ -136,7 +137,7 @@ class AlphaFold3LitModule(LightningModule):
         :param batch_idx: The index of the current batch.
         :return: A tensor of losses.
         """
-        loss = self.model_step(batch)
+        loss, loss_breakdown = self.model_step(batch)
 
         # update and log metrics
         self.train_loss(loss)
@@ -146,6 +147,13 @@ class AlphaFold3LitModule(LightningModule):
             on_step=True,
             on_epoch=True,
             prog_bar=True,
+            batch_size=len(batch["atom_inputs"]),
+        )
+        self.log_dict(
+            loss_breakdown._asdict(),
+            on_step=True,
+            on_epoch=True,
+            prog_bar=False,
             batch_size=len(batch["atom_inputs"]),
         )
 
@@ -162,7 +170,7 @@ class AlphaFold3LitModule(LightningModule):
         :param batch: A batch of `AlphaFold3Input` data.
         :param batch_idx: The index of the current batch.
         """
-        loss = self.model_step(batch)
+        loss, loss_breakdown = self.model_step(batch)
 
         # update and log metrics
         self.val_loss(loss)
@@ -172,6 +180,13 @@ class AlphaFold3LitModule(LightningModule):
             on_step=True,
             on_epoch=True,
             prog_bar=True,
+            batch_size=len(batch["atom_inputs"]),
+        )
+        self.log_dict(
+            loss_breakdown._asdict(),
+            on_step=True,
+            on_epoch=True,
+            prog_bar=False,
             batch_size=len(batch["atom_inputs"]),
         )
 
@@ -194,7 +209,7 @@ class AlphaFold3LitModule(LightningModule):
         :param batch: A batch of `AlphaFold3Input` data.
         :param batch_idx: The index of the current batch.
         """
-        loss = self.model_step(batch)
+        loss, loss_breakdown = self.model_step(batch)
 
         # update and log metrics
         self.test_loss(loss)
@@ -204,6 +219,13 @@ class AlphaFold3LitModule(LightningModule):
             on_step=True,
             on_epoch=True,
             prog_bar=True,
+            batch_size=len(batch["atom_inputs"]),
+        )
+        self.log_dict(
+            loss_breakdown._asdict(),
+            on_step=True,
+            on_epoch=True,
+            prog_bar=False,
             batch_size=len(batch["atom_inputs"]),
         )
 
