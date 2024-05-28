@@ -262,3 +262,14 @@ Refer to [pre-commit's documentation](https://pre-commit.com/) for more details.
     url     = {https://api.semanticscholar.org/CorpusID:263134283}
 }
 ```
+
+```bibtex
+@article{Arora2024SimpleLA,
+    title   = {Simple linear attention language models balance the recall-throughput tradeoff},
+    author  = {Simran Arora and Sabri Eyuboglu and Michael Zhang and Aman Timalsina and Silas Alberti and Dylan Zinsley and James Zou and Atri Rudra and Christopher R'e},
+    journal = {ArXiv},
+    year    = {2024},
+    volume  = {abs/2402.18668},
+    url     = {https://api.semanticscholar.org/CorpusID:268063190}
+}
+```
