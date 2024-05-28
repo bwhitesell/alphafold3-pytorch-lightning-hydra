@@ -71,10 +71,6 @@ additional_residue_feats: [*, 10]:
 
 ADDITIONAL_RESIDUE_FEATS = 10
 
-# threshold for checking that point cross-correlation
-# is full-rank in `WeightedRigidAlign`
-AMBIGUOUS_ROT_SINGULAR_THR = 1e-15
-
 LinearNoBias = partial(Linear, bias=False)
 
 logger = RankedLogger(__name__, rank_zero_only=True)
@@ -2418,7 +2414,7 @@ class WeightedRigidAlign(Module):
         U, S, V = torch.svd(cov_matrix)
 
         # Catch ambiguous rotation by checking the magnitude of singular values
-        if (S.abs() <= AMBIGUOUS_ROT_SINGULAR_THR).any() and not (num_points < (dim + 1)):
+        if (S.abs() <= 1e-15).any() and not (num_points < (dim + 1)):
             logger.warning(
                 "Excessively low rank of "
                 + "cross-correlation between aligned point clouds. "
