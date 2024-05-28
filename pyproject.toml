@@ -126,17 +126,6 @@ exclude = '''
 line-length = 99
 target-version = ["py310"]
 
-[tool.isort]
-skip = [".env", "env", ".venv", "venv", "data"]
-ensure_newline_before_comments = true
-force_grid_wrap = 0
-include_trailing_comma = true
-line_length = 99 # match our custom config above
-multi_line_output = 3
-float_to_top = true
-use_parentheses = true
-skip_glob = "**/*.pyx,alphafold3_pytorch/train.py,alphafold3_pytorch/eval.py"
-
 [tool.hatch.metadata]
 allow-direct-references = true
 

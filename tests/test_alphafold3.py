@@ -5,6 +5,8 @@ import os
 import rootutils
 import torch
 
+rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
+
 from alphafold3_pytorch import (
     AlphaFold3,
     Attention,
@@ -28,9 +30,6 @@ from alphafold3_pytorch.models.components.alphafold3 import (
     mean_pool_with_lens,
     repeat_consecutive_with_lens,
 )
-
-rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
-
 
 os.environ["TYPECHECK"] = "True"
 
@@ -86,13 +85,14 @@ def test_weighted_rigid_align():
     rmsd = torch.sqrt(((pred_coords - aligned_coords) ** 2).sum(dim=-1).mean(dim=-1))
     assert (rmsd < 1e-5).all()
 
-    # random_augment_fn = CentreRandomAugmentation()
-    # aligned_coords = align_fn(pred_coords, random_augment_fn(pred_coords), weights)
+    random_augment_fn = CentreRandomAugmentation()
+    pred_coords -= pred_coords.mean(dim=1, keepdim=True)
+    aligned_coords = align_fn(pred_coords, random_augment_fn(pred_coords), weights)
 
-    # # `pred_coords` should match a random augmentation of itself after alignment
+    # `pred_coords` (at the origin) should match a random augmentation of itself after alignment
 
-    # rmsd = torch.sqrt(((pred_coords - aligned_coords) ** 2).sum(dim=-1).mean(dim=-1))
-    # assert (rmsd < 1e-5).all()
+    rmsd = torch.sqrt(((pred_coords - aligned_coords) ** 2).sum(dim=-1).mean(dim=-1))
+    assert (rmsd < 1e-5).all()
 
 
 def test_weighted_rigid_align_with_mask():
