@@ -86,10 +86,9 @@ def test_weighted_rigid_align():
     assert (rmsd < 1e-5).all()
 
     random_augment_fn = CentreRandomAugmentation()
-    pred_coords -= pred_coords.mean(dim=1, keepdim=True)
-    aligned_coords = align_fn(pred_coords, random_augment_fn(pred_coords), weights)
+    aligned_coords = align_fn(random_augment_fn(pred_coords), pred_coords, weights)
 
-    # `pred_coords` (at the origin) should match a random augmentation of itself after alignment
+    # `pred_coords` should match a random augmentation of itself after alignment
 
     rmsd = torch.sqrt(((pred_coords - aligned_coords) ** 2).sum(dim=-1).mean(dim=-1))
     assert (rmsd < 1e-5).all()

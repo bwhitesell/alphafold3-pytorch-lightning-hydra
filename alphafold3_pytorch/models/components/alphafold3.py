@@ -70,8 +70,8 @@ additional_residue_feats: [*, 10]:
 
 ADDITIONAL_RESIDUE_FEATS = 10
 
-# threshold for checking that point crosscorelation
-# is full rank in corresponding_points_alignment
+# threshold for checking that point cross-correlation
+# is full-rank in `WeightedRigidAlign`
 AMBIGUOUS_ROT_SINGULAR_THR = 1e-15
 
 LinearNoBias = partial(Linear, bias=False)
@@ -2349,7 +2349,10 @@ class WeightedRigidAlign(Module):
     ) -> Float["b n 3"]:  # type: ignore
         """
         Compute the weighted rigid alignment.
-        Inspired by https://pytorch3d.readthedocs.io/en/latest/_modules/pytorch3d/ops/points_alignment.html.
+
+        The check for ambiguous rotation and low rank
+        of cross-correlation between aligned point clouds
+        is inspired by https://pytorch3d.readthedocs.io/en/latest/_modules/pytorch3d/ops/points_alignment.html.
 
         :param pred_coords: Predicted coordinates.
         :param true_coords: True coordinates.
@@ -2387,10 +2390,10 @@ class WeightedRigidAlign(Module):
 
         # Compute the weighted covariance matrix
         cov_matrix = einsum(
-            weights * pred_coords_centered,
-            weights * true_coords_centered,
+            true_coords_centered * weights,
+            pred_coords_centered,
             "b n i, b n j -> b i j",
-        ) / weights.sum(dim=1, keepdim=True)
+        )
 
         # Compute the SVD of the covariance matrix
         U, S, V = torch.svd(cov_matrix)
@@ -2413,15 +2416,9 @@ class WeightedRigidAlign(Module):
         F[:, -1, -1] = torch.det(rot_matrix)
         rot_matrix = einsum(U, F, V, "b i j, b j k, b l k -> b i l")
 
-        # Compute the translation vector
-        trans_vector = (
-            true_centroid[:, 0, :]
-            - einsum(pred_centroid, rot_matrix, "b i j, b j k -> b i k")[:, 0, :]
-        )
-
         # Apply the rotation and translation
         aligned_coords = (
-            einsum(pred_coords, rot_matrix, "b n i, b i j -> b n j") + trans_vector[:, None, :]
+            einsum(pred_coords_centered, rot_matrix, "b n i, b j i -> b n j") + true_centroid
         )
         aligned_coords.detach_()
 
@@ -2560,7 +2557,7 @@ class CentreRandomAugmentation(Module):
 
         # Apply rotation and translation
         augmented_coords = (
-            einsum(centered_coords, rotation_matrix, "b n i, b i j -> b n j") + translation_vector
+            einsum(centered_coords, rotation_matrix, "b n i, b j i -> b n j") + translation_vector
         )
 
         return augmented_coords
