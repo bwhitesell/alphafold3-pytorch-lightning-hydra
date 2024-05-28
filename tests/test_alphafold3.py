@@ -2,6 +2,7 @@
 
 import os
 
+import pytest
 import rootutils
 import torch
 
@@ -208,13 +209,16 @@ def test_msa_module():
     assert pairwise.shape == pairwise_out.shape
 
 
-def test_diffusion_transformer():
+@pytest.mark.parametrize("use_linear_attn", (False, True))
+def test_diffusion_transformer(use_linear_attn):
     """Test the diffusion transformer."""
     single = torch.randn(2, 16, 384)
     pairwise = torch.randn(2, 16, 16, 128)
     mask = torch.randint(0, 2, (2, 16)).bool()
 
-    diffusion_transformer = DiffusionTransformer(depth=2, heads=16)
+    diffusion_transformer = DiffusionTransformer(
+        depth=2, heads=16, use_linear_attn=use_linear_attn
+    )
 
     single_out = diffusion_transformer(
         single, single_repr=single, pairwise_repr=pairwise, mask=mask

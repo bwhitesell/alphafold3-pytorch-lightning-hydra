@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import einsum, pack, rearrange, reduce, repeat, unpack
 from einops.layers.torch import Rearrange
+from taylor_series_linear_attention import TaylorSeriesLinearAttn
 from torch import Tensor
 from torch.nn import Linear, Module, ModuleList, Sequential
 from tqdm import tqdm
@@ -1338,6 +1339,8 @@ class DiffusionTransformer(Module):
         attn_pair_bias_kwargs: dict = dict(),
         num_register_tokens=0,
         serial=False,
+        use_linear_attn=False,
+        linear_attn_kwargs=dict(heads=8, dim_head=16),
     ):
         super().__init__()
         dim_single_cond = default(dim_single_cond, dim)
@@ -1345,6 +1348,11 @@ class DiffusionTransformer(Module):
         layers = ModuleList([])
 
         for _ in range(depth):
+            linear_attn = None
+
+            if use_linear_attn:
+                linear_attn = TaylorSeriesLinearAttn(dim=dim, prenorm=True, **linear_attn_kwargs)
+
             pair_bias_attn = AttentionPairBias(
                 dim=dim,
                 dim_pairwise=dim_pairwise,
@@ -1363,7 +1371,9 @@ class DiffusionTransformer(Module):
                 transition, dim=dim, dim_cond=dim_single_cond
             )
 
-            layers.append(ModuleList([conditionable_pair_bias, conditionable_transition]))
+            layers.append(
+                ModuleList([linear_attn, conditionable_pair_bias, conditionable_transition])
+            )
 
         self.layers = layers
 
@@ -1414,7 +1424,10 @@ class DiffusionTransformer(Module):
 
         # main transformer
 
-        for attn, transition in self.layers:
+        for linear_attn, attn, transition in self.layers:
+            if exists(linear_attn):
+                noised_repr = linear_attn(noised_repr, mask=mask) + noised_repr
+
             attn_out = attn(
                 noised_repr,
                 cond=single_repr,
@@ -1535,6 +1548,8 @@ class DiffusionModule(Module):
         atom_encoder_kwargs: dict = dict(),
         atom_decoder_kwargs: dict = dict(),
         token_transformer_kwargs: dict = dict(),
+        use_linear_attn=False,
+        linear_attn_kwargs: dict = dict(heads=8, dim_head=16),
     ):
         super().__init__()
 
@@ -1590,6 +1605,8 @@ class DiffusionModule(Module):
             depth=atom_encoder_depth,
             heads=atom_encoder_heads,
             serial=serial,
+            use_linear_attn=use_linear_attn,
+            linear_attn_kwargs=linear_attn_kwargs,
             **atom_encoder_kwargs,
         )
 
@@ -1627,6 +1644,8 @@ class DiffusionModule(Module):
             depth=atom_decoder_depth,
             heads=atom_decoder_heads,
             serial=serial,
+            use_linear_attn=use_linear_attn,
+            linear_attn_kwargs=linear_attn_kwargs,
             **atom_decoder_kwargs,
         )
 
