@@ -2390,7 +2390,7 @@ class WeightedRigidAlign(Module):
 
         # Compute the weighted covariance matrix
         cov_matrix = einsum(
-            true_coords_centered * weights,
+            weights * true_coords_centered,
             pred_coords_centered,
             "b n i, b n j -> b i j",
         )
