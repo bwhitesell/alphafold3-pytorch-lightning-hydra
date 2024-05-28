@@ -34,7 +34,7 @@ model:
     dim_template_feats: 44
   # training parameters
   compile: false
-  skip_invalid_gradient_updates: false
+  skip_invalid_gradient_updates: true
   # model parameters
   parameters_initialized_from: random
   masked_diffusion_loss_for_non_protein_in_disorder: false
