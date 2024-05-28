@@ -2,6 +2,7 @@
 
 import os
 
+import rootutils
 import torch
 
 from alphafold3_pytorch import (
@@ -27,6 +28,9 @@ from alphafold3_pytorch.models.components.alphafold3 import (
     mean_pool_with_lens,
     repeat_consecutive_with_lens,
 )
+
+rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
+
 
 os.environ["TYPECHECK"] = "True"
 
@@ -72,13 +76,23 @@ def test_smooth_lddt_loss():
 def test_weighted_rigid_align():
     """Test the weighted rigid alignment function."""
     pred_coords = torch.randn(2, 100, 3)
-    true_coords = torch.randn(2, 100, 3)
     weights = torch.rand(2, 100)
 
     align_fn = WeightedRigidAlign()
-    aligned_coords = align_fn(pred_coords, true_coords, weights)
+    aligned_coords = align_fn(pred_coords, pred_coords, weights)
 
-    assert aligned_coords.shape == pred_coords.shape
+    # `pred_coords` should match itself without any change after alignment
+
+    rmsd = torch.sqrt(((pred_coords - aligned_coords) ** 2).sum(dim=-1).mean(dim=-1))
+    assert (rmsd < 1e-5).all()
+
+    # random_augment_fn = CentreRandomAugmentation()
+    # aligned_coords = align_fn(pred_coords, random_augment_fn(pred_coords), weights)
+
+    # # `pred_coords` should match a random augmentation of itself after alignment
+
+    # rmsd = torch.sqrt(((pred_coords - aligned_coords) ** 2).sum(dim=-1).mean(dim=-1))
+    # assert (rmsd < 1e-5).all()
 
 
 def test_weighted_rigid_align_with_mask():
@@ -94,7 +108,7 @@ def test_weighted_rigid_align_with_mask():
 
     aligned_coords = align_fn(pred_coords, true_coords, weights, mask=mask)
 
-    # do it one sample at a time without make
+    # do it one sample at a time without mask
 
     all_aligned_coords = []
 
@@ -591,3 +605,27 @@ def test_alphafold3_with_packed_atom_repr():
     )
 
     assert sampled_atom_pos.ndim == 3
+
+
+if __name__ == "__main__":
+    # test_mean_pool_with_lens()
+    # test_repeat_consecutive_with_lens()
+    # test_smooth_lddt_loss()
+    test_weighted_rigid_align()
+    # test_weighted_rigid_align_with_mask()
+    # test_express_coordinates_in_frame()
+    # test_compute_alignment_error()
+    # test_centre_random_augmentation()
+    # test_pairformer()
+    # test_msa_module()
+    # test_diffusion_transformer()
+    # test_sequence_local_attn()
+    # test_diffusion_module()
+    # test_relative_position_encoding()
+    # test_template_embed()
+    # test_confidence_head()
+    # test_input_embedder()
+    # test_distogram_head()
+    # test_alphafold3()
+    # test_alphafold3_without_msa_and_templates()
+    # test_alphafold3_with_packed_atom_repr()

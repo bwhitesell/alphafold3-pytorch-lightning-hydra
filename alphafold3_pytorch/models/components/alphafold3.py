@@ -15,6 +15,7 @@ from torch.nn import Linear, Module, ModuleList, Sequential
 from tqdm import tqdm
 
 from alphafold3_pytorch.models.components.attention import Attention
+from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.model_utils import (
     divisible_by,
     lens_to_mask,
@@ -69,7 +70,13 @@ additional_residue_feats: [*, 10]:
 
 ADDITIONAL_RESIDUE_FEATS = 10
 
+# threshold for checking that point crosscorelation
+# is full rank in corresponding_points_alignment
+AMBIGUOUS_ROT_SINGULAR_THR = 1e-15
+
 LinearNoBias = partial(Linear, bias=False)
+
+logger = RankedLogger(__name__, rank_zero_only=True)
 
 # linear and outer sum
 # for single repr -> pairwise pattern throughout this architecture
@@ -2171,12 +2178,13 @@ class ElucidatedAtomDiffusion(Module):
 
             # section 3.7.1 equation 4
 
+            # upweighting of nucleotide and ligand atoms is additive per equation 4
             align_weights = torch.where(
                 atom_is_dna | atom_is_rna,
-                nucleotide_loss_weight,
+                1 + nucleotide_loss_weight,
                 align_weights,
             )
-            align_weights = torch.where(atom_is_ligand, ligand_loss_weight, align_weights)
+            align_weights = torch.where(atom_is_ligand, 1 + ligand_loss_weight, align_weights)
 
         # section 3.7.1 equation 2 - weighted rigid aligned ground truth
 
@@ -2341,12 +2349,14 @@ class WeightedRigidAlign(Module):
     ) -> Float["b n 3"]:  # type: ignore
         """
         Compute the weighted rigid alignment.
+        Inspired by https://pytorch3d.readthedocs.io/en/latest/_modules/pytorch3d/ops/points_alignment.html.
 
         :param pred_coords: Predicted coordinates.
         :param true_coords: True coordinates.
         :param weights: Weights for each atom.
         :param mask: The mask for variable lengths.
         """
+        batch_size, num_points, dim = pred_coords.shape
 
         if exists(mask):
             # zero out all predicted and true coordinates where not an atom
@@ -2369,31 +2379,49 @@ class WeightedRigidAlign(Module):
         pred_coords_centered = pred_coords - pred_centroid
         true_coords_centered = true_coords - true_centroid
 
+        if num_points < (dim + 1):
+            logger.warning(
+                "The size of one of the point clouds is <= dim+1. "
+                + "`WeightedRigidAlign` cannot return a unique rotation."
+            )
+
         # Compute the weighted covariance matrix
-        weighted_true_coords_center = true_coords_centered * weights
         cov_matrix = einsum(
-            weighted_true_coords_center,
-            pred_coords_centered,
+            weights * pred_coords_centered,
+            weights * true_coords_centered,
             "b n i, b n j -> b i j",
-        )
+        ) / weights.sum(dim=1, keepdim=True)
 
         # Compute the SVD of the covariance matrix
-        U, _, V = torch.svd(cov_matrix)
+        U, S, V = torch.svd(cov_matrix)
+
+        # Catch ambiguous rotation by checking the magnitude of singular values
+        if (S.abs() <= AMBIGUOUS_ROT_SINGULAR_THR).any() and not (num_points < (dim + 1)):
+            logger.warning(
+                "Excessively low rank of "
+                + "cross-correlation between aligned point clouds. "
+                + "`WeightedRigidAlign` cannot return a unique rotation."
+            )
 
         # Compute the rotation matrix
-        rot_matrix = einsum(U, V, "b i j, b j k -> b i k")
+        rot_matrix = einsum(U, V, "b i j, b k j -> b i k")
 
         # Ensure proper rotation matrix with determinant 1
-        det = torch.det(rot_matrix)
-        det_mask = det < 0
-        V_fixed = V.clone()
-        V_fixed[det_mask, :, -1] *= -1
+        F = torch.eye(dim, dtype=cov_matrix.dtype, device=cov_matrix.device)[None].repeat(
+            batch_size, 1, 1
+        )
+        F[:, -1, -1] = torch.det(rot_matrix)
+        rot_matrix = einsum(U, F, V, "b i j, b j k, b l k -> b i l")
 
-        rot_matrix[det_mask] = einsum(U[det_mask], V_fixed[det_mask], "b i j, b j k -> b i k")
+        # Compute the translation vector
+        trans_vector = (
+            true_centroid[:, 0, :]
+            - einsum(pred_centroid, rot_matrix, "b i j, b j k -> b i k")[:, 0, :]
+        )
 
         # Apply the rotation and translation
         aligned_coords = (
-            einsum(pred_coords_centered, rot_matrix, "b n i, b i j -> b n j") + true_centroid
+            einsum(pred_coords, rot_matrix, "b n i, b i j -> b n j") + trans_vector[:, None, :]
         )
         aligned_coords.detach_()
 
