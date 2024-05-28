@@ -156,14 +156,15 @@ def test_express_coordinates_in_frame():
 def test_compute_alignment_error():
     """Test the function to compute alignment error."""
     pred_coords = torch.randn(2, 100, 3)
-    true_coords = torch.randn(2, 100, 3)
     pred_frames = torch.randn(2, 100, 3, 3)
-    true_frames = torch.randn(2, 100, 3, 3)
+
+    # `pred_coords` should match itself in frame basis
 
     error_fn = ComputeAlignmentError()
-    alignment_errors = error_fn(pred_coords, true_coords, pred_frames, true_frames)
+    alignment_errors = error_fn(pred_coords, pred_coords, pred_frames, pred_frames)
 
     assert alignment_errors.shape == (2, 100)
+    assert (alignment_errors.mean(-1) < 1e-3).all()
 
 
 def test_centre_random_augmentation():
@@ -617,7 +618,7 @@ if __name__ == "__main__":
     test_weighted_rigid_align()
     # test_weighted_rigid_align_with_mask()
     # test_express_coordinates_in_frame()
-    # test_compute_alignment_error()
+    test_compute_alignment_error()
     # test_centre_random_augmentation()
     # test_pairformer()
     # test_msa_module()

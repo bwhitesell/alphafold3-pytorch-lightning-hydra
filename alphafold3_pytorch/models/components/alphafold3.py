@@ -2470,22 +2470,23 @@ class ExpressCoordinatesInFrame(Module):
         elif frame.ndim == 3:
             frame = rearrange(frame, "b fr fc -> b 1 fr fc")
 
-        # Extract frame points
+        # Extract frame atoms
         a, b, c = frame.unbind(dim=-1)
+        w1 = F.normalize(a - b, dim=-1, eps=self.eps)
+        w2 = F.normalize(c - b, dim=-1, eps=self.eps)
 
-        # Compute unit vectors of the frame
-        e1 = F.normalize(a - b, dim=-1, eps=self.eps)
-        e2 = F.normalize(c - b, dim=-1, eps=self.eps)
+        # Build orthonormal basis
+        e1 = F.normalize(w1 + w2, dim=-1, eps=self.eps)
+        e2 = F.normalize(w2 - w1, dim=-1, eps=self.eps)
         e3 = torch.cross(e1, e2, dim=-1)
 
-        # Express coordinates in the frame basis
-        v = coords - b
-
+        # Project onto frame basis
+        d = coords - b
         transformed_coords = torch.stack(
             [
-                einsum(v, e1, "... i, ... i -> ..."),
-                einsum(v, e2, "... i, ... i -> ..."),
-                einsum(v, e3, "... i, ... i -> ..."),
+                einsum(d, e1, "... i, ... i -> ..."),
+                einsum(d, e2, "... i, ... i -> ..."),
+                einsum(d, e3, "... i, ... i -> ..."),
             ],
             dim=-1,
         )
