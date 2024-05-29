@@ -1347,7 +1347,12 @@ class DiffusionTransformer(Module):
             linear_attn = None
 
             if use_linear_attn:
-                linear_attn = TaylorSeriesLinearAttn(dim=dim, prenorm=True, **linear_attn_kwargs)
+                linear_attn = TaylorSeriesLinearAttn(
+                    dim=dim,
+                    prenorm=True,
+                    gate_value_heads=True,
+                    **linear_attn_kwargs,
+                )
 
             pair_bias_attn = AttentionPairBias(
                 dim=dim,
