@@ -224,10 +224,10 @@ python alphafold3_pytorch/eval.py trainer=gpu
 At the project root, run
 
 ```bash
-bash contribute.sh
+bash contributing.sh
 ```
 
-Then, add your module to `alphafold3_pytorch/alphafold3.py`, add your tests to `tests/test_alphafold3.py`, and submit a pull request. You can run the tests locally with
+Then, add your module to `alphafold3_pytorch/models/components/alphafold3.py`, add your tests to `tests/test_alphafold3.py`, and submit a pull request. You can run the tests locally with
 
 ```bash
 pytest tests/

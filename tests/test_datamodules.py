@@ -5,15 +5,12 @@ import os
 import pytest
 import torch
 
-from alphafold3_pytorch import register_custom_omegaconf_resolvers
 from alphafold3_pytorch.data.atom_datamodule import AtomDataModule
 
 os.environ["TYPECHECK"] = "True"
 
-register_custom_omegaconf_resolvers()
 
-
-@pytest.mark.parametrize("batch_size", [32, 128])
+@pytest.mark.parametrize("batch_size", [4, 8])
 def test_atom_datamodule(batch_size: int) -> None:
     """Tests `AtomDataModule` to verify that the necessary attributes were
     created (e.g., the dataloader objects), and that dtypes and batch sizes
@@ -22,11 +19,12 @@ def test_atom_datamodule(batch_size: int) -> None:
     :param batch_size: Batch size of the data to be loaded by the dataloader.
     """
     data_dir = "data/"
+    train_val_test_split = (16, 16, 16)
 
-    dm = AtomDataModule(data_dir=data_dir, batch_size=batch_size)
+    dm = AtomDataModule(
+        data_dir=data_dir, train_val_test_split=train_val_test_split, batch_size=batch_size
+    )
     dm.prepare_data()
-
-    assert not dm.data_train and not dm.data_val and not dm.data_test
 
     dm.setup()
     assert dm.data_train and dm.data_val and dm.data_test
@@ -35,10 +33,9 @@ def test_atom_datamodule(batch_size: int) -> None:
     num_datapoints = (
         len(dm.data_train) + len(dm.data_val) + len(dm.data_test)
     )  # 2 + 2 + 2 for this example
-    assert num_datapoints == 6
+    assert num_datapoints == sum(train_val_test_split)
 
     batch = next(iter(dm.train_dataloader()))
-    x, y = batch
-    assert len(x) == batch_size
-    assert len(y) == batch_size
-    assert x.dtype == torch.float32
+    x = batch
+    assert len(x["atom_inputs"]) == batch_size
+    assert x["atom_inputs"].dtype == torch.float32

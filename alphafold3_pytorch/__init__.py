@@ -1,6 +1,7 @@
 import importlib
 from typing import Any
 
+import lightning.pytorch as pl
 from omegaconf import OmegaConf
 
 from alphafold3_pytorch.models.alphafold3_module import AlphaFold3Input, AlphaFold3LitModule
@@ -115,14 +116,16 @@ def int_divide(x: int, y: int) -> int:
         )
 
 
-def validate_gradient_accumulation_factor(batch_size: int, world_size: int) -> int:
+def validate_gradient_accumulation_factor(batch_size: int, devices: int, num_nodes: int) -> int:
     """
     Validate the gradient accumulation factor. If the factor is valid, return `world_size`.
 
     :param batch_size: The batch size.
-    :param world_size: The number of GPUs.
+    :param devices: The number of devices.
+    :param num_nodes: The number of nodes.
     :return: The validated gradient accumulation factor.
     """
+    world_size = devices * num_nodes
     if batch_size % world_size == 0:
         return world_size
     else:
@@ -143,7 +146,7 @@ def register_custom_omegaconf_resolvers():
     OmegaConf.register_new_resolver("int_divide", lambda x, y: int_divide(int(x), int(y)))
     OmegaConf.register_new_resolver(
         "validate_gradient_accumulation_factor",
-        lambda batch_size, world_size: validate_gradient_accumulation_factor(
-            int(batch_size), int(world_size)
+        lambda batch_size, devices, num_nodes: validate_gradient_accumulation_factor(
+            int(batch_size), int(devices), int(num_nodes)
         ),
     )

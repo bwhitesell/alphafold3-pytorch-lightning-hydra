@@ -26,7 +26,6 @@ from alphafold3_pytorch import (
     SmoothLDDTLoss,
     TemplateEmbedder,
     WeightedRigidAlign,
-    register_custom_omegaconf_resolvers,
 )
 from alphafold3_pytorch.models.components.alphafold3 import (
     full_pairwise_repr_to_windowed,
@@ -35,8 +34,6 @@ from alphafold3_pytorch.models.components.alphafold3 import (
 )
 
 os.environ["TYPECHECK"] = "True"
-
-register_custom_omegaconf_resolvers()
 
 
 def test_mean_pool_with_lens():
@@ -549,26 +546,3 @@ def test_alphafold3_without_msa_and_templates():
     )
 
     loss.backward()
-
-
-if __name__ == "__main__":
-    # test_mean_pool_with_lens()
-    # test_repeat_consecutive_with_lens()
-    # test_smooth_lddt_loss()
-    test_weighted_rigid_align()
-    # test_weighted_rigid_align_with_mask()
-    # test_express_coordinates_in_frame()
-    test_compute_alignment_error()
-    # test_centre_random_augmentation()
-    # test_pairformer()
-    # test_msa_module()
-    # test_diffusion_transformer()
-    # test_sequence_local_attn()
-    # test_diffusion_module()
-    # test_relative_position_encoding()
-    # test_template_embed()
-    # test_confidence_head()
-    # test_input_embedder()
-    # test_distogram_head()
-    # test_alphafold3()
-    # test_alphafold3_without_msa_and_templates()

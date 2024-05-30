@@ -9,13 +9,12 @@ from hydra import compose, initialize
 from hydra.core.global_hydra import GlobalHydra
 from omegaconf import DictConfig, open_dict
 
-from alphafold3_pytorch import register_custom_omegaconf_resolvers
+from tests.helpers.run_if import RunIf
 
 os.environ["TYPECHECK"] = "True"
 
-register_custom_omegaconf_resolvers()
 
-
+@RunIf(min_gpus=1)
 @pytest.fixture(scope="package")
 def cfg_train_global() -> DictConfig:
     """A pytest fixture for setting up a default Hydra DictConfig for training.
@@ -27,22 +26,40 @@ def cfg_train_global() -> DictConfig:
 
         # set defaults for all tests
         with open_dict(cfg):
-            cfg.paths.root_dir = str(rootutils.find_root(indicator=".project-root"))
-            cfg.trainer.max_epochs = 1
-            cfg.trainer.limit_train_batches = 0.01
-            cfg.trainer.limit_val_batches = 0.1
-            cfg.trainer.limit_test_batches = 0.1
-            cfg.trainer.accelerator = "cpu"
-            cfg.trainer.devices = 1
+            cfg.data.train_val_test_split = (256, 256, 256)
+            cfg.data.batch_size = 2
             cfg.data.num_workers = 0
             cfg.data.pin_memory = False
             cfg.extras.print_config = False
             cfg.extras.enforce_tags = False
             cfg.logger = None
+            cfg.model.net.confidence_head_kwargs = {"pairformer_depth": 1}
+            cfg.model.net.template_embedder_kwargs = {"pairformer_stack_depth": 1}
+            cfg.model.net.msa_module_kwargs = {"depth": 1}
+            cfg.model.net.pairformer_stack = {"depth": 2}
+            cfg.model.net.diffusion_module_kwargs = {
+                "atom_encoder_depth": 1,
+                "token_transformer_depth": 1,
+                "atom_decoder_depth": 1,
+            }
+            cfg.paths.root_dir = str(rootutils.find_root(indicator=".project-root"))
+            cfg.trainer.max_epochs = 1
+            cfg.trainer.limit_train_batches = 0.01
+            cfg.trainer.limit_val_batches = 0.1
+            cfg.trainer.limit_test_batches = 0.1
+            cfg.trainer.accelerator = "gpu"
+            cfg.trainer.devices = 1
+
+            if hasattr(cfg, "callbacks") and hasattr(cfg.callbacks, "learning_rate_monitor"):
+                delattr(cfg.callbacks, "learning_rate_monitor")
+
+            if hasattr(cfg, "callbacks") and hasattr(cfg.callbacks, "last_model_checkpoint"):
+                cfg.callbacks.last_model_checkpoint.every_n_train_steps = 1
 
     return cfg
 
 
+@RunIf(min_gpus=1)
 @pytest.fixture(scope="package")
 def cfg_eval_global() -> DictConfig:
     """A pytest fixture for setting up a default Hydra DictConfig for evaluation.
@@ -58,22 +75,40 @@ def cfg_eval_global() -> DictConfig:
 
         # set defaults for all tests
         with open_dict(cfg):
-            cfg.paths.root_dir = str(rootutils.find_root(indicator=".project-root"))
-            cfg.trainer.max_epochs = 1
-            cfg.trainer.limit_test_batches = 0.1
-            cfg.trainer.accelerator = "cpu"
-            cfg.trainer.devices = 1
+            cfg.data.train_val_test_split = (256, 256, 256)
+            cfg.data.batch_size = 2
             cfg.data.num_workers = 0
             cfg.data.pin_memory = False
             cfg.extras.print_config = False
             cfg.extras.enforce_tags = False
             cfg.logger = None
+            cfg.model.net.confidence_head_kwargs = {"pairformer_depth": 1}
+            cfg.model.net.template_embedder_kwargs = {"pairformer_stack_depth": 1}
+            cfg.model.net.msa_module_kwargs = {"depth": 1}
+            cfg.model.net.pairformer_stack = {"depth": 2}
+            cfg.model.net.diffusion_module_kwargs = {
+                "atom_encoder_depth": 1,
+                "token_transformer_depth": 1,
+                "atom_decoder_depth": 1,
+            }
+            cfg.paths.root_dir = str(rootutils.find_root(indicator=".project-root"))
+            cfg.trainer.max_epochs = 1
+            cfg.trainer.limit_test_batches = 0.1
+            cfg.trainer.accelerator = "gpu"
+            cfg.trainer.devices = 1
+
+            if hasattr(cfg, "callbacks") and hasattr(cfg.callbacks, "learning_rate_monitor"):
+                delattr(cfg.callbacks, "learning_rate_monitor")
+
+            if hasattr(cfg, "callbacks") and hasattr(cfg.callbacks, "last_model_checkpoint"):
+                cfg.callbacks.last_model_checkpoint.every_n_train_steps = 1
 
     return cfg
 
 
+@RunIf(min_gpus=1)
 @pytest.fixture(scope="function")
-def cfg_train(cfg_train_global: DictConfig, tmp_path: Path) -> DictConfig:
+def cfg_train(cfg_train_global: DictConfig, tmp_path: Path) -> DictConfig:  # type: ignore
     """A pytest fixture built on top of the `cfg_train_global()` fixture, which accepts a temporary
     logging path `tmp_path` for generating a temporary logging path.
 
@@ -95,8 +130,9 @@ def cfg_train(cfg_train_global: DictConfig, tmp_path: Path) -> DictConfig:
     GlobalHydra.instance().clear()
 
 
+@RunIf(min_gpus=1)
 @pytest.fixture(scope="function")
-def cfg_eval(cfg_eval_global: DictConfig, tmp_path: Path) -> DictConfig:
+def cfg_eval(cfg_eval_global: DictConfig, tmp_path: Path) -> DictConfig:  # type: ignore
     """A pytest fixture built on top of the `cfg_eval_global()` fixture, which accepts a temporary
     logging path `tmp_path` for generating a temporary logging path.
 

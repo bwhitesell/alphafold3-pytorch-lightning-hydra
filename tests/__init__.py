@@ -1,0 +1,3 @@
+from alphafold3_pytorch import register_custom_omegaconf_resolvers
+
+register_custom_omegaconf_resolvers()
