@@ -7,10 +7,13 @@ import pytest
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, open_dict
 
+from alphafold3_pytorch import register_custom_omegaconf_resolvers
 from alphafold3_pytorch.eval import evaluate
 from alphafold3_pytorch.train import train
 
 os.environ["TYPECHECK"] = "True"
+
+register_custom_omegaconf_resolvers()
 
 
 @pytest.mark.slow

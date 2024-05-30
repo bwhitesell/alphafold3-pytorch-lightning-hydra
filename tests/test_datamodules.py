@@ -5,9 +5,12 @@ import os
 import pytest
 import torch
 
+from alphafold3_pytorch import register_custom_omegaconf_resolvers
 from alphafold3_pytorch.data.atom_datamodule import AtomDataModule
 
 os.environ["TYPECHECK"] = "True"
+
+register_custom_omegaconf_resolvers()
 
 
 @pytest.mark.parametrize("batch_size", [32, 128])

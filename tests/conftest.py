@@ -9,7 +9,11 @@ from hydra import compose, initialize
 from hydra.core.global_hydra import GlobalHydra
 from omegaconf import DictConfig, open_dict
 
+from alphafold3_pytorch import register_custom_omegaconf_resolvers
+
 os.environ["TYPECHECK"] = "True"
+
+register_custom_omegaconf_resolvers()
 
 
 @pytest.fixture(scope="package")

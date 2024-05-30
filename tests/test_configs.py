@@ -6,7 +6,11 @@ import hydra
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 
+from alphafold3_pytorch import register_custom_omegaconf_resolvers
+
 os.environ["TYPECHECK"] = "True"
+
+register_custom_omegaconf_resolvers()
 
 
 def test_train_config(cfg_train: DictConfig) -> None:

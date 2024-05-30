@@ -5,10 +5,13 @@ from pathlib import Path
 
 import pytest
 
+from alphafold3_pytorch import register_custom_omegaconf_resolvers
 from tests.helpers.run_if import RunIf
 from tests.helpers.run_sh_command import run_sh_command
 
 os.environ["TYPECHECK"] = "True"
+
+register_custom_omegaconf_resolvers()
 
 
 startfile = "alphafold3_pytorch/train.py"

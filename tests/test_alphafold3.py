@@ -26,6 +26,7 @@ from alphafold3_pytorch import (
     SmoothLDDTLoss,
     TemplateEmbedder,
     WeightedRigidAlign,
+    register_custom_omegaconf_resolvers,
 )
 from alphafold3_pytorch.models.components.alphafold3 import (
     full_pairwise_repr_to_windowed,
@@ -34,6 +35,8 @@ from alphafold3_pytorch.models.components.alphafold3 import (
 )
 
 os.environ["TYPECHECK"] = "True"
+
+register_custom_omegaconf_resolvers()
 
 
 def test_mean_pool_with_lens():
