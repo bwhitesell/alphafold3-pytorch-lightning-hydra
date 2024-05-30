@@ -1,6 +1,6 @@
 <div align="center">
 
-# AlphaFold 3 - PyTorch (wip)
+# AlphaFold 3 - PyTorch
 
 <a href="https://pytorch.org/get-started/locally/"><img alt="PyTorch" src="https://img.shields.io/badge/PyTorch-ee4c2c?logo=pytorch&logoColor=white"></a>
 <a href="https://pytorchlightning.ai/"><img alt="Lightning" src="https://img.shields.io/badge/-Lightning-792ee5?logo=pytorchlightning&logoColor=white"></a>
@@ -19,7 +19,7 @@
 
 Implementation of <a href="https://www.nature.com/articles/s41586-024-07487-w">AlphaFold 3</a> in Pytorch
 
-Getting a fair number of emails. You can chat with me about this work <a href="https://discord.gg/x6FuzQPQXY">here</a>
+You can chat with other researchers about this work <a href="https://discord.gg/x6FuzQPQXY">here</a>
 
 ## Appreciation
 
@@ -28,6 +28,10 @@ Getting a fair number of emails. You can chat with me about this work <a href="h
 - <a href="https://github.com/engelberger">Felipe</a> for contributing Weighted Rigid Align, Express Coordinates In Frame, Compute Alignment Error, and Centre Random Augmentation modules!
 
 - <a href="https://github.com/amorehead">Alex</a> for fixing various issues in the transcribed algorithms
+
+- <a href="https://github.com/gitabtion">Heng</a> for pointing out inconsistencies with the paper and pull requesting the solutions
+
+- <a href="https://github.com/patrick-kidger">Patrick</a> for <a href="https://docs.kidger.site/jaxtyping/">jaxtyping</a>, <a href="https://github.com/fferflo">Florian</a> for <a href="https://github.com/fferflo/einx">einx</a>, and of course, <a href="https://github.com/arogozhnikov">Alex</a> for <a href="https://einops.rocks/">einops</a>
 
 ## Contents
 
@@ -83,11 +87,11 @@ alphafold3 = AlphaFold3(
 # Mock inputs
 
 seq_len = 16
-atom_seq_len = seq_len * 27
+residue_atom_lens = torch.randint(1, 3, (2, seq_len))
+atom_seq_len = residue_atom_lens.sum(dim = -1).amax()
 
 atom_inputs = torch.randn(2, atom_seq_len, 77)
-atom_lens = torch.randint(0, 27, (2, seq_len))
-atompair_feats = torch.randn(2, atom_seq_len, atom_seq_len, 16)
+atompair_inputs = torch.randn(2, atom_seq_len, atom_seq_len, 5)
 additional_residue_feats = torch.randn(2, seq_len, 10)
 
 template_feats = torch.randn(2, 2, seq_len, seq_len, 44)
@@ -99,7 +103,7 @@ msa_mask = torch.ones((2, 7)).bool()
 # Required for training, but omitted on inference
 
 atom_pos = torch.randn(2, atom_seq_len, 3)
-residue_atom_indices = torch.randint(0, 27, (2, seq_len))
+residue_atom_indices = residue_atom_lens - 1 # last atom, as an example
 
 distance_labels = torch.randint(0, 37, (2, seq_len, seq_len))
 pae_labels = torch.randint(0, 64, (2, seq_len, seq_len))
@@ -112,8 +116,8 @@ resolved_labels = torch.randint(0, 2, (2, seq_len))
 loss = alphafold3(
     num_recycling_steps = 2,
     atom_inputs = atom_inputs,
-    residue_atom_lens = atom_lens,
-    atompair_feats = atompair_feats,
+    atompair_inputs = atompair_inputs,
+    residue_atom_lens = residue_atom_lens,
     additional_residue_feats = additional_residue_feats,
     msa = msa,
     msa_mask = msa_mask,
@@ -136,8 +140,8 @@ sampled_atom_pos = alphafold3(
     num_recycling_steps = 4,
     num_sample_steps = 16,
     atom_inputs = atom_inputs,
-    residue_atom_lens = atom_lens,
-    atompair_feats = atompair_feats,
+    atompair_inputs = atompair_inputs,
+    residue_atom_lens = residue_atom_lens,
     additional_residue_feats = additional_residue_feats,
     msa = msa,
     msa_mask = msa_mask,
@@ -145,7 +149,7 @@ sampled_atom_pos = alphafold3(
     template_mask = template_mask
 )
 
-sampled_atom_pos.shape # (2, 16 * 27, 3)
+sampled_atom_pos.shape # (2, <atom_seqlen>, 3)
 ```
 
 ## Data preparation

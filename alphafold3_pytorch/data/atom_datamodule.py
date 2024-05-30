@@ -11,20 +11,21 @@ class AtomDataset(Dataset):
     """
     A dummy dataset for atomic data.
 
+    :param num_examples: The number of examples in the dataset.
     :param seq_len: The length of the protein sequence.
     :param atoms_per_window: The number of atoms per window.
-    :param num_examples: The number of examples in the dataset.
     """
 
     def __init__(
         self,
+        num_examples,
         seq_len=16,
-        atoms_per_window=27,
-        num_examples=2,
+        atoms_per_window=4,
     ):
-        self.seq_len = seq_len
-        self.atom_seq_len = seq_len * atoms_per_window
         self.num_examples = num_examples
+        self.seq_len = seq_len
+        self.atoms_per_window = atoms_per_window
+        self.atom_seq_len = seq_len * atoms_per_window
 
     def __len__(self):
         """Return the length of the dataset."""
@@ -41,8 +42,8 @@ class AtomDataset(Dataset):
         atom_seq_len = self.atom_seq_len
 
         atom_inputs = torch.randn(atom_seq_len, 77)
-        residue_atom_lens = torch.randint(0, 27, (seq_len,))
-        atompair_feats = torch.randn(atom_seq_len, atom_seq_len, 16)
+        atompair_inputs = torch.randn(atom_seq_len, atom_seq_len, 5)
+        residue_atom_lens = torch.randint(0, self.atoms_per_window, (seq_len,))
         additional_residue_feats = torch.randn(seq_len, 10)
 
         templates = torch.randn(2, seq_len, seq_len, 44)
@@ -54,7 +55,7 @@ class AtomDataset(Dataset):
         # required for training, but omitted on inference
 
         atom_pos = torch.randn(atom_seq_len, 3)
-        residue_atom_indices = torch.randint(0, 27, (seq_len,))
+        residue_atom_indices = residue_atom_lens - 1
 
         distance_labels = torch.randint(0, 37, (seq_len, seq_len))
         pae_labels = torch.randint(0, 64, (seq_len, seq_len))
@@ -64,8 +65,8 @@ class AtomDataset(Dataset):
 
         return AlphaFold3Input(
             atom_inputs=atom_inputs,
+            atompair_inputs=atompair_inputs,
             residue_atom_lens=residue_atom_lens,
-            atompair_feats=atompair_feats,
             additional_residue_feats=additional_residue_feats,
             templates=templates,
             template_mask=template_mask,

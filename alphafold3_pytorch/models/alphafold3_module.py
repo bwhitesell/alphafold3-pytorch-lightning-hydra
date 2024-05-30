@@ -23,18 +23,18 @@ class AlphaFold3Input(TypedDict):
 
     atom_inputs: Float["m dai"]  # type: ignore
     residue_atom_lens: Int["n 2"]  # type: ignore
-    atompair_feats: Float["m m dap"]  # type: ignore
+    atompair_inputs: Float["m m dapi"] | Float["nw w (w*3) dapi"]  # type: ignore
     additional_residue_feats: Float["n 10"]  # type: ignore
     templates: Float["t n n dt"]  # type: ignore
-    template_mask: Bool["t"] | None  # type: ignore
     msa: Float["s n dm"]  # type: ignore
-    msa_mask: Bool["s"] | None  # type: ignore
+    template_mask: Bool[" t"] | None  # type: ignore
+    msa_mask: Bool[" s"] | None  # type: ignore
     atom_pos: Float["m 3"] | None  # type: ignore
-    residue_atom_indices: Int["n"] | None  # type: ignore
+    residue_atom_indices: Int[" n"] | None  # type: ignore
     distance_labels: Int["n n"] | None  # type: ignore
     pae_labels: Int["n n"] | None  # type: ignore
-    pde_labels: Int["n"] | None  # type: ignore
-    resolved_labels: Int["n"] | None  # type: ignore
+    pde_labels: Int[" n"] | None  # type: ignore
+    resolved_labels: Int[" n"] | None  # type: ignore
 
 
 AVAILABLE_LR_SCHEDULERS = ["wcd", "plateau"]

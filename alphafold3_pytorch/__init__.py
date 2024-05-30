@@ -31,7 +31,11 @@ from alphafold3_pytorch.models.components.alphafold3 import (
     TriangleMultiplication,
     WeightedRigidAlign,
 )
-from alphafold3_pytorch.models.components.attention import Attend, Attention
+from alphafold3_pytorch.models.components.attention import (
+    Attend,
+    Attention,
+    full_pairwise_repr_to_windowed,
+)
 
 __all__ = [
     Attention,
@@ -63,6 +67,7 @@ __all__ = [
     AlphaFold3,
     AlphaFold3LitModule,
     AlphaFold3Input,
+    full_pairwise_repr_to_windowed,
 ]
 
 

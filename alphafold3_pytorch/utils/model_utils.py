@@ -111,6 +111,104 @@ def pad_at_dim(t, pad: Tuple[int, int], *, dim=-1, value=0.0):
     return F.pad(t, (*zeros, *pad), value=value)
 
 
+# padding and slicing
+
+
+@typecheck
+def slice_at_dim(t: Tensor, dim_slice: slice, *, dim: int):
+    """
+    Slice a Tensor at a specific dimension.
+
+    :param t: The Tensor.
+    :param dim_slice: The slice object.
+    :param dim: The dimension to slice.
+    :return: The sliced Tensor.
+    """
+    dim += t.ndim if dim < 0 else 0
+    colons = [slice(None)] * t.ndim
+    colons[dim] = dim_slice
+    return t[tuple(colons)]
+
+
+@typecheck
+def pad_or_slice_to(t: Tensor, length: int, *, dim: int, pad_value=0):
+    """
+    Pad or slice a Tensor to a specific length at a specific dimension.
+
+    :param t: The Tensor.
+    :param length: The length to pad or slice to.
+    :param dim: The dimension to pad or slice.
+    :param pad_value: The value to pad with.
+    :return: The padded or sliced Tensor.
+    """
+    curr_length = t.shape[dim]
+
+    if curr_length < length:
+        t = pad_at_dim(t, (0, length - curr_length), dim=dim, value=pad_value)
+    elif curr_length > length:
+        t = slice_at_dim(t, slice(0, length), dim=dim)
+
+    return t
+
+
+@typecheck
+def pad_to_multiple(t: Tensor, multiple: int, *, dim=-1, value=0.0):
+    """
+    Pad a Tensor to a multiple of a specific number at a specific dimension.
+
+    :param t: The Tensor.
+    :param multiple: The multiple to pad to.
+    :param dim: The dimension to pad.
+    :param value: The value to pad with.
+    :return: The padded Tensor.
+    """
+    seq_len = t.shape[dim]
+    padding_needed = (multiple - (seq_len % multiple)) % multiple
+
+    if padding_needed == 0:
+        return t
+
+    return pad_at_dim(t, (0, padding_needed), dim=dim, value=value)
+
+
+@typecheck
+def concat_neighboring_windows(t: Tensor, *, dim_seq: int, dim_window: int):
+    """
+    Concatenate neighboring windows of a Tensor.
+
+    :param t: The Tensor.
+    :param dim_seq: The sequence dimension.
+    :param dim_window: The window dimension.
+    :return: The concatenated Tensor.
+    """
+    t = pad_at_dim(t, (1, 1), dim=dim_seq, value=0.0)
+
+    t = torch.cat(
+        (
+            slice_at_dim(t, slice(None, -2), dim=dim_seq),
+            slice_at_dim(t, slice(1, -1), dim=dim_seq),
+            slice_at_dim(t, slice(2, None), dim=dim_seq),
+        ),
+        dim=dim_window,
+    )
+
+    return t
+
+
+@typecheck
+def pad_and_window(t: Float["b n ..."] | Int["b n ..."], window_size: int):  # type: ignore
+    """
+    Pad and window a Tensor.
+
+    :param t: The Tensor.
+    :param window_size: The window size.
+    :return: The padded and windowed Tensor.
+    """
+    t = pad_to_multiple(t, window_size, dim=1)
+    t = rearrange(t, "b (n w) ... -> b n w ...", w=window_size)
+    return t
+
+
 # packed atom representation functions
 
 
@@ -171,9 +269,9 @@ def mean_pool_with_lens(
 
 @typecheck
 def repeat_consecutive_with_lens(
-    feats: Float["b n ..."] | Bool["b n"],  # type: ignore
+    feats: Float["b n ..."] | Bool["b n"] | Int["b n"],  # type: ignore
     lens: Int["b n"],  # type: ignore
-) -> Float["b m ..."] | Bool["b m"]:  # type: ignore
+) -> Float["b m ..."] | Bool["b m"] | Int["b m"]:  # type: ignore
     """
     Repeat a Tensor's values consecutively with the given lengths.
 
@@ -233,29 +331,3 @@ def repeat_consecutive_with_lens(
     output = einx.where("b n, b n ..., -> b n ...", output_mask, output, mask_value)
 
     return output
-
-
-def repeat_pairwise_consecutive_with_lens(
-    feats: Float["b n n dp"],  # type: ignore
-    lens: Int["b n"],  # type: ignore
-) -> Float["b m m dp"]:  # type: ignore
-    """
-    Repeat a Tensor's pairwise values consecutively with the given lengths.
-
-    :param feats: The features Tensor.
-    :param lens: The lengths Tensor.
-    :return: The repeated Tensor.
-    """
-
-    repeated_lens = repeat(lens, "b ... -> (b repeat) ...", repeat=feats.shape[1])
-    feats, ps = pack_one(feats, "* n dp")
-    feats = repeat_consecutive_with_lens(feats, repeated_lens)
-    feats = unpack_one(feats, ps, "* n dp")
-
-    feats = rearrange(feats, "b i j dp -> b j i dp")
-    repeated_lens = repeat(lens, "b ... -> (b repeat) ...", repeat=feats.shape[1])
-    feats, ps = pack_one(feats, "* n dp")
-    feats = repeat_consecutive_with_lens(feats, repeated_lens)
-    feats = unpack_one(feats, ps, "* n dp")
-    feats = rearrange(feats, "b j i dp -> b i j dp")
-    return feats
