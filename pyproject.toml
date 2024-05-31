@@ -29,11 +29,13 @@ dependencies = [
     "lightning>=2.2.5",
     "torchmetrics>=0.11.4",
     "taylor-series-linear-attention>=0.1.9",
+    "torch-geometric",
 
     # --------- hydra --------- #
     "hydra-core==1.3.2",
     "hydra-colorlog==1.2.0",
     "hydra-optuna-sweeper==1.2.0",
+    "omegaconf",
 
     # --------- loggers --------- #
     # "wandb",
@@ -54,6 +56,8 @@ dependencies = [
     "tqdm",            # progress bars
     "setuptools",      # for packaging
     "ipykernel",       # for running Jupyter notebooks
+    "rdkit==2023.9.6", # for parsing small molecule data files
+    "pdbeccdutils==0.8.5", # for parsing the Protein Data Bank's Chemical Component Dictionary (CCD)
     # "sh"             # for running bash commands in some tests (linux/macos only)
 ]
 
