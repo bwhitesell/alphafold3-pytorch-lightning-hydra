@@ -17,7 +17,7 @@
 
 ## Description
 
-Implementation of <a href="https://www.nature.com/articles/s41586-024-07487-w">AlphaFold 3</a> in Pytorch
+Implementation of <a href="https://www.nature.com/articles/s41586-024-07487-w">AlphaFold 3</a> in PyTorch Lightning + Hydra
 
 You can chat with other researchers about this work <a href="https://discord.gg/x6FuzQPQXY">here</a>
 
