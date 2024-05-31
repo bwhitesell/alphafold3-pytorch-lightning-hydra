@@ -93,7 +93,7 @@ minversion = "6.0"
 testpaths = "tests/"
 
 [tool.ruff]
-line-length = 1000
+line-length = 5000
 # Enable pycodestyle (`E`) and Pyflakes (`F`) codes by default.
 select = ["E", "F", "I"] # <-- Note: I suggest including the "I" for additional checks!
 ignore = [

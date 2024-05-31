@@ -165,9 +165,11 @@ In this directory, unzip all the files:
 find . -type f -name "*.gz" -exec gzip -d {} \;
 ```
 
-Then run the following with <pdb_dir> replaced with the location of your local copy of the PDB and with <out_dir> replaced with your desired dataset output directory (e.g., `data/PDB_set/` by default).
+Next run the commands `wget -P data/CCD/ https://files.wwpdb.org/pub/pdb/data/monomers/components.cif.gz` and `wget -P data/CCD/ https://files.wwpdb.org/pub/pdb/data/component-models/complete/chem_comp_model.cif.gz` from the project's root directory to download the latest version of the Protein Data Bank's Chemical Component Dictionary (CCD) and its structural models. Extract each of these files using the command `find data/CCD/ -type f -name "*.gz" -exec gzip -d {} \;`.
+
+Then run the following with <pdb_dir>, <ccd_dir>, and <out_dir> replaced with the locations of your local copies of the PDB, CCD, and your desired dataset output directory (e.g., `data/PDB_set/` by default).
 ```python
-python notebooks/alphafold3_pdb_dataset_curation.py --mmcif_dir <pdb_dir> --out_dir <out_dir>
+python notebooks/alphafold3_pdb_dataset_curation.py --mmcif_dir <pdb_dir> --ccd_dir <ccd_dir> --out_dir <out_dir>
 ```
 
 See the script for more options. Each mmCIF will be written as a pickle file that
