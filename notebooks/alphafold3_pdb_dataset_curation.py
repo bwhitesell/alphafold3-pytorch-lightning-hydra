@@ -237,7 +237,7 @@ parser.add_argument(
 args = parser.parse_args("")
 
 # Example usage
-file_paths = glob.glob(os.path.join(args.input_dir, "*", "*.cif"))
+file_paths = glob.glob(os.path.join(args.mmcif_dir, "*", "*.cif"))
 ccd_atoms = {"ALA": ["N", "CA", "C", "O"], "GLY": ["N", "CA", "C", "O"]}
 covalent_ligands = {"LIG": ["H1", "H2"]}
 crystallography_methods = {"X-RAY DIFFRACTION": ["HOH", "SO4"]}
