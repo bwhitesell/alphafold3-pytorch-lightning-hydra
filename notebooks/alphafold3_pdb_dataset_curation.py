@@ -48,25 +48,32 @@ def parse_structure(file_path):
         parser = MMCIFParser(QUIET=True)
     else:
         raise ValueError("Unsupported file format")
-    structure_id = file_path.split("/")[-1].split(".")[0]
+    structure_id = os.path.splitext(os.path.basename(file_path))[0]
     structure = parser.get_structure(structure_id, file_path)
     return structure
 
 
-# Function to filter based on resolution
-def filter_resolution(structure, max_resolution=9.0):
+# Function to filter based on PDB deposition date
+def filter_pdb_deposition_date(structure):
     if (
-        hasattr(structure.header, "resolution")
-        and structure.header["resolution"] <= max_resolution
+        "deposition_date" in structure.header
+        and pd.to_datetime(structure.header["deposition_date"]) <= cutoff_date
     ):
         return True
     return False
 
 
+# Function to filter based on resolution
+def filter_resolution(structure, max_resolution=9.0):
+    if "resolution" in structure.header and structure.header["resolution"] <= max_resolution:
+        return True
+    return False
+
+
 # Function to filter based on number of polymer chains
-def filter_polymer_chains(structure, max_chains=300, for_training=True):
+def filter_polymer_chains(structure, max_chains=1000, for_training=False):
     count = sum(1 for chain in structure.get_chains() if chain.id[0] == " ")
-    return count <= (max_chains if for_training else 1000)
+    return count <= (300 if for_training else max_chains)
 
 
 # Function to filter polymer chains based on resolved residues
@@ -96,10 +103,8 @@ def remove_unknown_residues(structure):
 
 
 # Function to remove clashing chains
-def remove_clashing_chains(structure):
+def remove_clashing_chains(structure, clash_threshold: float = 1.7, clash_percentage: float = 0.3):
     chains = list(structure.get_chains())
-    clash_threshold = 1.7
-    clash_percentage = 0.3
     clashing_chains = []
 
     for i, chain1 in enumerate(chains):
@@ -126,10 +131,15 @@ def remove_clashing_chains(structure):
         ):
             structure[0].detach_child(chain2.id)
         else:
-            if len(list(chain1.get_atoms())) > len(list(chain2.get_atoms())):
+            if len(list(chain1.get_atoms())) < len(list(chain2.get_atoms())):
+                structure[0].detach_child(chain1.id)
+            elif len(list(chain2.get_atoms())) < len(list(chain1.get_atoms())):
                 structure[0].detach_child(chain2.id)
             else:
-                structure[0].detach_child(chain1.id)
+                if chain1.id > chain2.id:
+                    structure[0].detach_child(chain1.id)
+                else:
+                    structure[0].detach_child(chain2.id)
     return structure
 
 
@@ -197,24 +207,27 @@ def remove_crystallization_aids(structure, crystallography_methods):
     return structure
 
 
-# Example main function to process a list of PDB/MMCIF files
+# Example main function to process a list of mmCIF files
 def process_structures(file_paths):
     processed_structures = []
     for file_path in file_paths:
         structure = parse_structure(file_path)
-        if filter_resolution(structure):
-            if filter_polymer_chains(structure):
-                structure = filter_resolved_residues(structure)
-                structure = remove_hydrogens(structure)
-                structure = remove_unknown_residues(structure)
-                structure = remove_clashing_chains(structure)
-                # Assuming ccd_atoms and covalent_ligands are predefined dictionaries
-                structure = remove_non_ccd_atoms(structure, ccd_atoms)
-                structure = remove_leaving_atoms(structure, covalent_ligands)
-                structure = filter_large_ca_distances(structure)
-                structure = select_closest_chains(structure)
-                structure = remove_crystallization_aids(structure, crystallography_methods)
-                processed_structures.append(structure)
+        if (
+            filter_pdb_deposition_date(structure)
+            and filter_resolution(structure)
+            and filter_polymer_chains(structure)
+            and filter_resolved_residues(structure)
+        ):
+            structure = remove_hydrogens(structure)
+            structure = remove_unknown_residues(structure)
+            structure = remove_clashing_chains(structure)
+            # Assuming ccd_atoms and covalent_ligands are predefined dictionaries
+            structure = remove_non_ccd_atoms(structure, ccd_atoms)
+            structure = remove_leaving_atoms(structure, covalent_ligands)
+            structure = filter_large_ca_distances(structure)
+            structure = select_closest_chains(structure)
+            structure = remove_crystallization_aids(structure, crystallography_methods)
+            processed_structures.append(structure)
     return processed_structures
 
 
