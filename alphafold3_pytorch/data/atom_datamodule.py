@@ -242,6 +242,7 @@ class AtomDataModule(LightningDataModule):
         train_on_transcription_factor_distillation_sets: bool = False,
         pdb_distillation: Optional[bool] = None,
         max_number_of_chains: int = 20,
+        map_dataset_input_fn: Optional[Callable] = None,
         batch_size: int = 256,
         num_workers: int = 0,
         pin_memory: bool = False,
@@ -261,10 +262,8 @@ class AtomDataModule(LightningDataModule):
         # if map dataset function given, curry into DataLoader
         self.dataloader_class = AF3DataLoader
 
-        if exists(self.hparams.map_dataset_input_fn):
-            self.dataloader_class = partial(
-                AF3DataLoader, map_input_fn=self.hparams.map_dataset_input_fn
-            )
+        if exists(map_dataset_input_fn):
+            self.dataloader_class = partial(AF3DataLoader, map_input_fn=map_dataset_input_fn)
 
     def prepare_data(self) -> None:
         """Download data if needed. Lightning ensures that `self.prepare_data()` is called only
