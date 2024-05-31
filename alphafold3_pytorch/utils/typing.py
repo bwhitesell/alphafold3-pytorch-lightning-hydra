@@ -3,6 +3,7 @@ from functools import wraps
 
 import rootutils
 from beartype import beartype
+from beartype.door import is_bearable
 from jaxtyping import Bool, Float, Int, jaxtyped
 from torch import Tensor
 
@@ -11,6 +12,13 @@ from torch import Tensor
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
 # function
+
+
+def always(value):
+    def inner(*args, **kwargs):
+        return value
+
+    return inner
 
 
 def null_decorator(fn):
@@ -31,7 +39,6 @@ class TorchTyping:
     """Torch typing."""
 
     def __init__(self, abstract_dtype):
-        """Initialize typing."""
         self.abstract_dtype = abstract_dtype
 
     def __getitem__(self, shapes: str):
@@ -49,4 +56,6 @@ should_typecheck = os.environ.get("TYPECHECK", False)
 
 typecheck = jaxtyped(typechecker=beartype) if should_typecheck else null_decorator
 
-__all__ = [Float, Int, Bool, typecheck]
+beartype_isinstance = is_bearable if should_typecheck else always(True)
+
+__all__ = [Float, Int, Bool, typecheck, beartype_isinstance]

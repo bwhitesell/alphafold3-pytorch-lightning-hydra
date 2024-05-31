@@ -16,6 +16,8 @@ Shape = Union[Tuple[int, ...], List[int]]
 
 # helper functions
 
+# default scheduler used in paper w/ warmup
+
 
 def default_lambda_lr_fn(steps: int) -> float:
     """Default lambda learning rate function.
@@ -172,22 +174,21 @@ def pad_to_multiple(t: Tensor, multiple: int, *, dim=-1, value=0.0):
 
 
 @typecheck
-def concat_neighboring_windows(t: Tensor, *, dim_seq: int, dim_window: int):
+def concat_previous_window(t: Tensor, *, dim_seq: int, dim_window: int):
     """
-    Concatenate neighboring windows of a Tensor.
+    Concatenate the previous window of a Tensor.
 
     :param t: The Tensor.
     :param dim_seq: The sequence dimension.
     :param dim_window: The window dimension.
     :return: The concatenated Tensor.
     """
-    t = pad_at_dim(t, (1, 1), dim=dim_seq, value=0.0)
+    t = pad_at_dim(t, (1, 0), dim=dim_seq, value=0.0)
 
     t = torch.cat(
         (
-            slice_at_dim(t, slice(None, -2), dim=dim_seq),
-            slice_at_dim(t, slice(1, -1), dim=dim_seq),
-            slice_at_dim(t, slice(2, None), dim=dim_seq),
+            slice_at_dim(t, slice(None, -1), dim=dim_seq),
+            slice_at_dim(t, slice(1, None), dim=dim_seq),
         ),
         dim=dim_window,
     )
@@ -306,7 +307,7 @@ def repeat_consecutive_with_lens(
 
     output_indices = torch.zeros((batch, max_len + 1), device=device, dtype=torch.long)
 
-    indices.masked_fill_(~mask, max_len)  # scatter to sink position for padding
+    indices = indices.masked_fill(~mask, max_len)  # scatter to sink position for padding
     indices = rearrange(indices, "b n w -> b (n w)")
 
     # scatter

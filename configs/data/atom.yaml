@@ -6,6 +6,7 @@ sampling_weight_for_disorder_pdb_distillation: 0.02  # NOTE: must be one of (ini
 train_on_transcription_factor_distillation_sets: false # NOTE: must be one of (initial_training: False, fine_tuning_1: False, fine_tuning_2: True, fine_tuning_3: True), proceeding from left to right following Table 6 in the paper
 pdb_distillation: null # NOTE: does not appear to be used in Table 6 of the paper
 max_number_of_chains: 20 # NOTE: must be one of (initial_training: 20, fine_tuning_1: 20, fine_tuning_2: 20, fine_tuning_3: 50), proceeding from left to right following Table 6 in the paper
+map_dataset_input_fn: null # if specified, a function that should be applied to dataset examples for batching - NOTE: to specify, use resolver syntax such as `${resolve_variable:alphafold3_pytorch.utils.model_utils.default_map_dataset_input_fn}`
 batch_size: 256 # needs to be divisible by the number of devices (e.g., if in a distributed setup)
 num_workers: 0
 pin_memory: False

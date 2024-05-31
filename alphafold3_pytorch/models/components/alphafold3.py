@@ -22,7 +22,7 @@ from alphafold3_pytorch.models.components.attention import (
 )
 from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.model_utils import (
-    concat_neighboring_windows,
+    concat_previous_window,
     lens_to_mask,
     log,
     max_neg_value,
@@ -31,7 +31,6 @@ from alphafold3_pytorch.utils.model_utils import (
     pack_one,
     pad_and_window,
     pad_or_slice_to,
-    pad_to_multiple,
     repeat_consecutive_with_lens,
     unpack_one,
 )
@@ -43,9 +42,9 @@ global ein notation:
 b - batch
 ba - batch with augmentation
 h - heads
-n - residue sequence length
-i - residue sequence length (source)
-j - residue sequence length (target)
+n - molecule sequence length
+i - molecule sequence length (source)
+j - molecule sequence length (target)
 m - atom sequence length
 nw - windowed sequence length
 d - feature dimension
@@ -61,8 +60,8 @@ r - registers
 """
 
 """
-additional_residue_feats: [*, 10]:
-0: residue_index
+additional_molecule_feats: [*, 10]:
+0: molecule_index
 1: token_index
 2: asym_id
 3: entity_id
@@ -76,7 +75,7 @@ additional_residue_feats: [*, 10]:
 
 # constants
 
-ADDITIONAL_RESIDUE_FEATS = 10
+ADDITIONAL_MOLECULE_FEATS = 10
 
 LinearNoBias = partial(Linear, bias=False)
 
@@ -416,8 +415,8 @@ class AttentionPairBias(Module):
         self,
         single_repr: Float["b n ds"],  # type: ignore
         *,
-        pairwise_repr: Float["b n n dp"] | Float["b nw w (w*3) dp"],  # type: ignore
-        attn_bias: Float["b n n"] | Float["b nw w (w*3)"] | None = None,  # type: ignore
+        pairwise_repr: Float["b n n dp"] | Float["b nw w (w*2) dp"],  # type: ignore
+        attn_bias: Float["b n n"] | Float["b nw w (w*2)"] | None = None,  # type: ignore
         **kwargs,
     ) -> Float["b n ds"]:  # type: ignore
         """
@@ -1034,19 +1033,19 @@ class RelativePositionEncoding(Module):
 
     @typecheck
     def forward(
-        self, *, additional_residue_feats: Float[f"b n {ADDITIONAL_RESIDUE_FEATS}"]  # type: ignore
+        self, *, additional_molecule_feats: Float[f"b n {ADDITIONAL_MOLECULE_FEATS}"]  # type: ignore
     ) -> Float["b n n dp"]:  # type: ignore
         """
         Perform the forward pass.
 
-        :param additional_residue_feats: The additional residue features tensor.
+        :param additional_molecule_feats: The additional molecule features tensor.
         :return: The output tensor.
         """
 
-        device = additional_residue_feats.device
+        device = additional_molecule_feats.device
         assert (
-            additional_residue_feats.shape[-1] >= 5
-        ), "Additional residue features must have at least 5 dimensions."
+            additional_molecule_feats.shape[-1] >= 5
+        ), "Additional molecule features must have at least 5 dimensions."
 
         (
             res_idx,
@@ -1054,7 +1053,7 @@ class RelativePositionEncoding(Module):
             asym_id,
             entity_id,
             sym_id,
-        ) = additional_residue_feats[
+        ) = additional_molecule_feats[
             ..., :5
         ].unbind(dim=-1)
 
@@ -1431,7 +1430,7 @@ class DiffusionTransformer(Module):
         noised_repr: Float["b n d"],  # type: ignore
         *,
         single_repr: Float["b n ds"],  # type: ignore
-        pairwise_repr: Float["b n n dp"] | Float["b nw w (w*3) dp"],  # type: ignore
+        pairwise_repr: Float["b n n dp"] | Float["b nw w (w*2) dp"],  # type: ignore
         mask: Bool["b n"] | None = None,  # type: ignore
     ):
         """
@@ -1518,18 +1517,18 @@ class AtomToTokenPooler(Module):
         *,
         atom_feats: Float["b m da"],  # type: ignore
         atom_mask: Bool["b m"],  # type: ignore
-        residue_atom_lens: Int["b n"],  # type: ignore
+        molecule_atom_lens: Int["b n"],  # type: ignore
     ) -> Float["b n ds"]:  # type: ignore
         """
         Perform the forward pass.
 
         :param atom_feats: The atom features tensor.
         :param atom_mask: The atom mask tensor.
-        :param residue_atom_lens: The residue atom lengths tensor.
+        :param molecule_atom_lens: The molecule atom lengths tensor.
         :return: The output tensor.
         """
         atom_feats = self.proj(atom_feats)
-        tokens = mean_pool_with_lens(atom_feats, residue_atom_lens)
+        tokens = mean_pool_with_lens(atom_feats, molecule_atom_lens)
         return tokens
 
 
@@ -1542,7 +1541,7 @@ class DiffusionModule(Module):
         *,
         dim_pairwise_trunk,
         dim_pairwise_rel_pos_feats,
-        atoms_per_window=27,  # for atom sequence, take the approach of (batch, seq, atoms, ..), where atom dimension is set to the residue or molecule with greatest number of atoms, the rest padded. atom_mask must be passed in - default to 27 for proteins, with tryptophan having 27 atoms
+        atoms_per_window=27,  # for atom sequence, take the approach of (batch, seq, atoms, ..), where atom dimension is set to the molecule or molecule with greatest number of atoms, the rest padded. atom_mask must be passed in - default to 27 for proteins, with tryptophan having 27 atoms
         dim_pairwise=128,
         sigma_data=16,
         dim_atom=128,
@@ -1677,7 +1676,7 @@ class DiffusionModule(Module):
         noised_atom_pos: Float["b m 3"],  # type: ignore
         *,
         atom_feats: Float["b m da"],  # type: ignore
-        atompair_feats: Float["b m m dap"] | Float["b nw w (w*3) dap"],  # type: ignore
+        atompair_feats: Float["b m m dap"] | Float["b nw w (w*2) dap"],  # type: ignore
         atom_mask: Bool["b m"],  # type: ignore
         times: Float[" b"],  # type: ignore
         mask: Bool["b n"],  # type: ignore
@@ -1685,7 +1684,7 @@ class DiffusionModule(Module):
         single_inputs_repr: Float["b n dsi"],  # type: ignore
         pairwise_trunk: Float["b n n dpt"],  # type: ignore
         pairwise_rel_pos_feats: Float["b n n dpr"],  # type: ignore
-        residue_atom_lens: Int["b n"],  # type: ignore
+        molecule_atom_lens: Int["b n"],  # type: ignore
     ) -> Float["b m 3"]:  # type: ignore
         """
         Perform the forward pass.
@@ -1700,7 +1699,7 @@ class DiffusionModule(Module):
         :param single_inputs_repr: The single inputs representation tensor.
         :param pairwise_trunk: The pairwise trunk tensor.
         :param pairwise_rel_pos_feats: The pairwise relative position features tensor.
-        :param residue_atom_lens: The residue atom lengths tensor.
+        :param molecule_atom_lens: The molecule atom lengths tensor.
         :return: The output tensor.
         """
         w = self.atoms_per_window
@@ -1732,7 +1731,7 @@ class DiffusionModule(Module):
 
         single_repr_cond = self.single_repr_to_atom_feat_cond(conditioned_single_repr)
 
-        single_repr_cond = repeat_consecutive_with_lens(single_repr_cond, residue_atom_lens)
+        single_repr_cond = repeat_consecutive_with_lens(single_repr_cond, molecule_atom_lens)
         single_repr_cond = pad_or_slice_to(
             single_repr_cond, length=atom_feats_cond.shape[1], dim=1
         )
@@ -1755,7 +1754,7 @@ class DiffusionModule(Module):
         indices = torch.arange(seq_len, device=device)
         indices = repeat(indices, "n -> b n", b=batch_size)
 
-        indices = repeat_consecutive_with_lens(indices, residue_atom_lens)
+        indices = repeat_consecutive_with_lens(indices, molecule_atom_lens)
         indices = pad_or_slice_to(indices, atom_seq_len, dim=-1)
         indices = pad_and_window(indices, w)
 
@@ -1763,7 +1762,7 @@ class DiffusionModule(Module):
         row_indices = rearrange(row_indices, "b n w -> b n w 1", w=w)
         col_indices = rearrange(col_indices, "b n w -> b n 1 w", w=w)
 
-        col_indices = concat_neighboring_windows(col_indices, dim_seq=1, dim_window=-1)
+        col_indices = concat_previous_window(col_indices, dim_seq=1, dim_window=-1)
         row_indices, col_indices = torch.broadcast_tensors(row_indices, col_indices)
 
         pairwise_repr_cond = einx.get_at(
@@ -1782,9 +1781,7 @@ class DiffusionModule(Module):
 
         atom_repr_cond_row, atom_repr_cond_col = atom_repr_cond.chunk(2, dim=-1)
 
-        atom_repr_cond_col = concat_neighboring_windows(
-            atom_repr_cond_col, dim_seq=1, dim_window=2
-        )
+        atom_repr_cond_col = concat_previous_window(atom_repr_cond_col, dim_seq=1, dim_window=2)
 
         atompair_feats = einx.add(
             "b nw w1 w2 dap, b nw w1 dap -> b nw w1 w2 dap", atompair_feats, atom_repr_cond_row
@@ -1811,7 +1808,7 @@ class DiffusionModule(Module):
         tokens = self.atom_feats_to_pooled_token(
             atom_feats=atom_feats,
             atom_mask=atom_mask,
-            residue_atom_lens=residue_atom_lens,
+            molecule_atom_lens=molecule_atom_lens,
         )
 
         # token transformer
@@ -1831,7 +1828,7 @@ class DiffusionModule(Module):
 
         atom_decoder_input = self.tokens_to_atom_decoder_input_cond(tokens)
 
-        atom_decoder_input = repeat_consecutive_with_lens(atom_decoder_input, residue_atom_lens)
+        atom_decoder_input = repeat_consecutive_with_lens(atom_decoder_input, molecule_atom_lens)
         atom_decoder_input = pad_or_slice_to(
             atom_decoder_input, length=atom_feats_skip.shape[1], dim=1
         )
@@ -2146,9 +2143,9 @@ class ElucidatedAtomDiffusion(Module):
         single_inputs_repr: Float["b n dsi"],  # type: ignore
         pairwise_trunk: Float["b n n dpt"],  # type: ignore
         pairwise_rel_pos_feats: Float["b n n dpr"],  # type: ignore
-        residue_atom_lens: Int["b n"],  # type: ignore
+        molecule_atom_lens: Int["b n"],  # type: ignore
         return_denoised_pos=False,
-        additional_residue_feats: Float[f"b n {ADDITIONAL_RESIDUE_FEATS}"] | None = None,  # type: ignore
+        additional_molecule_feats: Float[f"b n {ADDITIONAL_MOLECULE_FEATS}"] | None = None,  # type: ignore
         add_smooth_lddt_loss=False,
         add_bond_loss=False,
         nucleotide_loss_weight=5.0,
@@ -2168,8 +2165,8 @@ class ElucidatedAtomDiffusion(Module):
         :param pairwise_trunk: The pairwise trunk tensor.
         :param pairwise_rel_pos_feats: The pairwise relative position features tensor.
         :param return_denoised_pos: Whether to return the denoised position.
-        :param residue_atom_lens: The residue atom lengths tensor.
-        :param additional_residue_feats: The additional residue features tensor.
+        :param molecule_atom_lens: The molecule atom lengths tensor.
+        :param additional_molecule_feats: The additional molecule features tensor.
         :param add_smooth_lddt_loss: Whether to add the smooth lddt loss.
         :param add_bond_loss: Whether to add the bond loss.
         :param nucleotide_loss_weight: The nucleotide loss weight.
@@ -2203,24 +2200,24 @@ class ElucidatedAtomDiffusion(Module):
                 single_inputs_repr=single_inputs_repr,
                 pairwise_trunk=pairwise_trunk,
                 pairwise_rel_pos_feats=pairwise_rel_pos_feats,
-                residue_atom_lens=residue_atom_lens,
+                molecule_atom_lens=molecule_atom_lens,
             ),
         )
 
         total_loss = 0.0
 
-        # if additional residue feats is provided
+        # if additional molecule feats is provided
         # calculate the weights for mse loss (wl)
 
         align_weights = atom_pos_ground_truth.new_ones(atom_pos_ground_truth.shape[:2])
 
-        if exists(additional_residue_feats):
-            is_nucleotide_or_ligand_fields = (additional_residue_feats[..., 7:] != 0.0).unbind(
+        if exists(additional_molecule_feats):
+            is_nucleotide_or_ligand_fields = (additional_molecule_feats[..., 7:] != 0.0).unbind(
                 dim=-1
             )
 
             is_nucleotide_or_ligand_fields = tuple(
-                repeat_consecutive_with_lens(t, residue_atom_lens)
+                repeat_consecutive_with_lens(t, molecule_atom_lens)
                 for t in is_nucleotide_or_ligand_fields
             )
             is_nucleotide_or_ligand_fields = tuple(
@@ -2297,8 +2294,8 @@ class ElucidatedAtomDiffusion(Module):
 
         if add_smooth_lddt_loss:
             assert exists(
-                additional_residue_feats
-            ), "The argument `additional_residue_feats` must be passed in if adding the smooth lDDT loss."
+                additional_molecule_feats
+            ), "The argument `additional_molecule_feats` must be passed in if adding the smooth lDDT loss."
 
             smooth_lddt_loss = self.smooth_lddt_loss(
                 denoised_atom_pos,
@@ -2741,7 +2738,7 @@ class InputFeatureEmbedder(Module):
             dim_out=dim_token,
         )
 
-        dim_single_input = dim_token + ADDITIONAL_RESIDUE_FEATS
+        dim_single_input = dim_token + ADDITIONAL_MOLECULE_FEATS
 
         self.single_input_to_single_init = LinearNoBias(dim_single_input, dim_single)
         self.single_input_to_pairwise_init = LinearNoBiasThenOuterSum(
@@ -2755,8 +2752,8 @@ class InputFeatureEmbedder(Module):
         atom_inputs: Float["b m dai"],  # type: ignore
         atompair_inputs: Float["b m m dapi"] | Float["b nw w1 w2 dapi"],  # type: ignore
         atom_mask: Bool["b m"],  # type: ignore
-        additional_residue_feats: Float[f"b n {ADDITIONAL_RESIDUE_FEATS}"],  # type: ignore
-        residue_atom_lens: Int["b n"],  # type: ignore
+        additional_molecule_feats: Float[f"b n {ADDITIONAL_MOLECULE_FEATS}"],  # type: ignore
+        molecule_atom_lens: Int["b n"],  # type: ignore
     ) -> EmbeddedInputs:
         """
         Compute the embedded inputs.
@@ -2764,13 +2761,13 @@ class InputFeatureEmbedder(Module):
         :param atom_inputs: The atom inputs tensor.
         :param atompair_inputs: The atom pair inputs tensor.
         :param atom_mask: The atom mask tensor.
-        :param additional_residue_feats: The additional residue features tensor.
-        :param residue_atom_lens: The residue atom lengths tensor.
+        :param additional_molecule_feats: The additional molecule features tensor.
+        :param molecule_atom_lens: The molecule atom lengths tensor.
         :return: The embedded inputs.
         """
         assert (
-            additional_residue_feats.shape[-1] == ADDITIONAL_RESIDUE_FEATS
-        ), "Additional residue features must have 10 dimensions."
+            additional_molecule_feats.shape[-1] == ADDITIONAL_MOLECULE_FEATS
+        ), "Additional molecule features must have 10 dimensions."
 
         w = self.atoms_per_window
 
@@ -2791,9 +2788,7 @@ class InputFeatureEmbedder(Module):
         atom_feats_cond = pad_and_window(atom_feats_cond, w)
 
         atom_feats_cond_row, atom_feats_cond_col = atom_feats_cond.chunk(2, dim=-1)
-        atom_feats_cond_col = concat_neighboring_windows(
-            atom_feats_cond_col, dim_seq=1, dim_window=-2
-        )
+        atom_feats_cond_col = concat_previous_window(atom_feats_cond_col, dim_seq=1, dim_window=-2)
 
         atompair_feats = einx.add(
             "b nw w1 w2 dap, b nw w1 dap", atompair_feats, atom_feats_cond_row
@@ -2813,10 +2808,10 @@ class InputFeatureEmbedder(Module):
         single_inputs = self.atom_feats_to_pooled_token(
             atom_feats=atom_feats,
             atom_mask=atom_mask,
-            residue_atom_lens=residue_atom_lens,
+            molecule_atom_lens=molecule_atom_lens,
         )
 
-        single_inputs = torch.cat((single_inputs, additional_residue_feats), dim=-1)
+        single_inputs = torch.cat((single_inputs, additional_molecule_feats), dim=-1)
 
         single_init = self.single_input_to_single_init(single_inputs)
         pairwise_init = self.single_input_to_pairwise_init(single_inputs)
@@ -3115,7 +3110,7 @@ class AlphaFold3(Module):
             **input_embedder_kwargs,
         )
 
-        dim_single_inputs = dim_input_embedder_token + ADDITIONAL_RESIDUE_FEATS
+        dim_single_inputs = dim_input_embedder_token + ADDITIONAL_MOLECULE_FEATS
 
         # relative positional encoding
         # used by pairwise in main alphafold2 trunk
@@ -3233,8 +3228,8 @@ class AlphaFold3(Module):
         *,
         atom_inputs: Float["b m dai"],  # type: ignore
         atompair_inputs: Float["b m m dapi"] | Float["b nw w1 w2 dapi"],  # type: ignore
-        additional_residue_feats: Float[f"b n {ADDITIONAL_RESIDUE_FEATS}"],  # type: ignore
-        residue_atom_lens: Int["b n"],  # type: ignore
+        additional_molecule_feats: Float[f"b n {ADDITIONAL_MOLECULE_FEATS}"],  # type: ignore
+        molecule_atom_lens: Int["b n"],  # type: ignore
         atom_mask: Bool["b m"] | None = None,  # type: ignore
         token_bond: Bool["b n n"] | None = None,  # type: ignore
         msa: Float["b s n d"] | None = None,  # type: ignore
@@ -3244,7 +3239,7 @@ class AlphaFold3(Module):
         num_recycling_steps: int = 1,
         diffusion_add_bond_loss: bool = False,
         diffusion_add_smooth_lddt_loss: bool = False,
-        residue_atom_indices: Int["b n"] | None = None,  # type: ignore
+        molecule_atom_indices: Int["b n"] | None = None,  # type: ignore
         num_sample_steps: int | None = None,
         atom_pos: Float["b m 3"] | None = None,  # type: ignore
         distance_labels: Int["b n n"] | None = None,  # type: ignore
@@ -3261,8 +3256,8 @@ class AlphaFold3(Module):
 
         :param atom_inputs: The atom inputs tensor.
         :param atompair_inputs: The atom pair inputs tensor.
-        :param additional_residue_feats: The additional residue features tensor.
-        :param residue_atom_lens: The residue atom lengths tensor.
+        :param additional_molecule_feats: The additional molecule features tensor.
+        :param molecule_atom_lens: The molecule atom lengths tensor.
         :param atom_mask: The atom mask tensor.
         :param token_bond: The token bond tensor.
         :param msa: The multiple sequence alignment tensor.
@@ -3272,7 +3267,7 @@ class AlphaFold3(Module):
         :param num_recycling_steps: The number of recycling steps.
         :param diffusion_add_bond_loss: Whether to add a bond loss in the diffusion module.
         :param diffusion_add_smooth_lddt_loss: Whether to add a smooth LDDT loss in the diffusion module.
-        :param residue_atom_indices: The residue atom indices tensor.
+        :param molecule_atom_indices: The molecule atom indices tensor.
         :param num_sample_steps: The number of sample steps.
         :param atom_pos: The atom positions tensor.
         :param distance_labels: The distance labels tensor.
@@ -3286,9 +3281,21 @@ class AlphaFold3(Module):
         """
         atom_seq_len = atom_inputs.shape[-2]
 
-        assert exists(residue_atom_lens) or exists(
+        # soft validate
+
+        valid_atom_len_mask = molecule_atom_lens >= 0
+
+        molecule_atom_lens = molecule_atom_lens.masked_fill(~valid_atom_len_mask, 0)
+
+        if exists(molecule_atom_indices):
+            molecule_atom_indices = molecule_atom_indices.masked_fill(~valid_atom_len_mask, 0)
+            assert (molecule_atom_indices < molecule_atom_lens)[
+                valid_atom_len_mask
+            ].all(), "The argument `molecule_atom_indices` cannot have an index that exceeds the length of the atoms for that molecule as given by `molecule_atom_lens`."
+
+        assert exists(molecule_atom_lens) or exists(
             atom_mask
-        ), "Either `residue_atom_lens` or `atom_mask` must be provided."
+        ), "Either `molecule_atom_lens` or `atom_mask` must be provided."
 
         # if atompair inputs are not windowed, window it
 
@@ -3301,17 +3308,19 @@ class AlphaFold3(Module):
 
         # handle atom mask
 
-        total_atoms = residue_atom_lens.sum(dim=-1)
+        total_atoms = molecule_atom_lens.sum(dim=-1)
         atom_mask = lens_to_mask(total_atoms, max_len=atom_seq_len)
 
-        # handle offsets for residue atom indices
+        # handle offsets for molecule atom indices
 
-        if exists(residue_atom_indices):
-            residue_atom_indices += F.pad(residue_atom_lens, (-1, 1), value=0)
+        if exists(molecule_atom_indices):
+            molecule_atom_indices = molecule_atom_indices + F.pad(
+                molecule_atom_lens, (-1, 1), value=0
+            )
 
-        # get atom sequence length and residue sequence length depending on whether using packed atomic seq
+        # get atom sequence length and molecule sequence length depending on whether using packed atomic seq
 
-        seq_len = residue_atom_lens.shape[-1]
+        seq_len = molecule_atom_lens.shape[-1]
 
         # embed inputs
 
@@ -3325,14 +3334,14 @@ class AlphaFold3(Module):
             atom_inputs=atom_inputs,
             atompair_inputs=atompair_inputs,
             atom_mask=atom_mask,
-            additional_residue_feats=additional_residue_feats,
-            residue_atom_lens=residue_atom_lens,
+            additional_molecule_feats=additional_molecule_feats,
+            molecule_atom_lens=molecule_atom_lens,
         )
 
         # relative positional encoding
 
         relative_position_encoding = self.relative_position_encoding(
-            additional_residue_feats=additional_residue_feats
+            additional_molecule_feats=additional_molecule_feats
         )
 
         pairwise_init = pairwise_init + relative_position_encoding
@@ -3346,7 +3355,7 @@ class AlphaFold3(Module):
 
             token_bond = token_bond | rearrange(token_bond, "b i j -> b j i")
             diagonal = torch.eye(seq_len, device=self.device, dtype=torch.bool)
-            token_bond.masked_fill_(diagonal, False)
+            token_bond = token_bond.masked_fill(diagonal, False)
         else:
             seq_arange = torch.arange(seq_len, device=self.device)
             token_bond = einx.subtract("i, j -> i j", seq_arange, seq_arange).abs() == 1
@@ -3355,9 +3364,9 @@ class AlphaFold3(Module):
 
         pairwise_init = pairwise_init + token_bond_feats
 
-        # residue mask and pairwise mask
+        # molecule mask and pairwise mask
 
-        total_atoms = residue_atom_lens.sum(dim=-1)
+        total_atoms = molecule_atom_lens.sum(dim=-1)
         mask = lens_to_mask(total_atoms, max_len=seq_len)
 
         pairwise_mask = einx.logical_and("b i, b j -> b i j", mask, mask)
@@ -3446,7 +3455,7 @@ class AlphaFold3(Module):
                 single_inputs_repr=single_inputs,
                 pairwise_trunk=pairwise,
                 pairwise_rel_pos_feats=relative_position_encoding,
-                residue_atom_lens=residue_atom_lens,
+                molecule_atom_lens=molecule_atom_lens,
             )
 
         # losses default to 0
@@ -3461,13 +3470,13 @@ class AlphaFold3(Module):
 
         # distogram head
 
-        if not exists(distance_labels) and atom_pos_given and exists(residue_atom_indices):
-            residue_pos = einx.get_at("b [m] c, b n -> b n c", atom_pos, residue_atom_indices)
+        if not exists(distance_labels) and atom_pos_given and exists(molecule_atom_indices):
+            molecule_pos = einx.get_at("b [m] c, b n -> b n c", atom_pos, molecule_atom_indices)
 
-            residue_dist = torch.cdist(residue_pos, residue_pos, p=2)
+            molecule_dist = torch.cdist(molecule_pos, molecule_pos, p=2)
             dist_from_dist_bins = einx.subtract(
                 "b m dist, dist_bins -> b m dist dist_bins",
-                residue_dist,
+                molecule_dist,
                 self.distance_bins,
             ).abs()
             distance_labels = dist_from_dist_bins.argmin(dim=-1)
@@ -3501,9 +3510,9 @@ class AlphaFold3(Module):
                     single_inputs,
                     pairwise,
                     relative_position_encoding,
-                    additional_residue_feats,
-                    residue_atom_indices,
-                    residue_atom_lens,
+                    additional_molecule_feats,
+                    molecule_atom_indices,
+                    molecule_atom_lens,
                     pae_labels,
                     pde_labels,
                     plddt_labels,
@@ -3521,9 +3530,9 @@ class AlphaFold3(Module):
                         single_inputs,
                         pairwise,
                         relative_position_encoding,
-                        additional_residue_feats,
-                        residue_atom_indices,
-                        residue_atom_lens,
+                        additional_molecule_feats,
+                        molecule_atom_indices,
+                        molecule_atom_lens,
                         pae_labels,
                         pde_labels,
                         plddt_labels,
@@ -3540,7 +3549,7 @@ class AlphaFold3(Module):
                 _,
             ) = self.edm(
                 atom_pos,
-                additional_residue_feats=additional_residue_feats,
+                additional_molecule_feats=additional_molecule_feats,
                 add_smooth_lddt_loss=diffusion_add_smooth_lddt_loss,
                 add_bond_loss=diffusion_add_bond_loss,
                 atom_feats=atom_feats,
@@ -3551,7 +3560,7 @@ class AlphaFold3(Module):
                 single_inputs_repr=single_inputs,
                 pairwise_trunk=pairwise,
                 pairwise_rel_pos_feats=relative_position_encoding,
-                residue_atom_lens=residue_atom_lens,
+                molecule_atom_lens=molecule_atom_lens,
                 return_denoised_pos=True,
             )
 
@@ -3563,7 +3572,7 @@ class AlphaFold3(Module):
         if calc_diffusion_loss and should_call_confidence_head:
             # rollout
 
-            pred_atom_pos = self.edm.sample(
+            denoised_atom_pos = self.edm.sample(
                 num_sample_steps=num_rollout_steps,
                 atom_feats=atom_feats,
                 atompair_feats=atompair_feats,
@@ -3573,11 +3582,11 @@ class AlphaFold3(Module):
                 single_inputs_repr=single_inputs,
                 pairwise_trunk=pairwise,
                 pairwise_rel_pos_feats=relative_position_encoding,
-                residue_atom_lens=residue_atom_lens,
+                molecule_atom_lens=molecule_atom_lens,
             )
 
             pred_atom_pos = einx.get_at(
-                "b [m] c, b n -> b n c", denoised_atom_pos, residue_atom_indices
+                "b [m] c, b n -> b n c", denoised_atom_pos, molecule_atom_indices
             )
 
             logits = self.confidence_head(

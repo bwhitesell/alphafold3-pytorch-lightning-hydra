@@ -4,7 +4,7 @@ from typing import Any
 import lightning.pytorch as pl
 from omegaconf import OmegaConf
 
-from alphafold3_pytorch.models.alphafold3_module import AlphaFold3Input, AlphaFold3LitModule
+from alphafold3_pytorch.models.alphafold3_module import AlphaFold3LitModule, AtomInput
 from alphafold3_pytorch.models.components.alphafold3 import (
     AdaptiveLayerNorm,
     AlphaFold3,
@@ -67,7 +67,7 @@ __all__ = [
     DistogramHead,
     AlphaFold3,
     AlphaFold3LitModule,
-    AlphaFold3Input,
+    AtomInput,
     full_pairwise_repr_to_windowed,
 ]
 

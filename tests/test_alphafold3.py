@@ -243,8 +243,8 @@ def test_sequence_local_attn():
 def test_diffusion_module():
     """Test the diffusion module."""
     seq_len = 16
-    residue_atom_lens = torch.randint(1, 3, (2, seq_len))
-    atom_seq_len = residue_atom_lens.sum(dim=-1).amax()
+    molecule_atom_lens = torch.randint(1, 3, (2, seq_len))
+    atom_seq_len = molecule_atom_lens.sum(dim=-1).amax()
 
     noised_atom_pos = torch.randn(2, atom_seq_len, 3)
     atom_feats = torch.randn(2, atom_seq_len, 128)
@@ -282,7 +282,7 @@ def test_diffusion_module():
         single_inputs_repr=single_inputs_repr,
         pairwise_trunk=pairwise_trunk,
         pairwise_rel_pos_feats=pairwise_rel_pos_feats,
-        residue_atom_lens=residue_atom_lens,
+        molecule_atom_lens=molecule_atom_lens,
     )
 
     assert noised_atom_pos.shape == atom_pos_update.shape
@@ -299,7 +299,7 @@ def test_diffusion_module():
         single_inputs_repr=single_inputs_repr,
         pairwise_trunk=pairwise_trunk,
         pairwise_rel_pos_feats=pairwise_rel_pos_feats,
-        residue_atom_lens=residue_atom_lens,
+        molecule_atom_lens=molecule_atom_lens,
         add_bond_loss=True,
     )
 
@@ -314,7 +314,7 @@ def test_diffusion_module():
         single_inputs_repr=single_inputs_repr,
         pairwise_trunk=pairwise_trunk,
         pairwise_rel_pos_feats=pairwise_rel_pos_feats,
-        residue_atom_lens=residue_atom_lens,
+        molecule_atom_lens=molecule_atom_lens,
     )
 
     assert sampled_atom_pos.shape == noised_atom_pos.shape
@@ -322,11 +322,11 @@ def test_diffusion_module():
 
 def test_relative_position_encoding():
     """Test the relative position encoding module."""
-    additional_residue_feats = torch.randn(8, 100, 10)
+    additional_molecule_feats = torch.randn(8, 100, 10)
 
     embedder = RelativePositionEncoding()
 
-    rpe_embed = embedder(additional_residue_feats=additional_residue_feats)
+    rpe_embed = embedder(additional_molecule_feats=additional_molecule_feats)
     assert rpe_embed is not None
 
 
@@ -376,12 +376,12 @@ def test_confidence_head():
 
 def test_input_embedder():
     """Test the input feature embedder."""
-    residue_atom_lens = torch.randint(0, 3, (2, 16))
-    atom_seq_len = residue_atom_lens.sum(dim=-1).amax()
+    molecule_atom_lens = torch.randint(0, 3, (2, 16))
+    atom_seq_len = molecule_atom_lens.sum(dim=-1).amax()
     atom_inputs = torch.randn(2, atom_seq_len, 77)
     atompair_inputs = torch.randn(2, atom_seq_len, atom_seq_len, 5)
     atom_mask = torch.ones((2, atom_seq_len)).bool()
-    additional_residue_feats = torch.randn(2, 16, 10)
+    additional_molecule_feats = torch.randn(2, 16, 10)
 
     embedder = InputFeatureEmbedder(
         dim_atom_inputs=77,
@@ -391,8 +391,8 @@ def test_input_embedder():
         atom_inputs=atom_inputs,
         atom_mask=atom_mask,
         atompair_inputs=atompair_inputs,
-        residue_atom_lens=residue_atom_lens,
-        additional_residue_feats=additional_residue_feats,
+        molecule_atom_lens=molecule_atom_lens,
+        additional_molecule_feats=additional_molecule_feats,
     )
 
 
@@ -413,8 +413,8 @@ def test_alphafold3(window_atompair_inputs: bool):
     seq_len = 16
     atoms_per_window = 27
 
-    residue_atom_lens = torch.randint(1, 3, (2, seq_len))
-    atom_seq_len = residue_atom_lens.sum(dim=-1).amax()
+    molecule_atom_lens = torch.randint(1, 3, (2, seq_len))
+    atom_seq_len = molecule_atom_lens.sum(dim=-1).amax()
 
     token_bond = torch.randint(0, 2, (2, seq_len, seq_len)).bool()
 
@@ -426,7 +426,7 @@ def test_alphafold3(window_atompair_inputs: bool):
             atompair_inputs, window_size=atoms_per_window
         )
 
-    additional_residue_feats = torch.randn(2, seq_len, 10)
+    additional_molecule_feats = torch.randn(2, seq_len, 10)
 
     template_feats = torch.randn(2, 2, seq_len, seq_len, 44)
     template_mask = torch.ones((2, 2)).bool()
@@ -435,7 +435,7 @@ def test_alphafold3(window_atompair_inputs: bool):
     msa_mask = torch.ones((2, 7)).bool()
 
     atom_pos = torch.randn(2, atom_seq_len, 3)
-    residue_atom_indices = residue_atom_lens - 1
+    molecule_atom_indices = molecule_atom_lens - 1
 
     pae_labels = torch.randint(0, 64, (2, seq_len, seq_len))
     pde_labels = torch.randint(0, 64, (2, seq_len, seq_len))
@@ -461,16 +461,16 @@ def test_alphafold3(window_atompair_inputs: bool):
     loss, breakdown = alphafold3(
         num_recycling_steps=2,
         atom_inputs=atom_inputs,
-        residue_atom_lens=residue_atom_lens,
+        molecule_atom_lens=molecule_atom_lens,
         atompair_inputs=atompair_inputs,
-        additional_residue_feats=additional_residue_feats,
+        additional_molecule_feats=additional_molecule_feats,
         token_bond=token_bond,
         msa=msa,
         msa_mask=msa_mask,
         templates=template_feats,
         template_mask=template_mask,
         atom_pos=atom_pos,
-        residue_atom_indices=residue_atom_indices,
+        molecule_atom_indices=molecule_atom_indices,
         pae_labels=pae_labels,
         pde_labels=pde_labels,
         plddt_labels=plddt_labels,
@@ -484,9 +484,9 @@ def test_alphafold3(window_atompair_inputs: bool):
     sampled_atom_pos = alphafold3(
         num_sample_steps=16,
         atom_inputs=atom_inputs,
-        residue_atom_lens=residue_atom_lens,
+        molecule_atom_lens=molecule_atom_lens,
         atompair_inputs=atompair_inputs,
-        additional_residue_feats=additional_residue_feats,
+        additional_molecule_feats=additional_molecule_feats,
         msa=msa,
         templates=template_feats,
         template_mask=template_mask,
@@ -498,15 +498,15 @@ def test_alphafold3(window_atompair_inputs: bool):
 def test_alphafold3_without_msa_and_templates():
     """Test the AlphaFold 3 model without MSA and templates."""
     seq_len = 16
-    residue_atom_lens = torch.randint(1, 3, (2, seq_len))
-    atom_seq_len = residue_atom_lens.sum(dim=-1).amax()
+    molecule_atom_lens = torch.randint(1, 3, (2, seq_len))
+    atom_seq_len = molecule_atom_lens.sum(dim=-1).amax()
 
     atom_inputs = torch.randn(2, atom_seq_len, 77)
     atompair_inputs = torch.randn(2, atom_seq_len, atom_seq_len, 5)
-    additional_residue_feats = torch.randn(2, seq_len, 10)
+    additional_molecule_feats = torch.randn(2, seq_len, 10)
 
     atom_pos = torch.randn(2, atom_seq_len, 3)
-    residue_atom_indices = residue_atom_lens - 1
+    molecule_atom_indices = molecule_atom_lens - 1
 
     distance_labels = torch.randint(0, 38, (2, seq_len, seq_len))
     pae_labels = torch.randint(0, 64, (2, seq_len, seq_len))
@@ -532,11 +532,11 @@ def test_alphafold3_without_msa_and_templates():
     loss, breakdown = alphafold3(
         num_recycling_steps=2,
         atom_inputs=atom_inputs,
-        residue_atom_lens=residue_atom_lens,
+        molecule_atom_lens=molecule_atom_lens,
         atompair_inputs=atompair_inputs,
-        additional_residue_feats=additional_residue_feats,
+        additional_molecule_feats=additional_molecule_feats,
         atom_pos=atom_pos,
-        residue_atom_indices=residue_atom_indices,
+        molecule_atom_indices=molecule_atom_indices,
         distance_labels=distance_labels,
         pae_labels=pae_labels,
         pde_labels=pde_labels,

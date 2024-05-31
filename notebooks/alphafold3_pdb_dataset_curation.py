@@ -7,16 +7,16 @@
 # 1. The structure must have been released to the PDB before the cutoff date of 2021-09-30.
 # 2. The structure must have a reported resolution of 9 Å or less.
 # 3. The maximum number of polymer chains in a considered structure is 300 for training and 1000 for evaluation.
-# 4. Any polymer chain containing fewer than 4 resolved residues is filtered out.
+# 4. Any polymer chain containing fewer than 4 resolved molecules is filtered out.
 #
 # Filtering of bioassemblies:
 # 1. Hydrogens are removed.
-# 2. Polymer chains with all unknown residues are removed.
+# 2. Polymer chains with all unknown molecules are removed.
 # 3. Clashing chains are removed. Clashing chains are defined as those with >30% of atoms within 1.7 Å of an atom
 # in another chain. If two chains are clashing with each other, the chain with the greater percentage of clashing
 # atoms will be removed. If the same fraction of atoms are clashing, the chain with fewer total atoms is removed.
 # If the chains have the same number of atoms, then the chain with the larger chain id is removed.
-# 4. For residues or small molecules with CCD codes, atoms outside of the CCD code’s defined set of atom names are
+# 4. For molecules or small molecules with CCD codes, atoms outside of the CCD code’s defined set of atom names are
 # removed.
 # 5. Leaving atoms (ligand atom or groups of atoms that detach when bonds form) for covalent ligands are filtered
 # out.
@@ -76,8 +76,8 @@ def filter_polymer_chains(structure, max_chains=1000, for_training=False):
     return count <= (300 if for_training else max_chains)
 
 
-# Function to filter polymer chains based on resolved residues
-def filter_resolved_residues(structure):
+# Function to filter polymer chains based on resolved molecules
+def filter_resolved_molecules(structure):
     for chain in structure.get_chains():
         if len([res for res in chain if res.id[0] == " "]) < 4:
             structure[0].detach_child(chain.id)
@@ -94,8 +94,8 @@ def remove_hydrogens(structure):
     return structure
 
 
-# Function to remove polymer chains with unknown residues
-def remove_unknown_residues(structure):
+# Function to remove polymer chains with unknown molecules
+def remove_unknown_molecules(structure):
     for chain in structure.get_chains():
         if all(res.resname == "UNK" for res in chain):
             structure[0].detach_child(chain.id)
@@ -199,7 +199,7 @@ def remove_crystallization_aids(structure, crystallography_methods):
     if structure.header["method"] in crystallography_methods:
         aids = [
             res
-            for res in structure.get_residues()
+            for res in structure.get_molecules()
             if res.resname in crystallography_methods[structure.header["method"]]
         ]
         for aid in aids:
@@ -216,10 +216,10 @@ def process_structures(file_paths):
             filter_pdb_deposition_date(structure)
             and filter_resolution(structure)
             and filter_polymer_chains(structure)
-            and filter_resolved_residues(structure)
+            and filter_resolved_molecules(structure)
         ):
             structure = remove_hydrogens(structure)
-            structure = remove_unknown_residues(structure)
+            structure = remove_unknown_molecules(structure)
             structure = remove_clashing_chains(structure)
             # Assuming ccd_atoms and covalent_ligands are predefined dictionaries
             structure = remove_non_ccd_atoms(structure, ccd_atoms)

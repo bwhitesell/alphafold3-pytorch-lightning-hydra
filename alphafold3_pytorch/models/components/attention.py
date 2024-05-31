@@ -11,7 +11,7 @@ from torch import nn
 from torch.nn import Module
 
 from alphafold3_pytorch.utils.model_utils import (
-    concat_neighboring_windows,
+    concat_previous_window,
     max_neg_value,
     pad_at_dim,
 )
@@ -35,7 +35,7 @@ class AttentionConfig(NamedTuple):
 @typecheck
 def full_pairwise_repr_to_windowed(
     pairwise_repr: Float["... m m dp"], window_size: int  # type: ignore
-) -> Float["... n w (w*3) dp"]:  # type: ignore
+) -> Float["... n w (w*2) dp"]:  # type: ignore
     """
     Convert a full pairwise representation matrix to a local windowed one.
 
@@ -50,7 +50,7 @@ def full_pairwise_repr_to_windowed(
     pairwise_repr = rearrange(
         pairwise_repr, "... (i w1) (j w2) d -> ... i j w1 w2 d", w1=window_size, w2=window_size
     )
-    pairwise_repr = concat_neighboring_windows(pairwise_repr, dim_seq=-4, dim_window=-2)
+    pairwise_repr = concat_previous_window(pairwise_repr, dim_seq=-4, dim_window=-2)
 
     # get the diagonal
 
@@ -64,7 +64,7 @@ def full_pairwise_repr_to_windowed(
 @typecheck
 def full_attn_bias_to_windowed(
     attn_bias: Float["... m m"], window_size: int  # type: ignore
-) -> Float["... n w (w*3)"]:  # type: ignore
+) -> Float["... n w (w*2)"]:  # type: ignore
     """
     Convert a full attention bias matrix to a local windowed one.
 
@@ -144,7 +144,7 @@ class Attention(Module):
         seq: Float["b i d"],  # type: ignore
         mask: Bool["b n"] | None = None,  # type: ignore
         context: Float["b j d"] | None = None,  # type: ignore
-        attn_bias: Float["... i j"] | Float["... nw w (w*3)"] | None = None,  # type: ignore
+        attn_bias: Float["... i j"] | Float["... nw w (w*2)"] | None = None,  # type: ignore
     ) -> Float["b i d"]:  # type: ignore
         """
         Run multi-head attention on a sequence.
@@ -264,7 +264,7 @@ class Attend(Module):
         k: Float["b h n d"],  # type: ignore
         v: Float["b h n d"],  # type: ignore
         mask: Bool["b n"] | None = None,  # type: ignore
-        attn_bias: Float["... n n"] | Float["... nw w (w*3)"] | None = None,  # type: ignore
+        attn_bias: Float["... n n"] | Float["... nw w (w*2)"] | None = None,  # type: ignore
     ) -> Float["b h n d"]:  # type: ignore
         """
         Run simple local attention with a radius of 1 window size.
@@ -307,13 +307,11 @@ class Attend(Module):
         # just do radius of 1 for now
         # perhaps not even necessary, and could try shifted windows (a la Swin)
 
-        k, v = tuple(pad_at_dim(t, (1, 1), dim=-2) for t in (k, v))
-        mask = F.pad(mask, (1, 1), value=False)
+        k, v = tuple(pad_at_dim(t, (1, 0), dim=-2) for t in (k, v))
+        mask = F.pad(mask, (1, 0), value=False)
 
-        k, v = tuple(
-            torch.cat((t[..., :-2, :], t[..., 1:-1, :], t[..., 2:, :]), dim=-2) for t in (k, v)
-        )
-        mask = torch.cat((mask[..., :-2], mask[..., 1:-1], mask[..., 2:]), dim=-1)
+        k, v = tuple(torch.cat((t[..., :-1, :], t[..., 1:, :]), dim=-2) for t in (k, v))
+        mask = torch.cat((mask[..., :-1], mask[..., 1:]), dim=-1)
 
         # handle attention bias (inefficiently)
 
@@ -360,7 +358,7 @@ class Attend(Module):
         k: Float["b h j d"],  # type: ignore
         v: Float["b h j d"],  # type: ignore
         mask: Bool["b j"] | None = None,  # type: ignore
-        attn_bias: Float["... i j"] | Float["... nw w (w*3)"] | None = None,  # type: ignore
+        attn_bias: Float["... i j"] | Float["... nw w (w*2)"] | None = None,  # type: ignore
     ) -> Float["b h i d"]:  # type: ignore
         """
         Run attention.

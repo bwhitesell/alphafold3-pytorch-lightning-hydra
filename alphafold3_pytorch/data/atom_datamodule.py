@@ -1,10 +1,122 @@
-from typing import Any, Dict, Optional, Tuple
+from functools import partial
+from random import random, randrange
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import torch
 from lightning import LightningDataModule
+from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 
-from alphafold3_pytorch.models.alphafold3_module import AlphaFold3Input
+from alphafold3_pytorch.models.alphafold3_module import AtomInput
+from alphafold3_pytorch.utils.model_utils import pad_at_dim
+from alphafold3_pytorch.utils.typing import beartype_isinstance, typecheck
+from alphafold3_pytorch.utils.utils import exists
+
+# dataloader and collation fn
+
+
+@typecheck
+def collate_af3_inputs(inputs: List, int_pad_value=-1, map_input_fn: Callable | None = None):
+    """
+    Collate function for AtomInput.
+
+    :param inputs: A list of AtomInput.
+    :param int_pad_value: The padding value for integer tensors.
+    :param map_input_fn: A function to apply to each input before collation.
+    :return: A dictionary of collated inputs.
+    """
+    if exists(map_input_fn):
+        inputs = [map_input_fn(i) for i in inputs]
+
+    # make sure all inputs are AtomInput
+
+    assert all([beartype_isinstance(i, AtomInput) for i in inputs])
+
+    # separate input dictionary into keys and values
+
+    keys = inputs[0].keys()
+    inputs = [i.values() for i in inputs]
+
+    outputs = []
+
+    for grouped in zip(*inputs):
+        # if all None, just return None
+
+        not_none_grouped = [*filter(exists, grouped)]
+
+        if len(not_none_grouped) == 0:
+            outputs.append(None)
+            continue
+
+        # default to empty tensor for any Nones
+
+        one_tensor = not_none_grouped[0]
+
+        dtype = one_tensor.dtype
+        ndim = one_tensor.ndim
+
+        # use -1 for padding int values, for assuming int are labels - if not, handle within alphafold3
+
+        if dtype in (torch.int, torch.long):
+            pad_value = int_pad_value
+        elif dtype == torch.bool:
+            pad_value = False
+        else:
+            pad_value = 0.0
+
+        # get the max lengths across all dimensions
+
+        shapes_as_tensor = torch.stack(
+            [Tensor(tuple(g.shape) if exists(g) else ((0,) * ndim)).int() for g in grouped], dim=-1
+        )
+
+        max_lengths = shapes_as_tensor.amax(dim=-1)
+
+        default_tensor = torch.full(max_lengths.tolist(), pad_value, dtype=dtype)
+
+        # pad across all dimensions
+
+        padded_inputs = []
+
+        for inp in grouped:
+            if not exists(inp):
+                padded_inputs.append(default_tensor)
+                continue
+
+            for dim, max_length in enumerate(max_lengths.tolist()):
+                inp = pad_at_dim(inp, (0, max_length - inp.shape[dim]), value=pad_value, dim=dim)
+
+            padded_inputs.append(inp)
+
+        # stack
+
+        stacked = torch.stack(padded_inputs)
+
+        outputs.append(stacked)
+
+    # reconstitute dictionary
+
+    return dict(tuple(zip(keys, outputs)))
+
+
+@typecheck
+def AF3DataLoader(*args, map_input_fn: Callable | None = None, **kwargs):
+    """
+    Create a `torch.utils.data.DataLoader` with the
+    `collate_af3_inputs` or `map_input_fn` function
+    for data collation.
+
+    :param args: The arguments to pass to `torch.utils.data.DataLoader`.
+    :param map_input_fn: A function to apply to each input before collation.
+    :param kwargs: The keyword arguments to pass to `torch.utils.data.DataLoader`.
+    :return: A `torch.utils.data.DataLoader` with a custom AF3 collate function.
+    """
+    collate_fn = collate_af3_inputs
+
+    if exists(map_input_fn):
+        collate_fn = partial(collate_fn, map_input_fn=map_input_fn)
+
+    return DataLoader(*args, collate_fn=collate_fn, **kwargs)
 
 
 class AtomDataset(Dataset):
@@ -12,50 +124,51 @@ class AtomDataset(Dataset):
     A dummy dataset for atomic data.
 
     :param num_examples: The number of examples in the dataset.
-    :param seq_len: The length of the protein sequence.
+    :param max_seq_len: The maximum sequence length.
     :param atoms_per_window: The number of atoms per window.
     """
 
     def __init__(
         self,
         num_examples,
-        seq_len=16,
+        max_seq_len=16,
         atoms_per_window=4,
     ):
         self.num_examples = num_examples
-        self.seq_len = seq_len
+        self.max_seq_len = max_seq_len
         self.atoms_per_window = atoms_per_window
-        self.atom_seq_len = seq_len * atoms_per_window
 
     def __len__(self):
         """Return the length of the dataset."""
         return self.num_examples
 
-    def __getitem__(self, idx) -> AlphaFold3Input:
+    def __getitem__(self, idx) -> AtomInput:
         """
-        Return a random `AlphaFold3Input` sample from the dataset.
+        Return a random `AtomInput` sample from the dataset.
 
         :param idx: The index of the sample.
-        :return: A random `AlphaFold3Input` sample from the dataset.
+        :return: A random `AtomInput` sample from the dataset.
         """
-        seq_len = self.seq_len
-        atom_seq_len = self.atom_seq_len
+        seq_len = randrange(1, self.max_seq_len)
+        atom_seq_len = self.atoms_per_window * seq_len
 
         atom_inputs = torch.randn(atom_seq_len, 77)
         atompair_inputs = torch.randn(atom_seq_len, atom_seq_len, 5)
-        residue_atom_lens = torch.randint(0, self.atoms_per_window, (seq_len,))
-        additional_residue_feats = torch.randn(seq_len, 10)
+        molecule_atom_lens = torch.randint(1, self.atoms_per_window, (seq_len,))
+        additional_molecule_feats = torch.randn(seq_len, 10)
 
         templates = torch.randn(2, seq_len, seq_len, 44)
         template_mask = torch.ones((2,)).bool()
 
         msa = torch.randn(7, seq_len, 64)
-        msa_mask = torch.ones((7,)).bool()
+        msa_mask = None
+        if random() > 0.5:
+            msa_mask = torch.ones((7,)).bool()
 
         # required for training, but omitted on inference
 
         atom_pos = torch.randn(atom_seq_len, 3)
-        residue_atom_indices = residue_atom_lens - 1
+        molecule_atom_indices = molecule_atom_lens - 1
 
         distance_labels = torch.randint(0, 37, (seq_len, seq_len))
         pae_labels = torch.randint(0, 64, (seq_len, seq_len))
@@ -63,17 +176,17 @@ class AtomDataset(Dataset):
         plddt_labels = torch.randint(0, 50, (seq_len,))
         resolved_labels = torch.randint(0, 2, (seq_len,))
 
-        return AlphaFold3Input(
+        return AtomInput(
             atom_inputs=atom_inputs,
             atompair_inputs=atompair_inputs,
-            residue_atom_lens=residue_atom_lens,
-            additional_residue_feats=additional_residue_feats,
+            molecule_atom_lens=molecule_atom_lens,
+            additional_molecule_feats=additional_molecule_feats,
             templates=templates,
             template_mask=template_mask,
             msa=msa,
             msa_mask=msa_mask,
             atom_pos=atom_pos,
-            residue_atom_indices=residue_atom_indices,
+            molecule_atom_indices=molecule_atom_indices,
             distance_labels=distance_labels,
             pae_labels=pae_labels,
             pde_labels=pde_labels,
@@ -145,6 +258,14 @@ class AtomDataModule(LightningDataModule):
 
         self.batch_size_per_device = batch_size
 
+        # if map dataset function given, curry into DataLoader
+        self.dataloader_class = AF3DataLoader
+
+        if exists(self.hparams.map_dataset_input_fn):
+            self.dataloader_class = partial(
+                AF3DataLoader, map_input_fn=self.hparams.map_dataset_input_fn
+            )
+
     def prepare_data(self) -> None:
         """Download data if needed. Lightning ensures that `self.prepare_data()` is called only
         within a single process on CPU, so you can safely add your downloading logic within. In
@@ -184,7 +305,7 @@ class AtomDataModule(LightningDataModule):
 
         :return: The train dataloader.
         """
-        return DataLoader(
+        return self.dataloader_class(
             dataset=self.data_train,
             batch_size=self.batch_size_per_device,
             num_workers=self.hparams.num_workers,
@@ -198,7 +319,7 @@ class AtomDataModule(LightningDataModule):
 
         :return: The validation dataloader.
         """
-        return DataLoader(
+        return self.dataloader_class(
             dataset=self.data_val,
             batch_size=self.batch_size_per_device,
             num_workers=self.hparams.num_workers,
@@ -212,7 +333,7 @@ class AtomDataModule(LightningDataModule):
 
         :return: The test dataloader.
         """
-        return DataLoader(
+        return self.dataloader_class(
             dataset=self.data_test,
             batch_size=self.batch_size_per_device,
             num_workers=self.hparams.num_workers,

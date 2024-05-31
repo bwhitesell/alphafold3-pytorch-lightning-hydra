@@ -18,19 +18,19 @@ rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
 
 @typecheck
-class AlphaFold3Input(TypedDict):
+class AtomInput(TypedDict):
     """A collection of inputs to AlphaFold 3."""
 
     atom_inputs: Float["m dai"]  # type: ignore
-    residue_atom_lens: Int["n 2"]  # type: ignore
-    atompair_inputs: Float["m m dapi"] | Float["nw w (w*3) dapi"]  # type: ignore
-    additional_residue_feats: Float["n 10"]  # type: ignore
+    molecule_atom_lens: Int[" n"]  # type: ignore
+    atompair_inputs: Float["m m dapi"] | Float["nw w (w*2) dapi"]  # type: ignore
+    additional_molecule_feats: Float["n 10"]  # type: ignore
     templates: Float["t n n dt"]  # type: ignore
     msa: Float["s n dm"]  # type: ignore
     template_mask: Bool[" t"] | None  # type: ignore
     msa_mask: Bool[" s"] | None  # type: ignore
     atom_pos: Float["m 3"] | None  # type: ignore
-    residue_atom_indices: Int[" n"] | None  # type: ignore
+    molecule_atom_indices: Int[" n"] | None  # type: ignore
     distance_labels: Int["n n"] | None  # type: ignore
     pae_labels: Int["n n"] | None  # type: ignore
     pde_labels: Int[" n"] | None  # type: ignore
@@ -106,10 +106,10 @@ class AlphaFold3LitModule(LightningModule):
     def is_main(self):
         return self.trainer.global_rank == 0
 
-    def forward(self, batch: AlphaFold3Input) -> Tuple[Float[""], LossBreakdown]:  # type: ignore
+    def forward(self, batch: AtomInput) -> Tuple[Float[""], LossBreakdown]:  # type: ignore
         """Perform a forward pass through the model `self.net`.
 
-        :param x: A batch of `AlphaFold3Input` data.
+        :param x: A batch of `AtomInput` data.
         :return: A tensor of losses as well as a breakdown of the component losses.
         """
         return self.net(**batch, return_loss_breakdown=True)
@@ -121,19 +121,19 @@ class AlphaFold3LitModule(LightningModule):
         self.val_loss.reset()
         self.val_loss_best.reset()
 
-    def model_step(self, batch: AlphaFold3Input) -> Tuple[Float[""], LossBreakdown]:  # type: ignore
+    def model_step(self, batch: AtomInput) -> Tuple[Float[""], LossBreakdown]:  # type: ignore
         """Perform a single model step on a batch of data.
 
-        :param batch: A batch of `AlphaFold3Input` data.
+        :param batch: A batch of `AtomInput` data.
         :return: A tensor of losses as well as a breakdown of the component losses.
         """
         loss, loss_breakdown = self.forward(batch)
         return loss, loss_breakdown
 
-    def training_step(self, batch: AlphaFold3Input, batch_idx: int) -> Tensor:
+    def training_step(self, batch: AtomInput, batch_idx: int) -> Tensor:
         """Perform a single training step on a batch of data from the training set.
 
-        :param batch: A batch of `AlphaFold3Input` data.
+        :param batch: A batch of `AtomInput` data.
         :param batch_idx: The index of the current batch.
         :return: A tensor of losses.
         """
@@ -164,10 +164,10 @@ class AlphaFold3LitModule(LightningModule):
         "Lightning hook that is called when a training epoch ends."
         pass
 
-    def validation_step(self, batch: AlphaFold3Input, batch_idx: int) -> None:
+    def validation_step(self, batch: AtomInput, batch_idx: int) -> None:
         """Perform a single validation step on a batch of data from the validation set.
 
-        :param batch: A batch of `AlphaFold3Input` data.
+        :param batch: A batch of `AtomInput` data.
         :param batch_idx: The index of the current batch.
         """
         loss, loss_breakdown = self.model_step(batch)
@@ -203,10 +203,10 @@ class AlphaFold3LitModule(LightningModule):
             prog_bar=True,
         )
 
-    def test_step(self, batch: AlphaFold3Input, batch_idx: int) -> None:
+    def test_step(self, batch: AtomInput, batch_idx: int) -> None:
         """Perform a single test step on a batch of data from the test set.
 
-        :param batch: A batch of `AlphaFold3Input` data.
+        :param batch: A batch of `AtomInput` data.
         :param batch_idx: The index of the current batch.
         """
         loss, loss_breakdown = self.model_step(batch)
