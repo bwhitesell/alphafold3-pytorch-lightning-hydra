@@ -53,7 +53,8 @@ dependencies = [
     "beartype",        # runtime type checking
     "tqdm",            # progress bars
     "setuptools",      # for packaging
-    # "sh"            # for running bash commands in some tests (linux/macos only)
+    "ipykernel",       # for running Jupyter notebooks
+    # "sh"             # for running bash commands in some tests (linux/macos only)
 ]
 
 [project.urls]

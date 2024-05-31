@@ -223,12 +223,18 @@ parser = argparse.ArgumentParser(
     description="Process mmCIF files to curate the AlphaFold 3 PDB dataset."
 )
 parser.add_argument(
-    "--input-dir",
+    "--mmcif_dir",
     type=str,
     default=os.path.join("data", "mmCIF"),
     help="Path to the input directory containing mmCIF files to process.",
 )
-args = parser.parse_args()
+parser.add_argument(
+    "--output_dir",
+    type=str,
+    default=os.path.join("data", "PDB_set"),
+    help="Path to the output directory in which to store processed mmCIF dataset files.",
+)
+args = parser.parse_args("")
 
 # Example usage
 file_paths = glob.glob(os.path.join(args.input_dir, "*", "*.cif"))
@@ -239,6 +245,7 @@ processed_structures = process_structures(file_paths)
 
 # Save processed structures
 io = PDBIO()
+os.makedirs(args.output_dir, exist_ok=True)
 for structure in processed_structures:
     io.set_structure(structure)
-    io.save(f"{structure.id}_processed.pdb")
+    io.save(os.path.join(args.output_dir, f"{structure.id}.cif"))

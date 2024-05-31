@@ -154,7 +154,7 @@ sampled_atom_pos.shape # (2, <atom_seqlen>, 3)
 
 ## Data preparation
 
-To acquire the AlphaFold 3 PDB dataset, first download all complexes in the Protein Data Bank (PDB), and then preprocess them with the script referenced below. The PDB can be downloaded from the RCSB: https://www.wwpdb.org/ftp/pdb-ftp-sites#rcsbpdb. The script below assumes you have downloaded the PDB in the **mmCIF file format** (e.g., placing it at `data/mmCIF/`). On the RCSB website, navigate down to "Download Protocols", and follow the download instructions depending on your location.
+To acquire the AlphaFold 3 PDB dataset, first download all complexes in the Protein Data Bank (PDB), and then preprocess them with the script referenced below. The PDB can be downloaded from the RCSB: https://www.wwpdb.org/ftp/pdb-ftp-sites#rcsbpdb. The script below assumes you have downloaded the PDB in the **mmCIF file format** (e.g., placing it at `data/mmCIF/` by default). On the RCSB website, navigate down to "Download Protocols", and follow the download instructions depending on your location.
 
 > WARNING: Downloading PDB can take up to 1TB of space.
 
@@ -173,9 +173,9 @@ In this directory, unzip all the files:
 find . -type f -name "*.gz" -exec gzip -d {} \;
 ```
 
-Then run the following with <pdb_dir> replaced with the location of your local copy of the PDB.
+Then run the following with <pdb_dir> replaced with the location of your local copy of the PDB and with <out_dir> replaced with your desired dataset output directory (e.g., `data/PDB_set/` by default).
 ```python
-python notebooks/alphafold3_pdb_dataset_curation.py --mmcif_dir <pdb_dir>
+python notebooks/alphafold3_pdb_dataset_curation.py --mmcif_dir <pdb_dir> --out_dir <out_dir>
 ```
 
 See the script for more options. Each mmCIF will be written as a pickle file that
