@@ -32,299 +32,19 @@
 import argparse
 import glob
 import os
-from typing import Dict, Set
+import random
+from typing import Dict, List, Optional, Set, Union
 
 import pandas as pd
-from Bio.PDB import PDBIO, MMCIFParser, PDBParser
+from Bio.PDB import MMCIFIO, PDBIO, MMCIFParser, PDBParser
+from Bio.PDB.Atom import Atom
+from Bio.PDB.Residue import Residue
+from Bio.PDB.Structure import Structure
 from pdbeccdutils.core import ccd_reader, clc_reader
 
+# Constants
 
-# Function to load CCD atoms
-def load_ccd_atoms(ccd_file_path):
-    ccd_reader_result = ccd_reader.read_pdb_components_file(ccd_file_path)
-    ccd_atoms = {id: ccd_reader_result[id].component.atoms_ids for id in ccd_reader_result}
-    return ccd_atoms
-
-
-# Function to load covalent ligands
-def load_covalent_ligands(ccd_file_path):
-    clc_reader_result = clc_reader.read_clc_components_file(ccd_file_path)
-    clc_atoms = {id: clc_reader_result[id].component.atoms_ids for id in clc_reader_result}
-    return clc_atoms
-
-
-# Function to parse structures based on file type
-def parse_structure(file_path):
-    if file_path.endswith(".pdb"):
-        parser = PDBParser(QUIET=True)
-    elif file_path.endswith(".cif"):
-        parser = MMCIFParser(QUIET=True)
-    else:
-        raise ValueError("Unsupported file format")
-    structure_id = os.path.splitext(os.path.basename(file_path))[0]
-    structure = parser.get_structure(structure_id, file_path)
-    return structure
-
-
-# Function to filter based on PDB deposition date
-def filter_pdb_deposition_date(
-    structure, cutoff_date: pd.Timestamp = pd.to_datetime("2021-09-30")
-):
-    if (
-        "deposition_date" in structure.header
-        and pd.to_datetime(structure.header["deposition_date"]) <= cutoff_date
-    ):
-        return True
-    return False
-
-
-# Function to filter based on resolution
-def filter_resolution(structure, max_resolution=9.0):
-    if "resolution" in structure.header and structure.header["resolution"] <= max_resolution:
-        return True
-    return False
-
-
-# Function to filter based on number of polymer chains
-def filter_polymer_chains(structure, max_chains=1000, for_training=False):
-    count = sum(1 for chain in structure.get_chains() if chain.id[0] == " ")
-    return count <= (300 if for_training else max_chains)
-
-
-# Function to filter polymer chains based on resolved residues
-def filter_resolved_chains(structure):
-    for chain in structure.get_chains():
-        if len([res for res in chain if res.id[0] == " "]) < 4:
-            structure[0].detach_child(chain.id)
-    return structure if list(structure.get_chains()) else None
-
-
-# Function to determine if a target passes all target filters
-def filter_target(structure):
-    target_passes_prefilters = (
-        filter_pdb_deposition_date(structure)
-        and filter_resolution(structure)
-        and filter_polymer_chains(structure)
-    )
-    return filter_resolved_chains(structure) if target_passes_prefilters else None
-
-
-# Function to remove hydrogens
-def remove_hydrogens(structure):
-    for chain in structure.get_chains():
-        for res in chain:
-            for atom in res.get_atoms():
-                if atom.element == "H":
-                    res.detach_child(atom.name)
-            if not list(res.get_atoms()):
-                chain.detach_child(res.id)
-        if not list(chain.get_residues()):
-            structure[0].detach_child(chain.id)
-    return structure
-
-
-# Function to remove polymer chains with all unknown residues
-def remove_all_unknown_residue_chains(structure, standard_residues):
-    for chain in structure.get_chains():
-        if not any(res.resname in standard_residues for res in chain):
-            structure[0].detach_child(chain.id)
-    return structure
-
-
-# Function to remove clashing chains
-def remove_clashing_chains(structure, clash_threshold: float = 1.7, clash_percentage: float = 0.3):
-    chains = list(structure.get_chains())
-    clashing_chains = []
-
-    for i, chain1 in enumerate(chains):
-        for chain2 in chains[i + 1 :]:
-            clash_count = sum(
-                1
-                for atom1 in chain1.get_atoms()
-                for atom2 in chain2.get_atoms()
-                if (atom1 - atom2) < clash_threshold
-            )
-            if (
-                clash_count / len(list(chain1.get_atoms())) > clash_percentage
-                or clash_count / len(list(chain2.get_atoms())) > clash_percentage
-            ):
-                clashing_chains.append((chain1, chain2, clash_count))
-
-    for chain1, chain2, clash_count in clashing_chains:
-        if clash_count / len(list(chain1.get_atoms())) > clash_count / len(
-            list(chain2.get_atoms())
-        ):
-            structure[0].detach_child(chain1.id)
-        elif clash_count / len(list(chain2.get_atoms())) > clash_count / len(
-            list(chain1.get_atoms())
-        ):
-            structure[0].detach_child(chain2.id)
-        else:
-            if len(list(chain1.get_atoms())) < len(list(chain2.get_atoms())):
-                structure[0].detach_child(chain1.id)
-            elif len(list(chain2.get_atoms())) < len(list(chain1.get_atoms())):
-                structure[0].detach_child(chain2.id)
-            else:
-                if chain1.id > chain2.id:
-                    structure[0].detach_child(chain1.id)
-                else:
-                    structure[0].detach_child(chain2.id)
-    return structure
-
-
-# Function to remove excluded ligands
-def remove_excluded_ligands(structure, ligand_exclusion_list):
-    for chain in structure.get_chains():
-        for res in chain:
-            if res.resname in ligand_exclusion_list:
-                chain.detach_child(res.id)
-        if not list(chain.get_residues()):
-            structure[0].detach_child(chain.id)
-    return structure
-
-
-# Function to remove atoms not in CCD code set
-def remove_non_ccd_atoms(structure, ccd_atoms):
-    for chain in structure.get_chains():
-        for res in chain:
-            if res.resname in ccd_atoms:
-                for atom in res.get_atoms():
-                    if atom.name not in ccd_atoms.get(res.resname, {}):
-                        res.detach_child(atom.name)
-            if not list(res.get_atoms()):
-                chain.detach_child(res.id)
-        if not list(chain.get_residues()):
-            structure[0].detach_child(chain.id)
-    return structure
-
-
-# Function to remove leaving atoms in covalent ligands
-def remove_leaving_atoms(structure, covalent_ligands):
-    for chain in structure.get_chains():
-        for res in chain:
-            if res.resname in covalent_ligands:
-                for atom in res.get_atoms():
-                    if atom.name in covalent_ligands[res.resname]:
-                        res.detach_child(atom.name)
-            if not list(res.get_atoms()):
-                chain.detach_child(res.id)
-        if not list(chain.get_residues()):
-            structure[0].detach_child(chain.id)
-    return structure
-
-
-# Function to filter chains with large Cα distances
-def filter_large_ca_distances(structure):
-    for chain in structure.get_chains():
-        ca_atoms = [res["CA"] for res in chain if "CA" in res]
-        for i, ca1 in enumerate(ca_atoms[:-1]):
-            ca2 = ca_atoms[i + 1]
-            if (ca1, ca2) > 10:
-                structure[0].detach_child(chain.id)
-                break
-    return structure
-
-
-# TODO: Function to select closest 20 chains in large bioassemblies
-def select_closest_chains(structure, max_chains=20):
-    if len(structure.get_chains()) > max_chains:
-        chains = list(structure.get_chains())
-        import random
-
-        token_chain = random.choice(chains)
-        token_atom = random.choice(list(token_chain.get_atoms()))
-        chain_distances = []
-        for chain in chains:
-            min_distance = min(token_atom - atom for atom in chain.get_atoms())
-            chain_distances.append((chain, min_distance))
-        chain_distances.sort(key=lambda x: x[1])
-        for chain, _ in chain_distances[max_chains:]:
-            structure[0].detach_child(chain.id)
-    return structure
-
-
-# Function to remove crystallization aids
-def remove_crystallization_aids(structure, crystallography_methods):
-    if structure.header["structure_method"] in crystallography_methods:
-        for chain in structure.get_chains():
-            for res in chain:
-                if res.resname in crystallography_methods[structure.header["structure_method"]]:
-                    chain.detach_child(res.id)
-            if not list(chain.get_residues()):
-                structure[0].detach_child(chain.id)
-    return structure
-
-
-# Example main function to process a list of mmCIF files
-def process_structures(
-    file_paths,
-    standard_residues: Set[str],
-    ligand_exclusion_list: Set[str],
-    ccd_atoms: Dict[str, Set[str]],
-    covalent_ligands: Dict[str, Set[str]],
-    crystallography_methods: Dict[str, Set[str]],
-):
-    processed_structures = []
-    for file_path in file_paths:
-        structure = parse_structure(file_path)
-        # Filtering of targets
-        structure = filter_target(structure)
-        if structure is not None:
-            # Filtering of bioassemblies
-            structure = remove_hydrogens(structure)
-            structure = remove_all_unknown_residue_chains(structure, standard_residues)
-            structure = remove_clashing_chains(structure)
-            structure = remove_excluded_ligands(structure, ligand_exclusion_list)
-            structure = remove_non_ccd_atoms(structure, ccd_atoms)
-            structure = remove_leaving_atoms(structure, covalent_ligands)
-            structure = filter_large_ca_distances(structure)
-            structure = select_closest_chains(structure)
-            structure = remove_crystallization_aids(structure, crystallography_methods)
-            if list(structure.get_chains()):
-                processed_structures.append(structure)
-    return processed_structures
-
-
-# Parse command-line arguments #
-
-parser = argparse.ArgumentParser(
-    description="Process mmCIF files to curate the AlphaFold 3 PDB dataset."
-)
-parser.add_argument(
-    "--mmcif_dir",
-    type=str,
-    default=os.path.join("data", "mmCIF"),
-    help="Path to the input directory containing mmCIF files to process.",
-)
-parser.add_argument(
-    "--ccd_dir",
-    type=str,
-    default=os.path.join("data", "CCD"),
-    help="Path to the directory containing CCD files to reference during data processing.",
-)
-parser.add_argument(
-    "--output_dir",
-    type=str,
-    default=os.path.join("data", "PDB_set"),
-    help="Path to the output directory in which to store processed mmCIF dataset files.",
-)
-args = parser.parse_args("")
-
-assert os.path.exists(args.mmcif_dir), f"Input directory {args.mmcif_dir} does not exist."
-assert os.path.exists(args.ccd_dir), f"CCD directory {args.ccd_dir} does not exist."
-assert os.path.exists(
-    os.path.join(args.ccd_dir, "chem_comp_model.cif")
-), f"CCD ligands file not found in {args.ccd_dir}."
-assert os.path.exists(
-    os.path.join(args.ccd_dir, "components.cif")
-), f"CCD components file not found in {args.ccd_dir}."
-os.makedirs(args.output_dir, exist_ok=True)
-
-# Define constants #
-
-# TODO: Section 2.5.4 of the AlphaFold 3 supplement
-ccd_atoms = load_ccd_atoms(os.path.join(args.ccd_dir, "components.cif"))
-covalent_ligands = load_covalent_ligands(os.path.join(args.ccd_dir, "components.cif"))
+Token = Union[Residue, Atom]
 
 # Table 9 of the AlphaFold 3 supplement
 crystallization_aids = set(
@@ -359,6 +79,15 @@ standard_residues = set(
         ", "
     )
 )
+protein_residue_center_atoms = {
+    residue: "CA"
+    for residue in "ALA, ARG, ASN, ASP, CYS, GLN, GLU, GLY, HIS, ILE, LEU, LYS, MET, PHE, PRO, SER, THR, TRP, TYR, VAL, UNK".split(
+        ", "
+    )
+}
+nucleic_acid_residue_center_atoms = {
+    residue: "C1'" for residue in "A, G, C, U, DA, DG, DC, DT, N, DN".split(", ")
+}
 
 # Table 14 of the AlphaFold 3 supplement
 recent_pdb_test_set_with_nucleic_acid_complexes = set(
@@ -374,19 +103,523 @@ posebusters_v2_common_natural_ligands = set(
     )
 )
 
-# Process all structures #
-file_paths = glob.glob(os.path.join(args.mmcif_dir, "*", "*.cif"))
-processed_structures = process_structures(
-    file_paths,
+# Helper functions
+
+
+def load_ccd_atoms(ccd_filepath: str) -> Dict[str, List[str]]:
+    """Load CCD atoms from a CCD file."""
+    ccd_reader_result = ccd_reader.read_pdb_components_file(
+        ccd_filepath, sanitize=False
+    )  # Reduce loading time
+    ccd_atoms = {id: ccd_reader_result[id].component.atoms_ids for id in ccd_reader_result}
+    return ccd_atoms
+
+
+def load_covalent_ligands(ccd_filepath: str) -> Dict[str, List[str]]:
+    """Load covalent ligands from a CCD file."""
+    clc_reader_result = clc_reader.read_clc_components_file(
+        ccd_filepath, sanitize=False
+    )  # Reduce loading time
+    # TODO: identify leaving atoms for covalent ligands, not just all atoms
+    clc_atoms = {id: clc_reader_result[id].component.atoms_ids for id in clc_reader_result}
+    return clc_atoms
+
+
+def parse_structure(filepath: str) -> Structure:
+    """Parse a structure from a PDB or mmCIF file."""
+    if filepath.endswith(".pdb"):
+        parser = PDBParser(QUIET=True)
+    elif filepath.endswith(".cif"):
+        parser = MMCIFParser(QUIET=True)
+    else:
+        raise ValueError(f"Unsupported file format: {os.path.splitext(filepath)[-1]}")
+    structure_id = os.path.splitext(os.path.basename(filepath))[0]
+    structure = parser.get_structure(structure_id, filepath)
+    return structure
+
+
+def filter_pdb_deposition_date(
+    structure: Structure, cutoff_date: pd.Timestamp = pd.to_datetime("2021-09-30")
+) -> bool:
+    """Filter based on PDB deposition date."""
+    if (
+        "deposition_date" in structure.header
+        and pd.to_datetime(structure.header["deposition_date"]) <= cutoff_date
+    ):
+        return True
+    return False
+
+
+def filter_resolution(structure: Structure, max_resolution: float = 9.0) -> bool:
+    """Filter based on resolution."""
+    if "resolution" in structure.header and structure.header["resolution"] <= max_resolution:
+        return True
+    return False
+
+
+def filter_polymer_chains(
+    structure: Structure, max_chains: int = 1000, for_training: bool = False
+) -> bool:
+    """Filter based on number of polymer chains."""
+    count = sum(1 for chain in structure.get_chains() if chain.id[0] == " ")
+    return count <= (300 if for_training else max_chains)
+
+
+def filter_resolved_chains(structure: Structure) -> Structure:
+    """Filter based on number of resolved residues."""
+    chains_to_remove = [
+        chain.id
+        for chain in structure.get_chains()
+        if len([res for res in chain if res.id[0] == " "]) < 4
+    ]
+
+    for chain_id in chains_to_remove:
+        structure[0].detach_child(chain_id)
+
+    return structure if list(structure.get_chains()) else None
+
+
+def filter_target(structure: Structure) -> Optional[Structure]:
+    """Filter a target based on various criteria."""
+    target_passes_prefilters = (
+        filter_pdb_deposition_date(structure)
+        and filter_resolution(structure)
+        and filter_polymer_chains(structure)
+    )
+    return filter_resolved_chains(structure) if target_passes_prefilters else None
+
+
+def remove_hydrogens(structure: Structure, remove_waters: bool = True) -> Structure:
+    """Remove hydrogens (and optionally waters) from a structure."""
+    residues_to_remove = []
+    chains_to_remove = []
+
+    for chain in structure.get_chains():
+        for res in chain:
+            if remove_waters and res.resname == "HOH":
+                residues_to_remove.append((chain, res.id))
+            else:
+                atoms_to_remove = [atom.name for atom in res.get_atoms() if atom.element == "H"]
+                for atom_name in atoms_to_remove:
+                    res.detach_child(atom_name)
+                if not list(res.get_atoms()):  # If no atoms are left in the residue
+                    residues_to_remove.append((chain, res.id))
+        if not list(chain.get_residues()):  # If no residues are left in the chain
+            chains_to_remove.append(chain.id)
+
+    for chain, res_id in residues_to_remove:
+        chain.detach_child(res_id)
+    for chain_id in chains_to_remove:
+        structure[0].detach_child(chain_id)
+
+    return structure
+
+
+def remove_all_unknown_residue_chains(
+    structure: Structure, standard_residues: Set[str]
+) -> Structure:
+    """Remove polymer chains with all unknown residues."""
+    chains_to_remove = [
+        chain.id
+        for chain in structure.get_chains()
+        if not any(res.resname in standard_residues for res in chain)
+    ]
+
+    for chain_id in chains_to_remove:
+        structure[0].detach_child(chain_id)
+
+    return structure
+
+
+def remove_clashing_chains(
+    structure: Structure, clash_threshold: float = 1.7, clash_percentage: float = 0.3
+) -> Structure:
+    """Remove clashing chains."""
+    chains = list(structure.get_chains())
+    clashing_chains = []
+
+    for i, chain1 in enumerate(chains):
+        for chain2 in chains[i + 1 :]:
+            clash_count = sum(
+                1
+                for atom1 in chain1.get_atoms()
+                for atom2 in chain2.get_atoms()
+                if (atom1 - atom2) < clash_threshold
+            )
+            if (
+                clash_count / len(list(chain1.get_atoms())) > clash_percentage
+                or clash_count / len(list(chain2.get_atoms())) > clash_percentage
+            ):
+                clashing_chains.append((chain1, chain2, clash_count))
+
+    detached_chains = set()
+    for chain1, chain2, clash_count in clashing_chains:
+        if (
+            clash_count / len(list(chain1.get_atoms()))
+            > clash_count / len(list(chain2.get_atoms()))
+            and chain1.id not in detached_chains
+        ):
+            structure[0].detach_child(chain1.id)
+            detached_chains.add(chain1.id)
+        elif (
+            clash_count / len(list(chain2.get_atoms()))
+            > clash_count / len(list(chain1.get_atoms()))
+            and chain2.id not in detached_chains
+        ):
+            structure[0].detach_child(chain2.id)
+            detached_chains.add(chain2.id)
+        else:
+            if (
+                len(list(chain1.get_atoms())) < len(list(chain2.get_atoms()))
+                and chain1.id not in detached_chains
+            ):
+                structure[0].detach_child(chain1.id)
+                detached_chains.add(chain1.id)
+            elif (
+                len(list(chain2.get_atoms())) < len(list(chain1.get_atoms()))
+                and chain2.id not in detached_chains
+            ):
+                structure[0].detach_child(chain2.id)
+                detached_chains.add(chain2.id)
+            else:
+                if chain1.id > chain2.id and chain1.id not in detached_chains:
+                    structure[0].detach_child(chain1.id)
+                    detached_chains.add(chain1.id)
+                elif chain2.id not in detached_chains:
+                    structure[0].detach_child(chain2.id)
+                    detached_chains.add(chain2.id)
+    return structure
+
+
+def remove_excluded_ligands(structure: Structure, ligand_exclusion_list: Set[str]) -> Structure:
+    """Remove ligands in the exclusion list."""
+    residues_to_remove = []
+    chains_to_remove = []
+
+    for chain in structure.get_chains():
+        for res in chain:
+            if res.resname in ligand_exclusion_list:
+                residues_to_remove.append((chain, res.id))
+        if not list(chain.get_residues()):
+            chains_to_remove.append(chain.id)
+
+    for chain, res_id in residues_to_remove:
+        chain.detach_child(res_id)
+    for chain_id in chains_to_remove:
+        structure[0].detach_child(chain_id)
+
+    return structure
+
+
+def remove_non_ccd_atoms(structure: Structure, ccd_atoms: Dict[str, Set[str]]) -> Structure:
+    """Remove atoms not in the corresponding CCD code set."""
+    residues_to_remove = []
+    chains_to_remove = []
+
+    for chain in structure.get_chains():
+        for res in chain:
+            if res.resname in ccd_atoms:
+                atoms_to_remove = [
+                    atom.name
+                    for atom in res.get_atoms()
+                    if atom.name not in ccd_atoms[res.resname]
+                ]
+                for atom_name in atoms_to_remove:
+                    res.detach_child(atom_name)
+            if not list(res.get_atoms()):
+                residues_to_remove.append((chain, res.id))
+        if not list(chain.get_residues()):
+            chains_to_remove.append(chain.id)
+
+    for chain, res_id in residues_to_remove:
+        chain.detach_child(res_id)
+    for chain_id in chains_to_remove:
+        structure[0].detach_child(chain_id)
+
+    return structure
+
+
+def remove_leaving_atoms(structure: Structure, covalent_ligands: Dict[str, Set[str]]) -> Structure:
+    """Remove leaving atoms in covalent ligands."""
+    residues_to_remove = []
+    chains_to_remove = []
+
+    for chain in structure.get_chains():
+        for res in chain:
+            if res.resname in covalent_ligands:
+                atoms_to_remove = [
+                    atom.name
+                    for atom in res.get_atoms()
+                    if atom.name in covalent_ligands[res.resname]
+                ]
+                for atom_name in atoms_to_remove:
+                    res.detach_child(atom_name)
+            if not list(res.get_atoms()):
+                residues_to_remove.append((chain, res.id))
+        if not list(chain.get_residues()):
+            chains_to_remove.append(chain.id)
+
+    for chain, res_id in residues_to_remove:
+        chain.detach_child(res_id)
+    for chain_id in chains_to_remove:
+        structure[0].detach_child(chain_id)
+
+    return structure
+
+
+def filter_large_ca_distances(structure: Structure) -> Structure:
+    """Filter chains with large Ca atom distances."""
+    chains_to_remove = []
+
+    for chain in structure.get_chains():
+        ca_atoms = [res["CA"] for res in chain if "CA" in res]
+        for i, ca1 in enumerate(ca_atoms[:-1]):
+            ca2 = ca_atoms[i + 1]
+            if (ca1 - ca2) > 10:
+                chains_to_remove.append(chain.id)
+                break
+
+    for chain_id in chains_to_remove:
+        structure[0].detach_child(chain_id)
+
+    return structure
+
+
+def select_closest_chains(
+    structure: Structure,
+    protein_residue_center_atoms: Dict[str, str],
+    nucleic_acid_residue_center_atoms: Dict[str, str],
+    max_chains: int = 20,
+) -> Structure:
+    """Select the closest chains in large bioassemblies."""
+
+    def get_tokens_from_residues(
+        residues: List[Residue],
+        protein_residue_center_atoms: Dict[str, str],
+        nucleic_acid_residue_center_atoms: Dict[str, str],
+    ) -> List[Token]:
+        """Get tokens from residues."""
+        tokens = []
+        for res in residues:
+            if (
+                res.resname in protein_residue_center_atoms
+                or res.resname in nucleic_acid_residue_center_atoms
+            ):
+                tokens.append(res)
+            else:
+                for atom in res:
+                    tokens.append(atom)
+        return tokens
+
+    def get_token_center_atom(
+        token: Token,
+        protein_residue_center_atoms: Dict[str, str],
+        nucleic_acid_residue_center_atoms: Dict[str, str],
+    ) -> Atom:
+        """Get center atom of a token."""
+        if isinstance(token, Residue):
+            if token.resname in protein_residue_center_atoms:
+                token_center_atom = token[protein_residue_center_atoms[token.resname]]
+            elif token.resname in nucleic_acid_residue_center_atoms:
+                token_center_atom = token[nucleic_acid_residue_center_atoms[token.resname]]
+        else:
+            token_center_atom = token
+        return token_center_atom
+
+    def get_token_center_atoms(
+        tokens: List[Token],
+        protein_residue_center_atoms: Dict[str, str],
+        nucleic_acid_residue_center_atoms: Dict[str, str],
+    ) -> List[Atom]:
+        """Get center atoms of tokens."""
+        token_center_atoms = []
+        for token in tokens:
+            token_center_atom = get_token_center_atom(
+                token, protein_residue_center_atoms, nucleic_acid_residue_center_atoms
+            )
+            token_center_atoms.append(token_center_atom)
+        return token_center_atoms
+
+    def get_interface_tokens(
+        tokens: List[Token],
+        protein_residue_center_atoms: Dict[str, str],
+        nucleic_acid_residue_center_atoms: Dict[str, str],
+        center_atom_interaction_distance: float = 15.0,
+    ) -> List[Token]:
+        """Get interface tokens."""
+        interface_tokens = set()
+        token_center_atoms = get_token_center_atoms(
+            tokens, protein_residue_center_atoms, nucleic_acid_residue_center_atoms
+        )
+        for token_index, token in enumerate(tokens):
+            for other_token_index in range(len(tokens)):
+                if token_index != other_token_index:
+                    token_center_atom = token_center_atoms[token_index]
+                    other_token_center_atom = token_center_atoms[other_token_index]
+                    if (
+                        token_center_atom - other_token_center_atom
+                    ) < center_atom_interaction_distance:
+                        interface_tokens.add(token)
+        return list(interface_tokens)
+
+    if len(list(structure.get_chains())) > max_chains:
+        chains = list(structure.get_chains())
+        residues = list(structure.get_residues())
+        tokens = get_tokens_from_residues(
+            residues, protein_residue_center_atoms, nucleic_acid_residue_center_atoms
+        )
+        interface_tokens = get_interface_tokens(
+            tokens, protein_residue_center_atoms, nucleic_acid_residue_center_atoms
+        )
+        random_interface_token = random.choice(interface_tokens)
+        chain_min_token_distances = []
+        for chain in chains:
+            chain_residues = list(chain.get_residues())
+            chain_tokens = get_tokens_from_residues(
+                chain_residues, protein_residue_center_atoms, nucleic_acid_residue_center_atoms
+            )
+            chain_token_center_atoms = get_token_center_atoms(
+                chain_tokens, protein_residue_center_atoms, nucleic_acid_residue_center_atoms
+            )
+            chain_min_token_distance = min(
+                atom
+                - get_token_center_atom(
+                    random_interface_token,
+                    protein_residue_center_atoms,
+                    nucleic_acid_residue_center_atoms,
+                )
+                for atom in chain_token_center_atoms
+            )
+            chain_min_token_distances.append((chain.id, chain_min_token_distance))
+        chain_min_token_distances.sort(key=lambda x: x[1])
+        for chain_id, _ in chain_min_token_distances[max_chains:]:
+            structure[0].detach_child(chain_id)
+    return structure
+
+
+def remove_crystallization_aids(
+    structure: Structure, crystallography_methods: Dict[str, Set[str]]
+) -> Structure:
+    """Remove crystallization aids."""
+    if structure.header["structure_method"] in crystallography_methods:
+        residues_to_remove = []
+        chains_to_remove = []
+
+        for chain in structure.get_chains():
+            for res in chain:
+                if res.resname in crystallography_methods[structure.header["structure_method"]]:
+                    residues_to_remove.append((chain, res.id))
+            if not list(chain.get_residues()):
+                chains_to_remove.append(chain.id)
+
+        for chain, res_id in residues_to_remove:
+            chain.detach_child(res_id)
+        for chain_id in chains_to_remove:
+            structure[0].detach_child(chain_id)
+
+    return structure
+
+
+def write_structure(structure: Structure, output_filepath: str):
+    """Write a structure to a PDB or mmCIF file."""
+    if output_filepath.endswith(".pdb"):
+        io = PDBIO()
+    elif output_filepath.endswith(".cif"):
+        io = MMCIFIO()
+    else:
+        raise ValueError(f"Unsupported file format: {os.path.splitext(output_filepath)[-1]}")
+    io.set_structure(structure)
+    io.save(output_filepath)
+
+
+def process_structures(
+    filepaths: List[str],
+    output_dir: str,
+    standard_residues: Set[str],
+    ligand_exclusion_list: Set[str],
+    ccd_atoms: Dict[str, Set[str]],
+    covalent_ligands: Dict[str, Set[str]],
+    protein_residue_center_atoms: Dict[str, str],
+    nucleic_acid_residue_center_atoms: Dict[str, str],
+    crystallography_methods: Dict[str, Set[str]],
+):
+    """Process a list of mmCIF files."""
+    for filepath in filepaths:
+        structure = parse_structure(filepath)
+        # Filtering of targets
+        structure = filter_target(structure)
+        if structure is not None:
+            # Filtering of bioassemblies
+            structure = remove_hydrogens(structure)
+            structure = remove_all_unknown_residue_chains(structure, standard_residues)
+            structure = remove_clashing_chains(structure)
+            structure = remove_excluded_ligands(structure, ligand_exclusion_list)
+            structure = remove_non_ccd_atoms(structure, ccd_atoms)
+            structure = remove_leaving_atoms(structure, covalent_ligands)
+            structure = filter_large_ca_distances(structure)
+            structure = select_closest_chains(
+                structure, protein_residue_center_atoms, nucleic_acid_residue_center_atoms
+            )
+            structure = remove_crystallization_aids(structure, crystallography_methods)
+            if list(structure.get_chains()):
+                # Save processed structure
+                output_file_dir = os.path.join(output_dir, structure.id[1:3])
+                output_filepath = os.path.join(output_file_dir, f"{structure.id}.cif")
+                os.makedirs(output_file_dir, exist_ok=True)
+                write_structure(structure, output_filepath)
+
+
+# Parse command-line arguments
+
+parser = argparse.ArgumentParser(
+    description="Process mmCIF files to curate the AlphaFold 3 PDB dataset."
+)
+parser.add_argument(
+    "--mmcif_dir",
+    type=str,
+    default=os.path.join("data", "mmCIF"),
+    help="Path to the input directory containing mmCIF files to process.",
+)
+parser.add_argument(
+    "--ccd_dir",
+    type=str,
+    default=os.path.join("data", "CCD"),
+    help="Path to the directory containing CCD files to reference during data processing.",
+)
+parser.add_argument(
+    "--output_dir",
+    type=str,
+    default=os.path.join("data", "PDB_set"),
+    help="Path to the output directory in which to store processed mmCIF dataset files.",
+)
+args = parser.parse_args("")
+
+assert os.path.exists(args.mmcif_dir), f"Input directory {args.mmcif_dir} does not exist."
+assert os.path.exists(args.ccd_dir), f"CCD directory {args.ccd_dir} does not exist."
+assert os.path.exists(
+    os.path.join(args.ccd_dir, "chem_comp_model.cif")
+), f"CCD ligands file not found in {args.ccd_dir}."
+assert os.path.exists(
+    os.path.join(args.ccd_dir, "components.cif")
+), f"CCD components file not found in {args.ccd_dir}."
+os.makedirs(args.output_dir, exist_ok=True)
+
+# Section 2.5.4 of the AlphaFold 3 supplement
+
+ccd_atoms = load_ccd_atoms(os.path.join(args.ccd_dir, "components.cif"))
+covalent_ligands = load_covalent_ligands(os.path.join(args.ccd_dir, "components.cif"))
+
+# Process all structures
+
+filepaths = glob.glob(os.path.join(args.mmcif_dir, "*", "*.cif"))
+process_structures(
+    filepaths,
+    args.output_dir,
     standard_residues,
     ligand_exclusion_list,
     ccd_atoms,
     covalent_ligands,
+    protein_residue_center_atoms,
+    nucleic_acid_residue_center_atoms,
     crystallography_methods,
 )
-
-# Save processed structures #
-io = PDBIO()
-for structure in processed_structures:
-    io.set_structure(structure)
-    io.save(os.path.join(args.output_dir, f"{structure.id}.cif"))
