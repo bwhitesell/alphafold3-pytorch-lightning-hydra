@@ -57,7 +57,7 @@ dependencies = [
     "tqdm",            # progress bars
     "setuptools",      # for packaging
     "ipykernel",       # for running Jupyter notebooks
-    "rdkit==2023.9.6", # for parsing small molecule data files
+    "rdkit>=2023.9.6", # for parsing small molecule data files
     "pdbeccdutils==0.8.5", # for parsing the Protein Data Bank's Chemical Component Dictionary (CCD)
     # "sh"             # for running bash commands in some tests (linux/macos only)
 ]
