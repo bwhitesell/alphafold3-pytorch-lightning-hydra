@@ -172,10 +172,9 @@ Then run the following with <pdb_dir>, <ccd_dir>, and <out_dir> replaced with th
 python notebooks/alphafold3_pdb_dataset_curation.py --mmcif_dir <pdb_dir> --ccd_dir <ccd_dir> --out_dir <out_dir>
 ```
 
-See the script for more options. Each mmCIF will be written as a pickle file that
-we read and process in the data loading pipeline. A `metadata.csv` will be saved
-that contains the pickle path of each example as well as additional information
-about each example for faster filtering.
+See the script for more options. Each mmCIF that passes all processing steps
+will be written to <out_dir> within a subdirectory named using the
+mmCIF's second and third PDB ID characters (e.g. `5c`).
 
 ## Training
 
