@@ -32,8 +32,19 @@ from alphafold3_pytorch.models.components.alphafold3 import (
     mean_pool_with_lens,
     repeat_consecutive_with_lens,
 )
+from alphafold3_pytorch.utils.model_utils import atom_ref_pos_to_atompair_inputs
 
 os.environ["TYPECHECK"] = "True"
+
+
+def test_atom_ref_pos_to_atompair_inputs():
+    """Test the function to convert atom reference positions to atom pair inputs."""
+    atom_ref_pos = torch.randn(16, 3)
+    atom_ref_space_uid = torch.ones(16).long()
+
+    atompair_inputs = atom_ref_pos_to_atompair_inputs(atom_ref_pos, atom_ref_space_uid)
+
+    assert atompair_inputs.shape == (16, 16, 5)
 
 
 def test_mean_pool_with_lens():
