@@ -36,13 +36,21 @@ from typing import Dict, Set
 
 import pandas as pd
 from Bio.PDB import PDBIO, MMCIFParser, PDBParser
-from pdbeccdutils.core import ccd_reader
+from pdbeccdutils.core import ccd_reader, clc_reader
 
 
 # Function to load CCD atoms
 def load_ccd_atoms(ccd_file_path):
-    ccd_reader_result = ccd_reader.read_pdb_cif_file(ccd_file_path)
-    return ccd_reader_result
+    ccd_reader_result = ccd_reader.read_pdb_components_file(ccd_file_path)
+    ccd_atoms = {id: ccd_reader_result[id].component.atoms_ids for id in ccd_reader_result}
+    return ccd_atoms
+
+
+# Function to load covalent ligands
+def load_covalent_ligands(ccd_file_path):
+    clc_reader_result = clc_reader.read_clc_components_file(ccd_file_path)
+    clc_atoms = {id: clc_reader_result[id].component.atoms_ids for id in clc_reader_result}
+    return clc_atoms
 
 
 # Function to parse structures based on file type
@@ -315,9 +323,8 @@ os.makedirs(args.output_dir, exist_ok=True)
 # Define constants #
 
 # TODO: Section 2.5.4 of the AlphaFold 3 supplement
-# ccd_atoms = {"ALA": {"N", "CA", "C", "O"}, "GLY": {"N", "CA", "C", "O"}}
 ccd_atoms = load_ccd_atoms(os.path.join(args.ccd_dir, "components.cif"))
-covalent_ligands = {"LIG": {"H1", "H2"}}
+covalent_ligands = load_covalent_ligands(os.path.join(args.ccd_dir, "components.cif"))
 
 # Table 9 of the AlphaFold 3 supplement
 crystallization_aids = set(
