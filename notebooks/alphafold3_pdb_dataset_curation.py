@@ -36,11 +36,17 @@ import random
 from typing import Dict, List, Optional, Set, Union
 
 import pandas as pd
+import rootutils
 from Bio.PDB import MMCIFIO, PDBIO, MMCIFParser, PDBParser
 from Bio.PDB.Atom import Atom
 from Bio.PDB.Residue import Residue
 from Bio.PDB.Structure import Structure
 from pdbeccdutils.core import ccd_reader, clc_reader
+from tqdm import tqdm
+
+rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
+
+from alphafold3_pytorch.utils.utils import exists
 
 # Constants
 
@@ -106,22 +112,22 @@ posebusters_v2_common_natural_ligands = set(
 # Helper functions
 
 
-def load_ccd_atoms(ccd_filepath: str) -> Dict[str, List[str]]:
+def load_ccd_atoms(ccd_filepath: str) -> Dict[str, Set[str]]:
     """Load CCD atoms from a CCD file."""
     ccd_reader_result = ccd_reader.read_pdb_components_file(
         ccd_filepath, sanitize=False
     )  # Reduce loading time
-    ccd_atoms = {id: ccd_reader_result[id].component.atoms_ids for id in ccd_reader_result}
+    ccd_atoms = {id: set(ccd_reader_result[id].component.atoms_ids) for id in ccd_reader_result}
     return ccd_atoms
 
 
-def load_covalent_ligands(ccd_filepath: str) -> Dict[str, List[str]]:
+def load_covalent_ligands(ccd_filepath: str) -> Dict[str, Set[str]]:
     """Load covalent ligands from a CCD file."""
     clc_reader_result = clc_reader.read_clc_components_file(
         ccd_filepath, sanitize=False
     )  # Reduce loading time
     # TODO: identify leaving atoms for covalent ligands, not just all atoms
-    clc_atoms = {id: clc_reader_result[id].component.atoms_ids for id in clc_reader_result}
+    clc_atoms = {id: set(clc_reader_result[id].component.atoms_ids) for id in clc_reader_result}
     return clc_atoms
 
 
@@ -144,6 +150,7 @@ def filter_pdb_deposition_date(
     """Filter based on PDB deposition date."""
     if (
         "deposition_date" in structure.header
+        and exists(structure.header["deposition_date"])
         and pd.to_datetime(structure.header["deposition_date"]) <= cutoff_date
     ):
         return True
@@ -152,7 +159,11 @@ def filter_pdb_deposition_date(
 
 def filter_resolution(structure: Structure, max_resolution: float = 9.0) -> bool:
     """Filter based on resolution."""
-    if "resolution" in structure.header and structure.header["resolution"] <= max_resolution:
+    if (
+        "resolution" in structure.header
+        and exists(structure.header["resolution"])
+        and structure.header["resolution"] <= max_resolution
+    ):
         return True
     return False
 
@@ -318,6 +329,11 @@ def remove_non_ccd_atoms(structure: Structure, ccd_atoms: Dict[str, Set[str]]) -
 
     for chain in structure.get_chains():
         for res in chain:
+            if (
+                res.resname in protein_residue_center_atoms
+                or res.resname in nucleic_acid_residue_center_atoms
+            ):
+                continue
             if res.resname in ccd_atoms:
                 atoms_to_remove = [
                     atom.name
@@ -346,6 +362,11 @@ def remove_leaving_atoms(structure: Structure, covalent_ligands: Dict[str, Set[s
 
     for chain in structure.get_chains():
         for res in chain:
+            if (
+                res.resname in protein_residue_center_atoms
+                or res.resname in nucleic_acid_residue_center_atoms
+            ):
+                continue
             if res.resname in covalent_ligands:
                 atoms_to_remove = [
                     atom.name
@@ -501,7 +522,11 @@ def remove_crystallization_aids(
     structure: Structure, crystallography_methods: Dict[str, Set[str]]
 ) -> Structure:
     """Remove crystallization aids."""
-    if structure.header["structure_method"] in crystallography_methods:
+    if (
+        "structure_method" in structure.header
+        and exists(structure.header["structure_method"])
+        and structure.header["structure_method"] in crystallography_methods
+    ):
         residues_to_remove = []
         chains_to_remove = []
 
@@ -535,6 +560,7 @@ def write_structure(structure: Structure, output_filepath: str):
 def process_structures(
     filepaths: List[str],
     output_dir: str,
+    skip_existing: bool,
     standard_residues: Set[str],
     ligand_exclusion_list: Set[str],
     ccd_atoms: Dict[str, Set[str]],
@@ -544,11 +570,17 @@ def process_structures(
     crystallography_methods: Dict[str, Set[str]],
 ):
     """Process a list of mmCIF files."""
-    for filepath in filepaths:
+    for filepath in tqdm(filepaths, desc="Processing structures"):
         structure = parse_structure(filepath)
+        output_file_dir = os.path.join(output_dir, structure.id[1:3])
+        output_filepath = os.path.join(output_file_dir, f"{structure.id}.cif")
+        if skip_existing and os.path.exists(output_filepath):
+            print(f"Skipping existing output file: {output_filepath}")
+            continue
+        os.makedirs(output_file_dir, exist_ok=True)
         # Filtering of targets
         structure = filter_target(structure)
-        if structure is not None:
+        if exists(structure):
             # Filtering of bioassemblies
             structure = remove_hydrogens(structure)
             structure = remove_all_unknown_residue_chains(structure, standard_residues)
@@ -563,9 +595,6 @@ def process_structures(
             structure = remove_crystallization_aids(structure, crystallography_methods)
             if list(structure.get_chains()):
                 # Save processed structure
-                output_file_dir = os.path.join(output_dir, structure.id[1:3])
-                output_filepath = os.path.join(output_file_dir, f"{structure.id}.cif")
-                os.makedirs(output_file_dir, exist_ok=True)
                 write_structure(structure, output_filepath)
 
 
@@ -592,6 +621,11 @@ parser.add_argument(
     default=os.path.join("data", "PDB_set"),
     help="Path to the output directory in which to store processed mmCIF dataset files.",
 )
+parser.add_argument(
+    "--skip_existing",
+    action="store_true",
+    help="Skip processing of existing output files.",
+)
 args = parser.parse_args("")
 
 assert os.path.exists(args.mmcif_dir), f"Input directory {args.mmcif_dir} does not exist."
@@ -615,6 +649,7 @@ filepaths = glob.glob(os.path.join(args.mmcif_dir, "*", "*.cif"))
 process_structures(
     filepaths,
     args.output_dir,
+    args.skip_existing,
     standard_residues,
     ligand_exclusion_list,
     ccd_atoms,
