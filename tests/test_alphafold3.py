@@ -189,7 +189,8 @@ def test_centre_random_augmentation():
     assert augmented_coords.shape == coords.shape
 
 
-def test_pairformer():
+@pytest.mark.parametrize("recurrent_depth", (1, 2))
+def test_pairformer(recurrent_depth):
     """Test the Pairformer stack."""
     single = torch.randn(2, 16, 384)
     pairwise = torch.randn(2, 16, 16, 128)
@@ -198,6 +199,7 @@ def test_pairformer():
     pairformer = PairformerStack(
         depth=4,
         num_register_tokens=4,
+        recurrent_depth=recurrent_depth,
     )
 
     single_out, pairwise_out = pairformer(single_repr=single, pairwise_repr=pairwise, mask=mask)
@@ -279,6 +281,7 @@ def test_diffusion_module():
         atom_encoder_depth=1,
         atom_decoder_depth=1,
         token_transformer_depth=1,
+        atom_encoder_kwargs=dict(attn_num_memory_kv=2),
         token_transformer_kwargs=dict(num_register_tokens=2),
     )
 

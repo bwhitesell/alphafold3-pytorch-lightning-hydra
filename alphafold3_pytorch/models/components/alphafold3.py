@@ -394,12 +394,14 @@ class TriangleMultiplication(Module):
 class AttentionPairBias(Module):
     """An Attention module with pair bias computation."""
 
-    def __init__(self, *, heads, dim_pairwise, window_size=None, **attn_kwargs):
+    def __init__(self, *, heads, dim_pairwise, window_size=None, num_memory_kv=0, **attn_kwargs):
         super().__init__()
 
         self.window_size = window_size
 
-        self.attn = Attention(heads=heads, window_size=window_size, **attn_kwargs)
+        self.attn = Attention(
+            heads=heads, window_size=window_size, num_memory_kv=num_memory_kv, **attn_kwargs
+        )
 
         # line 8 of Algorithm 24
 
@@ -905,6 +907,7 @@ class PairformerStack(Module):
         dim_single=384,
         dim_pairwise=128,
         depth=48,
+        recurrent_depth=1,  # effective depth will be `depth` * `recurrent_depth`
         pair_bias_attn_dim_head=64,
         pair_bias_attn_heads=16,
         dropout_row_prob=0.25,
@@ -941,6 +944,12 @@ class PairformerStack(Module):
             )
 
         self.layers = layers
+
+        # https://arxiv.org/abs/2405.16039 and https://arxiv.org/abs/2405.15071
+        # although possibly recycling already takes care of this
+
+        assert recurrent_depth > 0
+        self.recurrent_depth = recurrent_depth
 
         self.num_registers = num_register_tokens
         self.has_registers = num_register_tokens > 0
@@ -1000,13 +1009,15 @@ class PairformerStack(Module):
 
         # main transformer block layers
 
-        for pairwise_block, pair_bias_attn, single_transition in self.layers:
-            pairwise_repr = pairwise_block(pairwise_repr=pairwise_repr, mask=mask)
+        for _ in range(self.recurrent_depth):
+            for pairwise_block, pair_bias_attn, single_transition in self.layers:
+                pairwise_repr = pairwise_block(pairwise_repr=pairwise_repr, mask=mask)
 
-            single_repr = (
-                pair_bias_attn(single_repr, pairwise_repr=pairwise_repr, mask=mask) + single_repr
-            )
-            single_repr = single_transition(single_repr) + single_repr
+                single_repr = (
+                    pair_bias_attn(single_repr, pairwise_repr=pairwise_repr, mask=mask)
+                    + single_repr
+                )
+                single_repr = single_transition(single_repr) + single_repr
 
         # splice out registers
 
@@ -1366,6 +1377,7 @@ class DiffusionTransformer(Module):
         dim_pairwise=128,
         attn_window_size=None,
         attn_pair_bias_kwargs: dict = dict(),
+        attn_num_memory_kv=False,
         num_register_tokens=0,
         serial=False,
         use_linear_attn=False,
@@ -1394,6 +1406,7 @@ class DiffusionTransformer(Module):
                 dim_pairwise=dim_pairwise,
                 heads=heads,
                 window_size=attn_window_size,
+                num_memory_kv=attn_num_memory_kv,
                 **attn_pair_bias_kwargs,
             )
 

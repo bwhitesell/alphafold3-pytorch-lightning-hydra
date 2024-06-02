@@ -95,6 +95,7 @@ class Attention(Module):
         query_bias=True,
         flash=True,
         window_size=None,
+        num_memory_kv: int = 0,
         efficient_attn_config: AttentionConfig = AttentionConfig(True, True, True),
     ):
         super().__init__()
@@ -108,6 +109,7 @@ class Attention(Module):
         e - dimension (pairwise rep)
         i - source sequence
         j - context sequence
+        m - memory key / value seq
         """
 
         dim_inner = dim_head * heads
@@ -125,6 +127,12 @@ class Attention(Module):
         self.to_q = nn.Linear(dim, dim_inner, bias=query_bias)
         self.to_kv = nn.Linear(dim, dim_inner * 2, bias=False)
         self.to_out = nn.Linear(dim_inner, dim, bias=False)
+
+        self.memory_kv = None
+
+        if num_memory_kv > 0:
+            self.memory_kv = nn.Parameter(torch.zeros(2, heads, num_memory_kv, dim_head))
+            nn.init.normal_(self.memory_kv, std=0.02)
 
         # gating of value
         # allows attention to attend to nothing
@@ -165,7 +173,7 @@ class Attention(Module):
 
         # attention
 
-        out = self.attend(q, k, v, attn_bias=attn_bias, mask=mask)
+        out = self.attend(q, k, v, attn_bias=attn_bias, mask=mask, memory_kv=self.memory_kv)
 
         # merge heads
 
@@ -265,6 +273,7 @@ class Attend(Module):
         v: Float["b h n d"],  # type: ignore
         mask: Bool["b n"] | None = None,  # type: ignore
         attn_bias: Float["... n n"] | Float["... nw w (w*2)"] | None = None,  # type: ignore
+        memory_kv: Float["2 h m d"] | None = None,  # type: ignore
     ) -> Float["b h n d"]:  # type: ignore
         """
         Run simple local attention with a radius of 1 window size.
@@ -274,6 +283,7 @@ class Attend(Module):
         :param v: The value tensor.
         :param mask: The mask to apply to the sequence.
         :param attn_bias: The attention bias to apply.
+        :param memory_kv: The memory key and value tensors.
         :return: The output tensor.
         """
 
@@ -326,6 +336,24 @@ class Attend(Module):
 
         q = q * scale
 
+        # append memory key / values for local attention windows
+
+        if exists(memory_kv):
+            batch, seq, num_mem_kv = k.shape[0], k.shape[2], memory_kv.shape[-2]
+
+            mk, mv = memory_kv
+            mk, mv = tuple(repeat(t, "h m d -> b h n m d", b=batch, n=seq) for t in (mk, mv))
+            k = torch.cat((mk, k), dim=-2)
+            v = torch.cat((mv, v), dim=-2)
+
+            if exists(attn_bias):
+                attn_bias = pad_at_dim(attn_bias, (num_mem_kv, 0), value=0.0)
+
+            if exists(mask):
+                mask = pad_at_dim(mask, (num_mem_kv, 0), value=True)
+
+        # similarity
+
         sim = einsum(q, k, "... i d, ... j d -> ... i j")
 
         if exists(attn_bias):
@@ -359,6 +387,7 @@ class Attend(Module):
         v: Float["b h j d"],  # type: ignore
         mask: Bool["b j"] | None = None,  # type: ignore
         attn_bias: Float["... i j"] | Float["... nw w (w*2)"] | None = None,  # type: ignore
+        memory_kv: Float["2 h m d"] | None = None,  # type: ignore
     ) -> Float["b h i d"]:  # type: ignore
         """
         Run attention.
@@ -368,6 +397,7 @@ class Attend(Module):
         :param v: The value tensor.
         :param mask: The mask to apply to the sequence.
         :param attn_bias: The attention bias to apply.
+        :param memory_kv: The memory key and value tensors.
         :return: The output tensor.
         """
         is_windowed_attn_bias = None
@@ -379,11 +409,27 @@ class Attend(Module):
         # todo (handle attn bias efficiently)
 
         if self.is_local_attn:
-            return self.local_attn(q, k, v, mask=mask, attn_bias=attn_bias)
+            return self.local_attn(q, k, v, mask=mask, attn_bias=attn_bias, memory_kv=memory_kv)
 
         assert (
             not exists(is_windowed_attn_bias) or not is_windowed_attn_bias
         ), "Windowed attention bias is not supported with full attention."
+
+        # append memory key / values
+
+        if exists(memory_kv):
+            batch, num_mem_kv = q.shape[0], memory_kv.shape[-2]
+
+            mk, mv = memory_kv
+            mk, mv = tuple(repeat(t, "h m d -> b h m d", b=batch) for t in (mk, mv))
+            k = torch.cat((mk, k), dim=-2)
+            v = torch.cat((mv, v), dim=-2)
+
+            if exists(attn_bias):
+                attn_bias = pad_at_dim(attn_bias, (num_mem_kv, 0), value=0.0)
+
+            if exists(mask):
+                mask = pad_at_dim(mask, (num_mem_kv, 0), value=True)
 
         # forward to using flash attention if applicable
 
