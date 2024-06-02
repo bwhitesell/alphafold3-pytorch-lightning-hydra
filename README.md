@@ -165,16 +165,16 @@ In this directory, unzip all the files:
 find . -type f -name "*.gz" -exec gzip -d {} \;
 ```
 
-Next run the commands `wget -P data/CCD/ https://files.wwpdb.org/pub/pdb/data/monomers/components.cif.gz` and `wget -P data/CCD/ https://files.wwpdb.org/pub/pdb/data/component-models/complete/chem_comp_model.cif.gz` from the project's root directory to download the latest version of the Protein Data Bank's Chemical Component Dictionary (CCD) and its structural models. Extract each of these files using the command `find data/CCD/ -type f -name "*.gz" -exec gzip -d {} \;`.
+Next run the commands `wget -P data/CCD/ https://files.wwpdb.org/pub/pdb/data/monomers/components.cif.gz` and `wget -P data/CCD/ https://files.wwpdb.org/pub/pdb/data/component-models/complete/chem_comp_model.cif.gz` from the project's root directory to download the latest version of the PDB's Chemical Component Dictionary (CCD) and its structural models. Extract each of these files using the command `find data/CCD/ -type f -name "*.gz" -exec gzip -d {} \;`.
 
 Then run the following with <pdb_dir>, <ccd_dir>, and <out_dir> replaced with the locations of your local copies of the PDB, CCD, and your desired dataset output directory (e.g., `data/PDB_set/` by default).
-```python
-python notebooks/alphafold3_pdb_dataset_curation.py --mmcif_dir <pdb_dir> --ccd_dir <ccd_dir> --out_dir <out_dir>
+```bash
+python alphafold3_pytorch/data/components/pdb_dataset_curation.py --mmcif_dir <pdb_dir> --ccd_dir <ccd_dir> --out_dir <out_dir> --skip_existing <skip_existing> --num_workers <num_workers>
 ```
 
-See the script for more options. Each mmCIF that passes all processing steps
-will be written to <out_dir> within a subdirectory named using the
-mmCIF's second and third PDB ID characters (e.g. `5c`).
+See the script for more options. Each mmCIF that successfully passes
+all processing steps will be written to <out_dir> within a subdirectory
+named using the mmCIF's second and third PDB ID characters (e.g. `5c`).
 
 ## Training
 
