@@ -45,7 +45,7 @@ from Bio.PDB.Residue import Residue
 from Bio.PDB.Structure import Structure
 from pdbeccdutils.core import ccd_reader
 from pdbeccdutils.core.ccd_reader import CCDReaderResult
-from tqdm import tqdm
+from tqdm.contrib.concurrent import process_map
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
@@ -650,41 +650,39 @@ def write_structure(structure: Structure, output_filepath: str):
     io.save(output_filepath)
 
 
-def process_structures(filepaths: List[str], output_dir: str, skip_existing: bool = False):
-    """Process a list of mmCIF files."""
+def process_structure(filepath: str, output_dir: str, skip_existing: bool = False):
+    """Given an mmCIF file, create a new processed mmCIF file using AlphaFold 3's PDB dataset filtering criteria."""
     # Section 2.5.4 of the AlphaFold 3 supplement
+    try:
+        structure = parse_structure(filepath)
+        output_file_dir = os.path.join(output_dir, structure.id[1:3])
+        output_filepath = os.path.join(output_file_dir, f"{structure.id}.cif")
+        if skip_existing and os.path.exists(output_filepath):
+            print(f"Skipping existing output file: {output_filepath}")
+            return
+        os.makedirs(output_file_dir, exist_ok=True)
 
-    for filepath in tqdm(filepaths, desc="Processing structures"):
-        try:
-            structure = parse_structure(filepath)
-            output_file_dir = os.path.join(output_dir, structure.id[1:3])
-            output_filepath = os.path.join(output_file_dir, f"{structure.id}.cif")
-            if skip_existing and os.path.exists(output_filepath):
-                print(f"Skipping existing output file: {output_filepath}")
-                continue
-            os.makedirs(output_file_dir, exist_ok=True)
-
-            # Filtering of targets
-            structure = filter_target(structure)
-            if exists(structure):
-                # Filtering of bioassemblies
-                structure = remove_hydrogens(structure)
-                structure = remove_all_unknown_residue_chains(structure, STANDARD_RESIDUES)
-                structure = remove_clashing_chains(structure)
-                structure = remove_excluded_ligands(structure, LIGAND_EXCLUSION_LIST)
-                structure = remove_non_ccd_atoms(structure, CCD_READER_RESULTS)
-                structure = remove_leaving_atoms(structure, CCD_READER_RESULTS)
-                structure = filter_large_ca_distances(structure)
-                structure = select_closest_chains(
-                    structure, PROTEIN_RESIDUE_CENTER_ATOMS, NUCLEIC_ACID_RESIDUE_CENTER_ATOMS
-                )
-                structure = remove_crystallization_aids(structure, CRYSTALLOGRAPHY_METHODS)
-                if list(structure.get_chains()):
-                    # Save processed structure
-                    write_structure(structure, output_filepath)
-                    print(f"Finished processing structure: {structure.id}")
-        except Exception as e:
-            print(f"Skipping structure processing of {filepath} due to: {e}")
+        # Filtering of targets
+        structure = filter_target(structure)
+        if exists(structure):
+            # Filtering of bioassemblies
+            structure = remove_hydrogens(structure)
+            structure = remove_all_unknown_residue_chains(structure, STANDARD_RESIDUES)
+            structure = remove_clashing_chains(structure)
+            structure = remove_excluded_ligands(structure, LIGAND_EXCLUSION_LIST)
+            structure = remove_non_ccd_atoms(structure, CCD_READER_RESULTS)
+            structure = remove_leaving_atoms(structure, CCD_READER_RESULTS)
+            structure = filter_large_ca_distances(structure)
+            structure = select_closest_chains(
+                structure, PROTEIN_RESIDUE_CENTER_ATOMS, NUCLEIC_ACID_RESIDUE_CENTER_ATOMS
+            )
+            structure = remove_crystallization_aids(structure, CRYSTALLOGRAPHY_METHODS)
+            if list(structure.get_chains()):
+                # Save processed structure
+                write_structure(structure, output_filepath)
+                print(f"Finished processing structure: {structure.id}")
+    except Exception as e:
+        print(f"Skipping structure processing of {filepath} due to: {e}")
 
 
 # Process structures across all worker processes
@@ -693,5 +691,4 @@ args_tuples = [
     (filepath, args.output_dir, args.skip_existing)
     for filepath in glob.glob(os.path.join(args.mmcif_dir, "*", "*.cif"))
 ]
-with Pool(processes=args.num_workers) as pool:
-    pool.starmap(process_structures, args_tuples)
+process_map(process_structure, args_tuples, max_workers=args.num_workers)
