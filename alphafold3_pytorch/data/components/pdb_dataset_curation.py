@@ -694,4 +694,4 @@ args_tuples = [
     for filepath in glob.glob(os.path.join(args.mmcif_dir, "*", "*.cif"))
 ]
 with Pool(processes=args.num_workers) as pool:
-    pool.map(process_structures, args_tuples)
+    pool.starmap(process_structures, args_tuples)
