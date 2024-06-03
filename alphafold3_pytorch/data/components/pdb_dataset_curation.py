@@ -84,6 +84,12 @@ parser.add_argument(
     default=1,
     help="Number of worker processes to use for parallel processing.",
 )
+parser.add_argument(
+    "--worker_chunk_size",
+    type=int,
+    default=1,
+    help="Size of mmCIF file chunks sent to worker processes.",
+)
 args = parser.parse_args("")
 
 assert os.path.exists(args.mmcif_dir), f"Input directory {args.mmcif_dir} does not exist."
@@ -725,4 +731,6 @@ args_tuples = [
     (filepath, args.output_dir, args.skip_existing)
     for filepath in glob.glob(os.path.join(args.mmcif_dir, "*", "*.cif"))
 ]
-process_map(process_structure, args_tuples, max_workers=args.num_workers)
+process_map(
+    process_structure, args_tuples, max_workers=args.num_workers, chunksize=args.worker_chunk_size
+)

@@ -169,7 +169,7 @@ Next run the commands `wget -P data/CCD/ https://files.wwpdb.org/pub/pdb/data/mo
 
 Then run the following with <pdb_dir>, <ccd_dir>, and <out_dir> replaced with the locations of your local copies of the PDB, CCD, and your desired dataset output directory (e.g., `data/PDB_set/` by default).
 ```bash
-python alphafold3_pytorch/data/components/pdb_dataset_curation.py --mmcif_dir <pdb_dir> --ccd_dir <ccd_dir> --out_dir <out_dir> --skip_existing <skip_existing> --num_workers <num_workers>
+python alphafold3_pytorch/data/components/pdb_dataset_curation.py --mmcif_dir <pdb_dir> --ccd_dir <ccd_dir> --out_dir <out_dir>
 ```
 
 See the script for more options. Each mmCIF that successfully passes
