@@ -33,8 +33,7 @@ import argparse
 import glob
 import os
 import random
-from multiprocessing import Pool
-from typing import Dict, List, Optional, Set, Union
+from typing import Dict, List, Optional, Set, Tuple, Union
 
 import pandas as pd
 import rootutils
@@ -680,11 +679,13 @@ def write_structure(structure: Structure, output_filepath: str):
     io.save(output_filepath)
 
 
-def process_structure(filepath: str, output_dir: str, skip_existing: bool = False):
+def process_structure(args: Tuple[str, str, bool]):
     """
     Given an input mmCIF file, create a new processed mmCIF file
     using AlphaFold 3's PDB dataset filtering criteria.
     """
+    filepath, output_dir, skip_existing = args
+
     # Section 2.5.4 of the AlphaFold 3 supplement
     try:
         structure = parse_structure(filepath)
@@ -724,4 +725,4 @@ args_tuples = [
     (filepath, args.output_dir, args.skip_existing)
     for filepath in glob.glob(os.path.join(args.mmcif_dir, "*", "*.cif"))
 ]
-process_map(lambda args: process_structure(*args), args_tuples, max_workers=args.num_workers)
+process_map(process_structure, args_tuples, max_workers=args.num_workers)
