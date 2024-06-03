@@ -250,7 +250,12 @@ def filter_target(structure: Structure) -> Optional[Structure]:
 
 
 def remove_hydrogens(structure: Structure, remove_waters: bool = True) -> Structure:
-    """Remove hydrogens (and optionally waters) from a structure."""
+    """
+    Remove hydrogens (and optionally waters) from a structure.
+
+    NOTE: By default, here we remove all waters, even though
+    the AlphaFold 3 supplement doesn't mention removing them.
+    """
     residues_to_remove = []
     chains_to_remove = []
 
@@ -352,7 +357,12 @@ def remove_clashing_chains(
 
 
 def remove_excluded_ligands(structure: Structure, ligand_exclusion_list: Set[str]) -> Structure:
-    """Remove ligands in the exclusion list."""
+    """
+    Remove ligands in the exclusion list.
+
+    NOTE: Here, we remove all excluded ligands, even though
+    the AlphaFold 3 supplement doesn't mention removing them.
+    """
     residues_to_remove = []
     chains_to_remove = []
 
@@ -404,7 +414,13 @@ def remove_non_ccd_atoms(
 
 
 def is_covalently_bonded(atom1: Atom, atom2: Atom) -> bool:
-    """Check if two atoms are covalently bonded."""
+    """
+    Check if two atoms are covalently bonded.
+
+    NOTE: Here, we rely on simple distance-based checks,
+    since the AlphaFold 3 supplement doesn't explicitly
+    mention how covalent bonds are classified.
+    """
     bond_type = tuple(sorted([atom1.element, atom2.element]))
     if bond_type in COVALENT_BOND_THRESHOLDS:
         return (atom1 - atom2) <= COVALENT_BOND_THRESHOLDS[bond_type]
@@ -414,7 +430,16 @@ def is_covalently_bonded(atom1: Atom, atom2: Atom) -> bool:
 def remove_leaving_atoms(
     structure: Structure, ccd_reader_results: Dict[str, CCDReaderResult]
 ) -> Structure:
-    """Remove leaving atoms in covalent ligands."""
+    """
+    Remove leaving atoms in covalent ligands.
+
+    NOTE: Here, we rely on simple distance-based checks to identify
+    covalent ligands (interacting with protein or nucleic acid atoms),
+    since the AlphaFold 3 supplement doesn't explicitly mention how
+    covalent ligands are identified. Furthermore, we rely on the CCD's
+    `leaving_atom_flag` metadata to discern leaving atoms within each
+    covalent ligand once a covalent ligand is structurally identified.
+    """
     residues_to_remove = []
     chains_to_remove = []
 
@@ -482,7 +507,12 @@ def remove_leaving_atoms(
 
 
 def filter_large_ca_distances(structure: Structure) -> Structure:
-    """Filter chains with large Ca atom distances."""
+    """
+    Filter chains with large Ca atom distances.
+
+    NOTE: This function currently does not account for residues
+    with missing or alternative Ca atom locations.
+    """
     chains_to_remove = []
 
     for chain in structure.get_chains():
@@ -651,7 +681,10 @@ def write_structure(structure: Structure, output_filepath: str):
 
 
 def process_structure(filepath: str, output_dir: str, skip_existing: bool = False):
-    """Given an mmCIF file, create a new processed mmCIF file using AlphaFold 3's PDB dataset filtering criteria."""
+    """
+    Given an input mmCIF file, create a new processed mmCIF file
+    using AlphaFold 3's PDB dataset filtering criteria.
+    """
     # Section 2.5.4 of the AlphaFold 3 supplement
     try:
         structure = parse_structure(filepath)
@@ -691,4 +724,4 @@ args_tuples = [
     (filepath, args.output_dir, args.skip_existing)
     for filepath in glob.glob(os.path.join(args.mmcif_dir, "*", "*.cif"))
 ]
-process_map(process_structure, args_tuples, max_workers=args.num_workers)
+process_map(lambda args: process_structure(*args), args_tuples, max_workers=args.num_workers)
