@@ -694,7 +694,8 @@ def write_structure(structure: Structure, output_filepath: str):
 def _process_structure(filepath: str, output_dir: str, skip_existing: bool = False):
     """
     Given an input mmCIF file, create a new processed mmCIF file
-    using AlphaFold 3's PDB dataset filtering criteria.
+    using AlphaFold 3's PDB dataset filtering criteria under a
+    timeout condition.
     """
     # Section 2.5.4 of the AlphaFold 3 supplement
     structure = parse_structure(filepath)
@@ -744,7 +745,7 @@ def process_structure(args: Tuple[str, str, bool]):
                 os.remove(output_filepath)
             except Exception as e:
                 print(
-                    f"Failed to remove partially processed file: {output_filepath} due to: {e}. Skipping its removal..."
+                    f"Failed to remove partially processed file {output_filepath} due to: {e}. Skipping its removal..."
                 )
 
 
