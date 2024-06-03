@@ -236,6 +236,7 @@ dependencies:
       - taylor-series-linear-attention==0.1.9
       - tenacity==8.3.0
       - threadpoolctl==3.5.0
+      - timeout_decorator==0.5.0
       - tomli==2.0.1
       - torch==2.3.0+cu118
       - torch-geometric==2.5.3

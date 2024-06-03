@@ -59,6 +59,7 @@ dependencies = [
     "ipykernel",       # for running Jupyter notebooks
     "rdkit>=2023.9.6", # for parsing small molecule data files
     "pdbeccdutils==0.8.5", # for parsing the Protein Data Bank's Chemical Component Dictionary (CCD)
+    "timeout_decorator>=0.5.0", # for preventing certain functions from executing indefinitely
     # "sh"             # for running bash commands in some tests (linux/macos only)
 ]
 
