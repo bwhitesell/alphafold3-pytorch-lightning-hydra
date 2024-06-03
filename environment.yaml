@@ -138,6 +138,7 @@ dependencies:
       - executing==2.0.1
       - filelock==3.13.1
       - fonttools==4.52.4
+      - frame-averaging-pytorch==0.0.14
       - frozendict==2.4.4
       - frozenlist==1.4.1
       - fsspec==2024.2.0
@@ -192,6 +193,7 @@ dependencies:
       - nvidia-nccl-cu11==2.20.5
       - nvidia-nvtx-cu11==11.8.86
       - omegaconf==2.3.0
+      - optree==0.11.0
       - optuna==2.10.1
       - ordered-set==4.1.0
       - pandas==1.5.3
@@ -236,7 +238,7 @@ dependencies:
       - taylor-series-linear-attention==0.1.9
       - tenacity==8.3.0
       - threadpoolctl==3.5.0
-      - timeout_decorator==0.5.0
+      - timeout-decorator==0.5.0
       - tomli==2.0.1
       - torch==2.3.0+cu118
       - torch-geometric==2.5.3
