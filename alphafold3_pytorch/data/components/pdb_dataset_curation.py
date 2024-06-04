@@ -715,7 +715,7 @@ def write_structure(structure: Structure, output_filepath: str):
 def process_structure_with_timeout(filepath: str, output_dir: str, skip_existing: bool = False):
     """
     Given an input mmCIF file, create a new processed mmCIF file
-    using AlphaFold 3's PDB dataset filtering criteria with a
+    using AlphaFold 3's PDB dataset filtering criteria under a
     timeout constraint.
     """
     # Section 2.5.4 of the AlphaFold 3 supplement
