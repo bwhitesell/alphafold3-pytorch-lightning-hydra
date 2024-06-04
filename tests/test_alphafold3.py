@@ -37,6 +37,11 @@ from alphafold3_pytorch.utils.model_utils import atom_ref_pos_to_atompair_inputs
 os.environ["TYPECHECK"] = "True"
 
 
+def join(str, delimiter=","):
+    """Join a list of strings with a delimiter."""
+    return delimiter.join(str)
+
+
 def test_atom_ref_pos_to_atompair_inputs():
     """Test the function to convert atom reference positions to atom pair inputs."""
     atom_ref_pos = torch.randn(16, 3)
@@ -421,8 +426,10 @@ def test_distogram_head():
     assert logits is not None
 
 
-@pytest.mark.parametrize("window_atompair_inputs", (True, False))
-def test_alphafold3(window_atompair_inputs: bool):
+@pytest.mark.parametrize(
+    join(["window_atompair_inputs", "stochastic_frame_average"]), [(True, False), (True, False)]
+)
+def test_alphafold3(window_atompair_inputs: bool, stochastic_frame_average: bool):
     """Test the AlphaFold 3 model."""
     seq_len = 16
     atoms_per_window = 27
@@ -464,12 +471,13 @@ def test_alphafold3(window_atompair_inputs: bool):
         confidence_head_kwargs=dict(pairformer_depth=1),
         template_embedder_kwargs=dict(pairformer_stack_depth=1),
         msa_module_kwargs=dict(depth=1),
-        pairformer_stack=dict(depth=2),
+        pairformer_stack=dict(depth=1),
         diffusion_module_kwargs=dict(
             atom_encoder_depth=1,
             token_transformer_depth=1,
             atom_decoder_depth=1,
         ),
+        stochastic_frame_average=stochastic_frame_average,
     )
 
     loss, breakdown = alphafold3(
@@ -535,7 +543,7 @@ def test_alphafold3_without_msa_and_templates():
         confidence_head_kwargs=dict(pairformer_depth=1),
         template_embedder_kwargs=dict(pairformer_stack_depth=1),
         msa_module_kwargs=dict(depth=1),
-        pairformer_stack=dict(depth=2),
+        pairformer_stack=dict(depth=1),
         diffusion_module_kwargs=dict(
             atom_encoder_depth=1,
             token_transformer_depth=1,

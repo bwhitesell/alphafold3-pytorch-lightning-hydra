@@ -54,6 +54,9 @@ pip install alphafold3-pytorch
 ```
 
 ### Docker
+The included `Dockerfile` contains the required dependencies to run the package and to train/inference using PyTorch with GPUs.
+
+The default base image is `pytorch/pytorch:2.3.0-cuda12.1-cudnn8-runtime` and installs the latest version of this package from the `main` GitHub branch.
 
 ```bash
 # Clone project
@@ -62,9 +65,23 @@ cd alphafold3-pytorch
 
 # Build Docker container
 docker build -t af3 .
+```
 
-# Run container (with GPUs)
-docker run --gpus all -it af3
+Alternatively, use build arguments to rebuild the image with different software versions:
+- `PYTORCH_TAG`: Changes the base image and thus builds with different PyTorch, CUDA, and/or cuDNN versions.
+- `GIT_TAG`: Changes the tag of this repo to clone and install the package.
+
+For example:
+```bash
+## Use build argument to change versions
+docker build --build-arg "PYTORCH_TAG=2.2.1-cuda12.1-cudnn8-devel" --build-arg "GIT_TAG=0.1.15" -t af3 .
+```
+
+Then, run the container with GPUs and mount a local volume (for training) using the following command:
+
+```bash
+## Run Container
+docker run -v .:/data --gpus all -it af3
 ```
 
 ## Usage
@@ -236,7 +253,7 @@ We use `pip` and `docker` to manage the project's underlying dependencies. Notab
 docker stop <container_id> # First stop any running `af3` container(s)
 docker rm <container_id> # Then remove the container(s) - Caution: Make sure to push your local changes to GitHub before running this!
 docker build -t af3 . # Rebuild the Docker image
-docker run --gpus all -it af3 # # Lastly, (re)start the Docker container from the updated image
+docker run -v .:/data --gpus all -it af3 # # Lastly, (re)start the Docker container from the updated image
 ```
 
 If you want to update the project's `pip` dependencies only, you can simply push to GitHub your changes to the `pyproject.toml` file.
@@ -302,5 +319,27 @@ Refer to [pre-commit's documentation](https://pre-commit.com/) for more details.
     year    = {2024},
     volume  = {abs/2402.18668},
     url     = {https://api.semanticscholar.org/CorpusID:268063190}
+}
+```
+
+```bibtex
+@article{Puny2021FrameAF,
+    title   = {Frame Averaging for Invariant and Equivariant Network Design},
+    author  = {Omri Puny and Matan Atzmon and Heli Ben-Hamu and Edward James Smith and Ishan Misra and Aditya Grover and Yaron Lipman},
+    journal = {ArXiv},
+    year    = {2021},
+    volume  = {abs/2110.03336},
+    url     = {https://api.semanticscholar.org/CorpusID:238419638}
+}
+```
+
+```bibtex
+@article{Duval2023FAENetFA,
+    title   = {FAENet: Frame Averaging Equivariant GNN for Materials Modeling},
+    author  = {Alexandre Duval and Victor Schmidt and Alex Hernandez Garcia and Santiago Miret and Fragkiskos D. Malliaros and Yoshua Bengio and David Rolnick},
+    journal = {ArXiv},
+    year    = {2023},
+    volume  = {abs/2305.05577},
+    url     = {https://api.semanticscholar.org/CorpusID:258564608}
 }
 ```
