@@ -165,6 +165,8 @@ sampled_atom_pos.shape # (2, <atom_seqlen>, 3)
 
 ## Data preparation
 
+### PDB dataset curation
+
 To acquire the AlphaFold 3 PDB dataset, first download all complexes in the Protein Data Bank (PDB), and then preprocess them with the script referenced below. The PDB can be downloaded from the RCSB: https://www.wwpdb.org/ftp/pdb-ftp-sites#rcsbpdb. The script below assumes you have downloaded the PDB in the **mmCIF file format** (e.g., placing it at `data/mmCIF/` by default). On the RCSB website, navigate down to "Download Protocols", and follow the download instructions depending on your location.
 
 > WARNING: Downloading PDB can take up to 1TB of space.
@@ -194,6 +196,15 @@ python alphafold3_pytorch/data/components/pdb_dataset_curation.py --mmcif_dir <p
 See the script for more options. Each mmCIF that successfully passes
 all processing steps will be written to <out_dir> within a subdirectory
 named using the mmCIF's second and third PDB ID characters (e.g. `5c`).
+
+### PDB dataset clustering
+
+Next, run the following with <out_dir> replaced with the location of your local output directory created using the dataset curation script above:
+```bash
+python alphafold3_pytorch/data/components/pdb_dataset_clustering.py --mmcif_dir <out_dir>
+```
+
+Once again, see the script for more options.
 
 ## Training
 

@@ -24,11 +24,11 @@ classifiers=[
 
 dependencies = [
     # --------- pytorch --------- #
-    "torch>=2.1",
-    "torchvision>=0.15.0",
     "lightning>=2.2.5",
-    "torchmetrics>=0.11.4",
     "taylor-series-linear-attention>=0.1.9",
+    "torch>=2.1",
+    "torchmetrics>=0.11.4",
+    "torchvision>=0.15.0",
     "torch-geometric",
 
     # --------- hydra --------- #
@@ -40,29 +40,32 @@ dependencies = [
     "pyyaml",
 
     # --------- loggers --------- #
-    # "wandb",
-    # "neptune-client",
-    # "mlflow",
-    # "comet-ml",
     # "aim>=3.16.2",  # no lower than 3.16.2, see https://github.com/aimhubio/aim/issues/2550
+    # "comet-ml",
+    # "mlflow",
+    # "neptune-client",
+    # "wandb",
 
     # --------- others --------- #
+    "beartype",        # runtime type checking
+    "biopython>=1.83", # for biological data parsing
     "einx>=0.2.2",     # for Einstein-inspired notation
     "einops>=0.8.0",   # for Einstein-inspired operations
     "frame-averaging-pytorch>=0.0.18", # for geometric data augmentation
-    "jaxtyping>=0.2.28",  # tensor type checking
-    "rootutils",       # standardizing the project root setup
-    "pre-commit",      # hooks for applying linters on commit
-    "rich",            # beautiful text formatting in terminal
-    "pytest",          # tests
-    "beartype",        # runtime type checking
-    "tqdm",            # progress bars
-    "setuptools",      # for packaging
     "ipykernel",       # for running Jupyter notebooks
-    "rdkit>=2023.9.6", # for parsing small molecule data files
+    "jaxtyping>=0.2.28",  # tensor type checking
+    "pandas>=1.5.3",   # for data parsing and analysis
     "pdbeccdutils==0.8.5", # for parsing the Protein Data Bank's Chemical Component Dictionary (CCD)
-    "timeout_decorator>=0.5.0", # for preventing certain functions from executing indefinitely
+    "pre-commit",      # hooks for applying linters on commit
+    "pytest",          # tests
+    "rdkit>=2023.9.6", # for parsing small molecule data files
+    "rich",            # beautiful text formatting in terminal
+    "rootutils",       # standardizing the project root setup
+    "scikit-learn>=1.5.0", # for basic machine learning utilities
+    "setuptools",      # for packaging
     # "sh"             # for running bash commands in some tests (linux/macos only)
+    "timeout_decorator>=0.5.0", # for preventing certain functions from executing indefinitely
+    "tqdm",            # progress bars
 ]
 
 [project.urls]
