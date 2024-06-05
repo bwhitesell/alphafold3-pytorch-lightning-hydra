@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from functools import partial
 from math import pi, sqrt
-from typing import Literal, NamedTuple, Tuple
+from typing import List, Literal, NamedTuple, Tuple
 
 import einx
 import torch
@@ -2889,8 +2889,10 @@ class ConfidenceHead(Module):
     """Algorithm 31."""
 
     @typecheck
-    def __init__(self, *, dim_single_inputs, atompair_dist_bins: Float[" d"], dim_single=384, dim_pairwise=128, num_plddt_bins=50, num_pde_bins=64, num_pae_bins=64, pairformer_depth=4, pairformer_kwargs: dict = dict()):  # type: ignore
+    def __init__(self, *, dim_single_inputs, atompair_dist_bins: List[float], dim_single=384, dim_pairwise=128, num_plddt_bins=50, num_pde_bins=64, num_pae_bins=64, pairformer_depth=4, pairformer_kwargs: dict = dict()):  # type: ignore
         super().__init__()
+
+        atompair_dist_bins = Tensor(atompair_dist_bins)
 
         self.register_buffer("atompair_dist_bins", atompair_dist_bins)
 
@@ -3030,7 +3032,7 @@ class AlphaFold3(Module):
         dim_single=384,
         dim_pairwise=128,
         dim_token=768,
-        distance_bins: Float[" dist_bins"] = torch.linspace(3, 20, 38),  # type: ignore
+        distance_bins: List[float] = torch.linspace(3, 20, 38).float().tolist(),
         ignore_index=-1,
         num_dist_bins: int | None = None,
         num_plddt_bins=50,
@@ -3209,12 +3211,14 @@ class AlphaFold3(Module):
 
         # logit heads
 
-        self.register_buffer("distance_bins", distance_bins)
-        num_dist_bins = default(num_dist_bins, len(distance_bins))
+        distance_bins_tensor = Tensor(distance_bins)
+
+        self.register_buffer("distance_bins", distance_bins_tensor)
+        num_dist_bins = default(num_dist_bins, len(distance_bins_tensor))
 
         assert (
-            len(distance_bins) == num_dist_bins
-        ), "The argument `distance_bins` must have a length equal to the `num_dist_bins` passed in."
+            len(distance_bins_tensor) == num_dist_bins
+        ), "The argument `distance_bins_tensor` must have a length equal to the `num_dist_bins` passed in."
 
         self.distogram_head = DistogramHead(dim_pairwise=dim_pairwise, num_dist_bins=num_dist_bins)
 

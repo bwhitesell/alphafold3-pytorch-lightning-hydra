@@ -379,7 +379,7 @@ def test_confidence_head():
 
     confidence_head = ConfidenceHead(
         dim_single_inputs=77,
-        atompair_dist_bins=torch.linspace(3, 20, 37),
+        atompair_dist_bins=torch.linspace(3, 20, 37).tolist(),
         dim_single=384,
         dim_pairwise=128,
     )

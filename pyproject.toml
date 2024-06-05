@@ -1,6 +1,6 @@
 [project]
 name = "alphafold3-pytorch"
-version = "0.1.19"
+version = "0.1.25"
 description = "AlphaFold 3 - Pytorch"
 authors = [
     { name = "Phil Wang", email = "lucidrains@gmail.com" }
@@ -37,6 +37,7 @@ dependencies = [
     "hydra-optuna-sweeper==1.2.0",
     "omegaconf",
     "pydantic>=2.7.2",
+    "pyyaml",
 
     # --------- loggers --------- #
     # "wandb",
