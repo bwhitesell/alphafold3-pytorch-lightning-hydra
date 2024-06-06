@@ -773,6 +773,7 @@ class MSAModule(Module):
         msa_pwa_dim_head=32,
         pairwise_block_kwargs: dict = dict(),
         max_num_msa: int | None = None,
+        layerscale_output: bool = True,
     ):
         super().__init__()
 
@@ -822,6 +823,10 @@ class MSAModule(Module):
             )
 
         self.layers = layers
+
+        self.layerscale_output = (
+            nn.Parameter(torch.zeros(dim_pairwise)) if layerscale_output else 1.0
+        )
 
     @typecheck
     def forward(
@@ -893,7 +898,7 @@ class MSAModule(Module):
         if exists(msa_mask):
             pairwise_repr = einx.where("b, b ..., -> b ...", has_msa, pairwise_repr, 0.0)
 
-        return pairwise_repr
+        return pairwise_repr * self.layerscale_output
 
 
 # pairformer stack
@@ -1125,6 +1130,7 @@ class TemplateEmbedder(Module):
         pairformer_stack_depth=2,
         pairwise_block_kwargs: dict = dict(),
         eps=1e-5,
+        layerscale_output=True,
     ):
         super().__init__()
         self.eps = eps
@@ -1148,6 +1154,8 @@ class TemplateEmbedder(Module):
         # final projection of mean pooled repr -> out
 
         self.to_out = nn.Sequential(LinearNoBias(dim, dim_pairwise), nn.ReLU())
+
+        self.layerscale = nn.Parameter(torch.zeros(dim_pairwise)) if layerscale_output else 1.0
 
     @typecheck
     def forward(
@@ -1202,7 +1210,7 @@ class TemplateEmbedder(Module):
 
         out = einx.where("b, b ..., -> b ...", has_templates, out, 0.0)
 
-        return out
+        return out * self.layerscale
 
 
 # diffusion related
@@ -3052,6 +3060,7 @@ class AlphaFold3(Module):
         template_embedder_kwargs: dict = dict(
             pairformer_stack_depth=2,
             pairwise_block_kwargs=dict(),
+            layerscale_output=True,
         ),
         msa_module_kwargs: dict = dict(
             depth=4,
@@ -3062,6 +3071,7 @@ class AlphaFold3(Module):
             msa_pwa_heads=8,
             msa_pwa_dim_head=32,
             pairwise_block_kwargs=dict(),
+            layerscale_output=True,
         ),
         pairformer_stack: dict = dict(
             depth=48,

@@ -1,5 +1,4 @@
 import os
-from functools import wraps
 
 import rootutils
 from beartype import beartype
@@ -15,21 +14,18 @@ rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
 
 def always(value):
+    """Always return a value."""
+
     def inner(*args, **kwargs):
+        """Inner function."""
         return value
 
     return inner
 
 
-def null_decorator(fn):
-    """A null decorator."""
-
-    @wraps(fn)
-    def inner(*args, **kwargs):
-        """Run an inner function."""
-        return fn(*args, **kwargs)
-
-    return inner
+def identity(t):
+    """Identity function."""
+    return t
 
 
 # NOTE: `jaxtyping` is a misnomer, works for PyTorch as well
@@ -54,7 +50,7 @@ Bool = TorchTyping(Bool)
 
 should_typecheck = os.environ.get("TYPECHECK", False)
 
-typecheck = jaxtyped(typechecker=beartype) if should_typecheck else null_decorator
+typecheck = jaxtyped(typechecker=beartype) if should_typecheck else identity
 
 beartype_isinstance = is_bearable if should_typecheck else always(True)
 
