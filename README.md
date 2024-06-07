@@ -190,7 +190,7 @@ Next run the commands `wget -P data/CCD/ https://files.wwpdb.org/pub/pdb/data/mo
 
 Then run the following with <pdb_dir>, <ccd_dir>, and <out_dir> replaced with the locations of your local copies of the PDB, CCD, and your desired dataset output directory (e.g., `data/PDB_set/` by default).
 ```bash
-python alphafold3_pytorch/data/components/pdb_dataset_curation.py --mmcif_dir <pdb_dir> --ccd_dir <ccd_dir> --out_dir <out_dir>
+python alphafold3_pytorch/data/components/pdb_mmcif_filtering.py --mmcif_dir <pdb_dir> --ccd_dir <ccd_dir> --out_dir <out_dir>
 ```
 
 See the script for more options. Each mmCIF that successfully passes
@@ -199,9 +199,9 @@ named using the mmCIF's second and third PDB ID characters (e.g. `5c`).
 
 ### PDB dataset clustering
 
-Next, run the following with <out_dir> replaced with the location of your local output directory created using the dataset curation script above:
+Next, run the following with <ccd_dir> and <out_dir> replaced, respectively, with the location of your local CCD copy and with your local output directory created using the dataset curation script above:
 ```bash
-python alphafold3_pytorch/data/components/pdb_dataset_clustering.py --mmcif_dir <out_dir>
+python alphafold3_pytorch/data/components/pdb_mmcif_clustering.py --mmcif_dir <out_dir> --ccd_dir <ccd_dir>
 ```
 
 Once again, see the script for more options.

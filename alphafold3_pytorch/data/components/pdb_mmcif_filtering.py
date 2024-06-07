@@ -715,28 +715,28 @@ if __name__ == "__main__":
     # Parse command-line arguments
 
     parser = argparse.ArgumentParser(
-        description="Process mmCIF files to curate the AlphaFold 3 PDB dataset."
+        description="Filter mmCIF files to curate the AlphaFold 3 PDB dataset."
     )
     parser.add_argument(
         "-i",
         "--mmcif_dir",
         type=str,
         default=os.path.join("data", "mmCIF"),
-        help="Path to the input directory containing mmCIF files to process.",
+        help="Path to the input directory containing mmCIF files to filter.",
     )
     parser.add_argument(
         "-c",
         "--ccd_dir",
         type=str,
         default=os.path.join("data", "CCD"),
-        help="Path to the directory containing CCD files to reference during data processing.",
+        help="Path to the directory containing CCD files to reference during data filtering.",
     )
     parser.add_argument(
         "-o",
         "--output_dir",
         type=str,
         default=os.path.join("data", "PDB_set"),
-        help="Path to the output directory in which to store processed mmCIF dataset files.",
+        help="Path to the output directory in which to store filtered mmCIF dataset files.",
     )
     parser.add_argument(
         "-s",
