@@ -199,9 +199,9 @@ named using the mmCIF's second and third PDB ID characters (e.g. `5c`).
 
 ### PDB dataset clustering
 
-Next, run the following with <ccd_dir> and <out_dir> replaced, respectively, with the location of your local CCD copy and with your local output directory created using the dataset curation script above:
+Next, run the following with <ccd_dir>, <out_dir>, and <clustering_out_dir> replaced, respectively, with the location of your local CCD copy, with your local output directory created using the dataset curation script above, and with your desired clustering output directory:
 ```bash
-python alphafold3_pytorch/data/components/pdb_mmcif_clustering.py --mmcif_dir <out_dir> --ccd_dir <ccd_dir>
+python alphafold3_pytorch/data/components/pdb_mmcif_clustering.py --mmcif_dir <out_dir> --ccd_dir <ccd_dir> --out_dir <clustering_out_dir>
 ```
 
 Once again, see the script for more options.

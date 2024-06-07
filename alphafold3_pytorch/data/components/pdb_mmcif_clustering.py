@@ -1,14 +1,14 @@
 import argparse
 import glob
-import json
 import os
 import subprocess
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Dict, List, Literal, Set, Tuple
 
 import numpy as np
 import pandas as pd
 import rootutils
+from Bio.PDB.NeighborSearch import NeighborSearch
 from gemmi import cif
 from pdbeccdutils.core.exceptions import CCDUtilsError
 from sklearn.cluster import AgglomerativeClustering
@@ -1403,7 +1403,31 @@ def read_ccd_codes_from_pdb_components_file(path_to_cif: str) -> Set[str]:
 
 @typecheck
 def convert_residue_three_to_one(
-    residue: str, ccd_codes: Set[str]
+    residue: str,
+    ccd_codes: Set[str],
+) -> Tuple[str, CLUSTERING_MOLECULE_TYPE]:
+    """
+    Convert a three-letter amino acid, nucleotide, or CCD code to a one-letter code (if applicable).
+
+    NOTE: All unknown residues residues (be they protein, RNA, DNA, or ligands) are converted to 'X'.
+    """
+    if residue in PROTEIN_CODES_3TO1:
+        return PROTEIN_CODES_3TO1[residue], "protein"
+    elif residue in DNA_CODES_3TO1:
+        return DNA_CODES_3TO1[residue], "nucleic_acid"
+    elif residue in RNA_CODES_3TO1:
+        return RNA_CODES_3TO1[residue], "nucleic_acid"
+    elif residue in ccd_codes:
+        return residue, "ligand"
+    else:
+        return "X", "unknown"
+
+
+@typecheck
+def convert_ambiguous_residue_three_to_one(
+    residue: str,
+    ccd_codes: Set[str],
+    molecule_type: CLUSTERING_MOLECULE_TYPE,
 ) -> Tuple[str, CLUSTERING_MOLECULE_TYPE]:
     """
     Convert a three-letter amino acid, nucleotide, or CCD code to a one-letter code (if applicable).
@@ -1411,57 +1435,110 @@ def convert_residue_three_to_one(
     NOTE: All unknown residues or unmappable modified residues (be they protein, RNA, DNA, or ligands) are converted to 'X'.
     """
     is_modified_protein_residue = (
-        residue in SCOP_CODES_3TO1
+        molecule_type == "protein"
+        and residue in SCOP_CODES_3TO1
         and len(SCOP_CODES_3TO1[residue]) == 1
-        and SCOP_CODES_3TO1[residue] in PROTEIN_CODES_1TO3
     )
     is_modified_dna_residue = (
-        residue in SCOP_CODES_3TO1
+        molecule_type == "dna"
+        and residue in SCOP_CODES_3TO1
         and len(SCOP_CODES_3TO1[residue]) == 1
-        and SCOP_CODES_3TO1[residue] in DNA_CODES_1TO3
     )
     is_modified_rna_residue = (
-        residue in SCOP_CODES_3TO1
+        molecule_type == "rna"
+        and residue in SCOP_CODES_3TO1
         and len(SCOP_CODES_3TO1[residue]) == 1
-        and SCOP_CODES_3TO1[residue] in RNA_CODES_1TO3
     )
 
-    if residue in PROTEIN_CODES_3TO1 or is_modified_protein_residue:
-        return PROTEIN_CODES_3TO1[residue], "protein"
-    elif residue in DNA_CODES_3TO1 or is_modified_dna_residue:
-        return DNA_CODES_3TO1[residue], "nucleic_acid"
-    elif residue in RNA_CODES_3TO1 or is_modified_rna_residue:
-        return RNA_CODES_3TO1[residue], "nucleic_acid"
-    elif residue in ccd_codes and residue not in SCOP_CODES_3TO1:
-        # TODO: fix ligand chain identification
-        return residue, "ligand"
+    # Map modified residues to their one-letter codes, if applicable
+    if is_modified_protein_residue or is_modified_dna_residue or is_modified_rna_residue:
+        one_letter_mapped_residue = SCOP_CODES_3TO1[residue]
+        if is_modified_protein_residue:
+            mapped_residue = PROTEIN_CODES_1TO3[one_letter_mapped_residue]
+        elif is_modified_dna_residue:
+            mapped_residue = DNA_CODES_1TO3[one_letter_mapped_residue]
+        elif is_modified_rna_residue:
+            mapped_residue = RNA_CODES_1TO3[one_letter_mapped_residue]
+    else:
+        mapped_residue = residue
+
+    if mapped_residue in PROTEIN_CODES_3TO1:
+        return PROTEIN_CODES_3TO1[mapped_residue], "protein"
+    elif mapped_residue in DNA_CODES_3TO1:
+        return DNA_CODES_3TO1[mapped_residue], "nucleic_acid"
+    elif mapped_residue in RNA_CODES_3TO1:
+        return RNA_CODES_3TO1[mapped_residue], "nucleic_acid"
+    elif mapped_residue in ccd_codes:
+        return mapped_residue, "ligand"
     else:
         return "X", "unknown"
 
 
 @typecheck
-def parse_chain_sequences_from_mmcif_file(
+def parse_chain_sequences_and_interfaces_from_mmcif_file(
     filepath: str, ccd_codes: Set[str], min_num_residues_for_protein_classification: int = 10
-) -> Dict[str, str]:
+) -> Tuple[Dict[str, str], Set[str]]:
     """
     Parse an mmCIF file and return a dictionary mapping chain IDs
-    to sequences for all molecule types (i.e., proteins, nucleic acids, peptides, ligands, etc).
+    to sequences for all molecule types (i.e., proteins, nucleic acids, peptides, ligands, etc)
+    as well as a set of chain ID pairs denoting structural interfaces.
     """
     assert filepath.endswith(".cif"), "The input file must be an mmCIF file."
     structure = parse_structure(filepath)
 
+    # NOTE: After filtering, only heavy (non-hydrogen) atoms remain in the structure
+    # all_atoms = [atom for atom in structure.get_atoms()]
+    # neighbor_search = NeighborSearch(all_atoms)
+
     sequences = {}
+    interface_chain_ids = set()
     for model in structure:
         for chain in model:
+            num_ligands_in_chain = 0
             one_letter_seq_tokens = []
             token_molecule_types = set()
+
+            # First find the most common molecule type in the chain
+            molecule_type_counter = Counter(
+                [convert_residue_three_to_one(res.resname, ccd_codes)[-1] for res in chain]
+            )
+            chain_most_common_molecule_types = molecule_type_counter.most_common(2)
+            chain_most_common_molecule_type = chain_most_common_molecule_types[0][0]
+            if (
+                chain_most_common_molecule_type == "ligand"
+                and len(chain_most_common_molecule_types) > 1
+            ):
+                # NOTE: Ligands may be the most common molecule type in a chain, in which case
+                # the second most common molecule type is required for sequence mapping
+                chain_most_common_molecule_type = chain_most_common_molecule_types[1][0]
+
             for res in chain:
-                if res.id[0] == " ":
-                    one_letter_residue, molecule_type = convert_residue_three_to_one(
-                        res.resname, ccd_codes
-                    )
+                # Then convert each residue to a one-letter code using the most common molecule type in the chain
+                one_letter_residue, molecule_type = convert_ambiguous_residue_three_to_one(
+                    res.resname, ccd_codes, molecule_type=chain_most_common_molecule_type
+                )
+                if molecule_type == "ligand":
+                    num_ligands_in_chain += 1
+                    sequences[
+                        f"{chain.id}:{molecule_type}-{res.resname}-{num_ligands_in_chain}"
+                    ] = one_letter_residue
+                else:
+                    assert (
+                        molecule_type == chain_most_common_molecule_type
+                    ), f"Residue {res.resname} in chain {chain.id} has an unexpected molecule type of `{molecule_type}` (versus the expected molecule type of `{chain_most_common_molecule_type}`)."
                     one_letter_seq_tokens.append(one_letter_residue)
                     token_molecule_types.add(molecule_type)
+
+                # TODO: Efficiently compute structural interfaces by precomputing each chain's most common molecule type
+                # Find all interfaces defined as pairs of chains with minimum heavy atom (i.e. non-hydrogen) separation less than 5 Å
+                # for atom in res:
+                #     for neighbor in neighbor_search.search(atom.coord, 5.0, "R"):
+                #         neighbor_one_letter_residue, neighbor_molecule_type = convert_ambiguous_residue_three_to_one(
+                #             neighbor.resname, ccd_codes, molecule_type=chain_most_common_molecule_type
+                #         )
+                #         molecule_index_postfix = f"-{res.resname}-{num_ligands_in_chain}" if molecule_type == "ligand" else ""
+                #         interface_chain_ids.add(f"{chain.id}:{molecule_type}{molecule_index_postfix}+{neighbor.get_parent().get_id()}:{neighbor_molecule_type}-{neighbor.resname}-{neighbor_num_ligands_in_chain}")
+
             assert (
                 len(one_letter_seq_tokens) > 0
             ), f"No residues found in chain {chain.id} within the mmCIF file {filepath}."
@@ -1490,25 +1567,32 @@ def parse_chain_sequences_from_mmcif_file(
             one_letter_seq = "".join(one_letter_seq_tokens)
             sequences[f"{chain.id}:{molecule_type}"] = one_letter_seq
 
-    return sequences
+    return sequences, interface_chain_ids
 
 
 @typecheck
-def parse_chain_sequences_from_mmcif_directory(
+def parse_chain_sequences_and_interfaces_from_mmcif_directory(
     mmcif_dir: str, ccd_codes: Set[str]
 ) -> CHAIN_SEQUENCES:
-    """Parse all mmCIF files in a directory and return a dictionary for each complex mapping chain IDs to sequences."""
+    """
+    Parse all mmCIF files in a directory and return a dictionary for each complex mapping chain IDs to sequences
+    as well as a set of chain ID pairs denoting structural interfaces for each complex."""
     all_chain_sequences = []
+    all_interface_chain_ids = []
 
     mmcif_filepaths = list(glob.glob(os.path.join(mmcif_dir, "*", "*.cif")))
     for cif_filepath in tqdm(
         mmcif_filepaths[:100], desc="Parsing chain sequences"
-    ):  # TODO: remove limit after development
+    ):  # TODO: remove loop length limit after development
         structure_id = os.path.splitext(os.path.basename(cif_filepath))[0]
-        chain_sequences = parse_chain_sequences_from_mmcif_file(cif_filepath, ccd_codes)
+        (
+            chain_sequences,
+            interface_chain_ids,
+        ) = parse_chain_sequences_and_interfaces_from_mmcif_file(cif_filepath, ccd_codes)
         all_chain_sequences.append({structure_id: chain_sequences})
+        all_interface_chain_ids.append({structure_id: interface_chain_ids})
 
-    return all_chain_sequences
+    return all_chain_sequences, all_interface_chain_ids
 
 
 @typecheck
@@ -1516,20 +1600,31 @@ def write_sequences_to_fasta(
     all_chain_sequences: CHAIN_SEQUENCES,
     fasta_filepath: str,
     molecule_type: CLUSTERING_MOLECULE_TYPE,
-):
-    """Write sequences of a particular molecule type to a FASTA file."""
+) -> List[str]:
+    """Write sequences of a particular molecule type to a FASTA file, and return all molecule IDs."""
     assert fasta_filepath.endswith(".fasta"), "The output file must be a FASTA file."
     fasta_filepath = fasta_filepath.replace(".fasta", f"_{molecule_type}.fasta")
 
+    molecule_ids = []
     with open(fasta_filepath, "w") as f:
         for structure_chain_sequences in tqdm(
-            all_chain_sequences, desc="Writing FASTA chain sequence file"
+            all_chain_sequences, desc=f"Writing {molecule_type} FASTA chain sequence file"
         ):
             for structure_id, chain_sequences in structure_chain_sequences.items():
                 for chain_id, sequence in chain_sequences.items():
                     chain_id_, molecule_type_ = chain_id.split(":")
-                    if molecule_type_ == molecule_type:
-                        f.write(f">{structure_id}{chain_id_}:{molecule_type_}\n{sequence}\n")
+                    molecule_type_name_and_index = molecule_type_.split("-")
+                    if molecule_type_name_and_index[0] == molecule_type:
+                        molecule_index_postfix = (
+                            f"-{molecule_type_name_and_index[1]}-{molecule_type_name_and_index[2]}"
+                            if len(molecule_type_name_and_index) == 3
+                            else ""
+                        )
+                        molecule_id = f"{structure_id}{chain_id_}:{molecule_type_name_and_index[0]}{molecule_index_postfix}"
+
+                        f.write(f">{molecule_id}\n{sequence}\n")
+                        molecule_ids.append(molecule_id)
+    return molecule_ids
 
 
 @typecheck
@@ -1538,7 +1633,6 @@ def run_clustalo(
     output_filepath: str,
     distmat_filepath: str,
     molecule_type: CLUSTERING_MOLECULE_TYPE,
-    percent_id: float,
 ):
     """Run Clustal Omega on the input FASTA file and write the aligned FASTA sequences and corresponding distance matrix to respective output files."""
     assert input_filepath.endswith(".fasta"), "The input file must be a FASTA file."
@@ -1549,6 +1643,8 @@ def run_clustalo(
     output_filepath = output_filepath.replace(".fasta", f"_{molecule_type}.fasta")
     distmat_filepath = distmat_filepath.replace(".txt", f"_{molecule_type}.txt")
 
+    assert os.path.isfile(input_filepath), f"Input file '{input_filepath}' does not exist."
+
     subprocess.run(
         [
             "clustalo",
@@ -1557,34 +1653,88 @@ def run_clustalo(
             "-o",
             output_filepath,
             f"--distmat-out={distmat_filepath}",
-            f"--percent-id={percent_id}",
+            "--percent-id",
+            "--full",
             "--force",
         ]
     )
 
 
 @typecheck
+def cluster_ligands_by_ccd_code(input_filepath: str, distmat_filepath: str):
+    """Cluster ligands based on their CCD codes and write the resulting sequence distance matrix to a file."""
+    assert input_filepath.endswith(".fasta"), "The input file must be a FASTA file."
+    assert distmat_filepath.endswith(".txt"), "The distance matrix file must be a text file."
+
+    input_filepath = input_filepath.replace(".fasta", "_ligand.fasta")
+    distmat_filepath = distmat_filepath.replace(".txt", "_ligand.txt")
+
+    # Parse the ligand FASTA input file into a dictionary
+    ligands = {}
+    with open(input_filepath, "r") as f:
+        structure_id = None
+        for line in f:
+            if line.startswith(">"):
+                structure_id = line[1:].strip()
+                ligands[structure_id] = ""
+            else:
+                ligands[structure_id] += line.strip()
+
+    # Convert ligands to a list of tuples for easier indexing
+    ligand_structure_ids = list(ligands.keys())
+    ligand_sequences = list(ligands.values())
+    n = len(ligand_structure_ids)
+
+    # Initialize the distance matrix efficiently
+    distance_matrix = np.zeros((n, n))
+
+    # Fill the distance matrix using only the upper triangle (symmetric)
+    for i in range(n):
+        for j in range(i, n):
+            if ligand_sequences[i] == ligand_sequences[j]:
+                distance_matrix[i, j] = 100.0
+                distance_matrix[j, i] = 100.0
+
+    # Write the ligand distance matrix to a NumPy-compatible text file
+    with open(distmat_filepath, "w") as f:
+        f.write(f"{n}\n")
+        for i in range(n):
+            row = [ligand_structure_ids[i]] + list(map(str, distance_matrix[i]))
+            f.write(" ".join(row) + "\n")
+
+
+@typecheck
 def read_distance_matrix(
-    distmat_filepath: str, molecule_type: CLUSTERING_MOLECULE_TYPE
+    distmat_filepath: str,
+    molecule_type: CLUSTERING_MOLECULE_TYPE,
 ) -> np.ndarray:
     """Read a distance matrix from a file and return it as a NumPy array."""
     assert distmat_filepath.endswith(".txt"), "The distance matrix file must be a text file."
     distmat_filepath = distmat_filepath.replace(".txt", f"_{molecule_type}.txt")
+    assert os.path.isfile(
+        distmat_filepath
+    ), f"Distance matrix file '{distmat_filepath}' does not exist."
 
-    df = pd.read_csv(distmat_filepath, delim_whitespace=True, header=None, skiprows=1)
-    matrix = df.values[:, 1:].astype(float)
+    # Convert sequence matching percentages to distances through complementation
+    df = pd.read_csv(distmat_filepath, sep="\s+", header=None, skiprows=1)
+    matrix = 100.0 - df.values[:, 1:].astype(float)
 
     return matrix
 
 
 @typecheck
-def cluster_interfaces(chain_to_cluster_mapping: Dict[str, int]) -> Dict[tuple, set]:
+def cluster_interfaces(
+    chain_cluster_mapping: Dict[str, np.int64], interface_chain_ids: Set[str]
+) -> Dict[tuple, set]:
     """Cluster interfaces based on the cluster IDs of the chains involved."""
     interface_clusters = defaultdict(set)
 
-    for (chain1, chain2), cluster in chain_to_cluster_mapping.items():
-        if (chain1, chain2) not in interface_clusters:
-            interface_clusters[(cluster[chain1], cluster[chain2])].add((chain1, chain2))
+    interface_chain_ids = list(interface_chain_ids)
+    for chain_id_pair in interface_chain_ids:
+        chain_ids = chain_id_pair.split("+")
+        chain_clusters = [chain_cluster_mapping[chain_id] for chain_id in chain_ids]
+        if (chain_clusters[0], chain_clusters[1]) not in interface_clusters:
+            interface_clusters[(chain_clusters[0], chain_clusters[1])] = f"{chain_id_pair}"
 
     return interface_clusters
 
@@ -1607,25 +1757,20 @@ if __name__ == "__main__":
         help="Path to the directory containing CCD files to reference during data clustering.",
     )
     parser.add_argument(
-        "--fasta_filepath",
-        type=str,
-        default=os.path.join("data", "sequences.fasta"),
-        help="Path to the output FASTA file.",
-    )
-    parser.add_argument(
-        "--temp_dir",
+        "--output_dir",
         type=str,
         default="data",
-        help="Path to the temporary directory for storing intermediate files.",
+        help="Path to the output FASTA file.",
     )
     args = parser.parse_args()
 
     # Determine paths for intermediate files
 
+    fasta_filepath = os.path.join(args.output_dir, "sequences.fasta")
     aligned_fasta_filepath = os.path.join(
-        os.path.dirname(args.fasta_filepath), "aligned_sequences.fasta"
+        os.path.dirname(fasta_filepath), "aligned_sequences.fasta"
     )
-    distmat_filepath = os.path.join(args.temp_dir, "distmat.txt")
+    distmat_filepath = os.path.join(args.output_dir, "distmat.txt")
 
     # Load the Chemical Component Dictionary (CCD) codes into memory
 
@@ -1637,44 +1782,47 @@ if __name__ == "__main__":
 
     # Parse all chain sequences from mmCIF files
 
-    all_chain_sequences = parse_chain_sequences_from_mmcif_directory(args.mmcif_dir, ccd_codes)
+    (
+        all_chain_sequences,
+        interface_chain_ids,
+    ) = parse_chain_sequences_and_interfaces_from_mmcif_directory(args.mmcif_dir, ccd_codes)
 
     # Align sequences separately for each molecule type and compute each respective distance matrix
 
-    write_sequences_to_fasta(all_chain_sequences, args.fasta_filepath, molecule_type="protein")
-    write_sequences_to_fasta(
-        all_chain_sequences, args.fasta_filepath, molecule_type="nucleic_acid"
+    protein_molecule_ids = write_sequences_to_fasta(
+        all_chain_sequences, fasta_filepath, molecule_type="protein"
     )
-    write_sequences_to_fasta(all_chain_sequences, args.fasta_filepath, molecule_type="peptide")
-    write_sequences_to_fasta(all_chain_sequences, args.fasta_filepath, molecule_type="ligand")
+    nucleic_acid_molecule_ids = write_sequences_to_fasta(
+        all_chain_sequences, fasta_filepath, molecule_type="nucleic_acid"
+    )
+    peptide_molecule_ids = write_sequences_to_fasta(
+        all_chain_sequences, fasta_filepath, molecule_type="peptide"
+    )
+    ligand_molecule_ids = write_sequences_to_fasta(
+        all_chain_sequences, fasta_filepath, molecule_type="ligand"
+    )
 
     run_clustalo(
-        args.fasta_filepath,
+        fasta_filepath,
         aligned_fasta_filepath,
         distmat_filepath,
         molecule_type="protein",
-        percent_id=0.4,
     )
     run_clustalo(
-        args.fasta_filepath,
+        fasta_filepath,
         aligned_fasta_filepath,
         distmat_filepath,
         molecule_type="nucleic_acid",
-        percent_id=1.0,
     )
     run_clustalo(
-        args.fasta_filepath,
+        fasta_filepath,
         aligned_fasta_filepath,
         distmat_filepath,
         molecule_type="peptide",
-        percent_id=1.0,
     )
-    run_clustalo(
-        args.fasta_filepath,
-        aligned_fasta_filepath,
+    cluster_ligands_by_ccd_code(
+        fasta_filepath,
         distmat_filepath,
-        molecule_type="ligand",
-        percent_id=1.0,
     )
 
     protein_dist_matrix = read_distance_matrix(distmat_filepath, molecule_type="protein")
@@ -1684,70 +1832,50 @@ if __name__ == "__main__":
 
     # Cluster residues at sequence homology levels corresponding to each molecule type
 
-    protein_labels = AgglomerativeClustering(
-        n_clusters=None, distance_threshold=0.60, affinity="precomputed", linkage="complete"
+    protein_cluster_labels = AgglomerativeClustering(
+        n_clusters=None, distance_threshold=40.0 + 1e-6, metric="precomputed", linkage="complete"
     ).fit_predict(protein_dist_matrix)
 
-    nucleic_acid_labels = AgglomerativeClustering(
-        n_clusters=None, distance_threshold=0.0, affinity="precomputed", linkage="complete"
+    nucleic_acid_cluster_labels = AgglomerativeClustering(
+        n_clusters=None, distance_threshold=1e-6, metric="precomputed", linkage="complete"
     ).fit_predict(nucleic_acid_dist_matrix)
 
-    peptide_labels = AgglomerativeClustering(
-        n_clusters=None, distance_threshold=0.0, affinity="precomputed", linkage="complete"
+    peptide_cluster_labels = AgglomerativeClustering(
+        n_clusters=None, distance_threshold=1e-6, metric="precomputed", linkage="complete"
     ).fit_predict(peptide_dist_matrix)
 
-    ligand_labels = AgglomerativeClustering(
-        n_clusters=None, distance_threshold=0.0, affinity="precomputed", linkage="complete"
+    ligand_cluster_labels = AgglomerativeClustering(
+        n_clusters=None, distance_threshold=1e-6, metric="precomputed", linkage="complete"
     ).fit_predict(ligand_dist_matrix)
 
-    # Map sequences to cluster IDs
+    # Map chain sequences to cluster IDs, and save the mappings to local (CSV) storage
 
-    protein_chain_to_cluster_mapping = {
-        chain_id: cluster_id
-        for chain_id, cluster_id in zip(all_chain_sequences.keys(), protein_labels)
-    }
-    nucleic_acid_chain_to_cluster_mapping = {
-        chain_id: cluster_id
-        for chain_id, cluster_id in zip(all_chain_sequences.keys(), nucleic_acid_labels)
-    }
-    peptide_chain_to_cluster_mapping = {
-        chain_id: cluster_id
-        for chain_id, cluster_id in zip(all_chain_sequences.keys(), peptide_labels)
-    }
-    ligand_chain_to_cluster_mapping = {
-        chain_id: cluster_id
-        for chain_id, cluster_id in zip(all_chain_sequences.keys(), ligand_labels)
-    }
-
-    # Cluster interfaces based on the cluster IDs of the chains involved
-
-    protein_interface_cluster_mapping = cluster_interfaces(protein_chain_to_cluster_mapping)
-    nucleic_acid_interface_cluster_mapping = cluster_interfaces(
-        nucleic_acid_chain_to_cluster_mapping
+    protein_chain_cluster_mapping = dict(zip(protein_molecule_ids, protein_cluster_labels))
+    nucleic_acid_chain_cluster_mapping = dict(
+        zip(nucleic_acid_molecule_ids, nucleic_acid_cluster_labels)
     )
-    peptide_interface_cluster_mapping = cluster_interfaces(peptide_chain_to_cluster_mapping)
-    ligand_interface_cluster_mapping = cluster_interfaces(ligand_chain_to_cluster_mapping)
+    peptide_chain_cluster_mapping = dict(zip(peptide_molecule_ids, peptide_cluster_labels))
+    ligand_chain_cluster_mapping = dict(zip(ligand_molecule_ids, ligand_cluster_labels))
 
-    # Save the cluster mappings to local storage
+    pd.DataFrame(
+        protein_chain_cluster_mapping.items(), columns=["molecule_id", "cluster_id"]
+    ).to_csv(os.path.join(args.output_dir, "protein_chain_cluster_mapping.csv"), index=False)
+    pd.DataFrame(
+        nucleic_acid_chain_cluster_mapping.items(), columns=["molecule_id", "cluster_id"]
+    ).to_csv(os.path.join(args.output_dir, "nucleic_acid_chain_cluster_mapping.csv"), index=False)
+    pd.DataFrame(
+        peptide_chain_cluster_mapping.items(), columns=["molecule_id", "cluster_id"]
+    ).to_csv(os.path.join(args.output_dir, "peptide_chain_cluster_mapping.csv"), index=False)
+    pd.DataFrame(
+        ligand_chain_cluster_mapping.items(), columns=["molecule_id", "cluster_id"]
+    ).to_csv(os.path.join(args.output_dir, "ligand_chain_cluster_mapping.csv"), index=False)
 
-    json.dump(protein_chain_to_cluster_mapping, open("protein_chain_to_cluster_mapping.json", "w"))
-    json.dump(
-        nucleic_acid_chain_to_cluster_mapping,
-        open("nucleic_acid_chain_to_cluster_mapping.json", "w"),
-    )
-    json.dump(peptide_chain_to_cluster_mapping, open("peptide_chain_to_cluster_mapping.json", "w"))
-    json.dump(ligand_chain_to_cluster_mapping, open("ligand_chain_to_cluster_mapping.json", "w"))
+    # Cluster interfaces based on the cluster IDs of the chains involved, and save the interface cluster mapping to local (CSV) storage
 
-    # Save the interface cluster mappings to local storage
+    interface_cluster_mapping = cluster_interfaces(
+        protein_chain_cluster_mapping, interface_chain_ids
+    )
 
-    json.dump(
-        protein_interface_cluster_mapping, open("protein_interface_cluster_mapping.json", "w")
-    )
-    json.dump(
-        nucleic_acid_interface_cluster_mapping,
-        open("nucleic_acid_interface_cluster_mapping.json", "w"),
-    )
-    json.dump(
-        peptide_interface_cluster_mapping, open("peptide_interface_cluster_mapping.json", "w")
-    )
-    json.dump(ligand_interface_cluster_mapping, open("ligand_interface_cluster_mapping.json", "w"))
+    pd.DataFrame(
+        interface_cluster_mapping.items(), columns=["molecule_id_pair", "interface_cluster_id"]
+    ).to_csv(os.path.join(args.output_dir, "interface_cluster_mapping.csv"), index=False)

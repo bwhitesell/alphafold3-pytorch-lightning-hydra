@@ -203,19 +203,16 @@ def filter_target(structure: Structure) -> Structure | None:
 
 
 @typecheck
-def remove_hydrogens(structure: Structure, remove_waters: bool = True) -> Structure:
+def remove_hydrogens_and_waters(structure: Structure) -> Structure:
     """
-    Remove hydrogens (and optionally waters) from a structure.
-
-    NOTE: By default, here we remove all waters, even though
-    the AlphaFold 3 supplement doesn't mention removing them.
+    Remove hydrogens and waters from a structure.
     """
     residues_to_remove = []
     chains_to_remove = []
 
     for chain in structure.get_chains():
         for res in chain:
-            if remove_waters and res.resname == "HOH":
+            if res.resname in {"HOH", "WAT"}:
                 residues_to_remove.append((chain, res.id))
             else:
                 atoms_to_remove = [atom.id for atom in res.get_atoms() if atom.element == "H"]
@@ -667,7 +664,7 @@ def process_structure_with_timeout(filepath: str, output_dir: str):
     structure = filter_target(structure)
     if exists(structure):
         # Filtering of bioassemblies
-        structure = remove_hydrogens(structure)
+        structure = remove_hydrogens_and_waters(structure)
         structure = remove_all_unknown_residue_chains(structure, STANDARD_RESIDUES)
         structure = remove_clashing_chains(structure)
         structure = remove_excluded_ligands(structure, LIGAND_EXCLUSION_LIST)
