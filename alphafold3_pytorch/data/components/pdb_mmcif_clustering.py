@@ -1433,6 +1433,7 @@ def convert_residue_three_to_one(
     elif residue in RNA_CODES_3TO1 or is_modified_rna_residue:
         return RNA_CODES_3TO1[residue], "nucleic_acid"
     elif residue in ccd_codes and residue not in SCOP_CODES_3TO1:
+        # TODO: fix ligand chain identification
         return residue, "ligand"
     else:
         return "X", "unknown"
