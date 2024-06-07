@@ -1,16 +1,19 @@
 name: alphafold3-pytorch
 channels:
+  - bioconda
   - conda-forge
 dependencies:
   - _libgcc_mutex=0.1=conda_forge
   - _openmp_mutex=4.5=2_gnu
+  - argtable2=2.13=hd590300_1004
   - brotli=1.1.0=hd590300_1
   - brotli-bin=1.1.0=hd590300_1
   - bzip2=1.0.8=hd590300_5
-  - ca-certificates=2024.2.2=hbcca054_0
+  - ca-certificates=2024.6.2=hbcca054_0
   - cairo=1.18.0=h3faef2a_0
   - certifi=2024.2.2=pyhd8ed1ab_0
   - chardet=5.2.0=py310hff52083_1
+  - clustalo=1.2.4=hdbdd923_8
   - contourpy=1.2.1=py310hd41b1e2_0
   - cycler=0.12.1=pyhd8ed1ab_0
   - expat=2.6.2=h59595ed_0
@@ -62,7 +65,7 @@ dependencies:
   - munkres=1.1.4=pyh9f0ad1d_0
   - ncurses=6.5=h59595ed_0
   - openjpeg=2.5.2=h488ebb8_0
-  - openssl=3.3.0=h4ab18f5_3
+  - openssl=3.3.1=h4ab18f5_0
   - packaging=24.0=pyhd8ed1ab_0
   - pcre2=10.43=hcad00b1_0
   - pip=24.0=pyhd8ed1ab_0
@@ -138,7 +141,7 @@ dependencies:
       - executing==2.0.1
       - filelock==3.13.1
       - fonttools==4.52.4
-      - frame-averaging-pytorch==0.0.14
+      - frame-averaging-pytorch==0.0.19
       - frozendict==2.4.4
       - frozenlist==1.4.1
       - fsspec==2024.2.0
