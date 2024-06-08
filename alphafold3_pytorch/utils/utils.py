@@ -136,3 +136,18 @@ def default(v: Any, d: Any) -> Any:
     :return: The value `v` if it exists, otherwise the default value `d`.
     """
     return v if exists(v) else d
+
+
+def always(value):
+    """Always return a value."""
+
+    def inner(*args, **kwargs):
+        """Inner function."""
+        return value
+
+    return inner
+
+
+def identity(x, *args, **kwargs):
+    """Return the input value."""
+    return x

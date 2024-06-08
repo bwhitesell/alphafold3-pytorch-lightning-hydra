@@ -6,26 +6,11 @@ from beartype.door import is_bearable
 from jaxtyping import Bool, Float, Int, jaxtyped
 from torch import Tensor
 
+from alphafold3_pytorch.utils.utils import always, identity
+
 # environment
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
-
-# function
-
-
-def always(value):
-    """Always return a value."""
-
-    def inner(*args, **kwargs):
-        """Inner function."""
-        return value
-
-    return inner
-
-
-def identity(t):
-    """Identity function."""
-    return t
 
 
 # NOTE: `jaxtyping` is a misnomer, works for PyTorch as well

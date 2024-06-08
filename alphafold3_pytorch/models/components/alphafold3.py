@@ -36,7 +36,7 @@ from alphafold3_pytorch.utils.model_utils import (
     unpack_one,
 )
 from alphafold3_pytorch.utils.typing import Bool, Float, Int, typecheck
-from alphafold3_pytorch.utils.utils import default, exists
+from alphafold3_pytorch.utils.utils import default, exists, identity
 
 """
 global ein notation:
@@ -2059,7 +2059,7 @@ class ElucidatedAtomDiffusion(Module):
         return sigmas
 
     @torch.no_grad()
-    def sample(self, atom_mask: Bool["b m"] | None = None, num_sample_steps=None, clamp=False, **network_condition_kwargs):  # type: ignore
+    def sample(self, atom_mask: Bool["b m"] | None = None, num_sample_steps=None, clamp=False, use_tqdm_pbar=True, tqdm_pbar_title="Sampling time step", **network_condition_kwargs):  # type: ignore
         """
         Sample clean atom positions.
 
@@ -2067,6 +2067,8 @@ class ElucidatedAtomDiffusion(Module):
         :param num_sample_steps: The number of sample steps.
         :param clamp: Whether to clamp the output.
         :param network_condition_kwargs: The network condition keyword arguments.
+        :param use_tqdm_pbar: Whether to use tqdm progress bar.
+        :param tqdm_pbar_title: The tqdm progress bar title.
         :return: The atom positions.
         """
         num_sample_steps = default(num_sample_steps, self.num_sample_steps)
@@ -2095,7 +2097,11 @@ class ElucidatedAtomDiffusion(Module):
 
         # gradually denoise
 
-        for sigma, sigma_next, gamma in tqdm(sigmas_and_gammas, desc="sampling time step"):
+        maybe_tqdm_wrapper = tqdm if use_tqdm_pbar else identity
+
+        for sigma, sigma_next, gamma in maybe_tqdm_wrapper(
+            sigmas_and_gammas, desc=tqdm_pbar_title
+        ):
             sigma, sigma_next, gamma = map(lambda t: t.item(), (sigma, sigma_next, gamma))
 
             eps = self.S_noise * torch.randn(shape, device=self.device)  # stochastic sampling
@@ -3289,6 +3295,7 @@ class AlphaFold3(Module):
         return_loss_breakdown=False,
         return_loss_if_possible: bool = True,
         num_rollout_steps: int = 20,
+        rollout_show_tqdm_pbar: bool = False,
     ) -> Float["b m 3"] | Float[""] | Tuple[Float[""], LossBreakdown]:  # type: ignore
         """
         Run the forward pass of AlphaFold 3.
@@ -3316,6 +3323,8 @@ class AlphaFold3(Module):
         :param resolved_labels: The resolved labels tensor.
         :param return_loss_breakdown: Whether to return the loss breakdown.
         :param return_loss_if_possible: Whether to return the loss if possible.
+        :param num_rollout_steps: The number of rollout steps.
+        :param rollout_show_tqdm_pbar: Whether to show a tqdm progress bar during rollout.
         :return: The atomic coordinates or the loss.
         """
         atom_seq_len = atom_inputs.shape[-2]
@@ -3636,6 +3645,8 @@ class AlphaFold3(Module):
                 pairwise_trunk=pairwise,
                 pairwise_rel_pos_feats=relative_position_encoding,
                 molecule_atom_lens=molecule_atom_lens,
+                use_tqdm_pbar=rollout_show_tqdm_pbar,
+                tqdm_pbar_title="Training rollout",
             )
 
             pred_atom_pos = einx.get_at(

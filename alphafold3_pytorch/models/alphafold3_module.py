@@ -1,4 +1,4 @@
-from typing import Any, Dict, Tuple, TypedDict
+from typing import Any, Dict, Tuple
 
 import rootutils
 import torch
@@ -7,34 +7,12 @@ from torch import Tensor
 from torchmetrics import MeanMetric, MinMetric
 
 from alphafold3_pytorch.models.components.alphafold3 import LossBreakdown
+from alphafold3_pytorch.models.components.inputs import AtomInput
 from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.model_utils import default_lambda_lr_fn
-from alphafold3_pytorch.utils.typing import Bool, Float, Int, typecheck
+from alphafold3_pytorch.utils.typing import Float, typecheck
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
-
-
-# constants
-
-
-@typecheck
-class AtomInput(TypedDict):
-    """A collection of inputs to AlphaFold 3."""
-
-    atom_inputs: Float["m dai"]  # type: ignore
-    molecule_atom_lens: Int[" n"]  # type: ignore
-    atompair_inputs: Float["m m dapi"] | Float["nw w (w*2) dapi"]  # type: ignore
-    additional_molecule_feats: Float["n 10"]  # type: ignore
-    templates: Float["t n n dt"]  # type: ignore
-    msa: Float["s n dm"]  # type: ignore
-    template_mask: Bool[" t"] | None  # type: ignore
-    msa_mask: Bool[" s"] | None  # type: ignore
-    atom_pos: Float["m 3"] | None  # type: ignore
-    molecule_atom_indices: Int[" n"] | None  # type: ignore
-    distance_labels: Int["n n"] | None  # type: ignore
-    pae_labels: Int["n n"] | None  # type: ignore
-    pde_labels: Int[" n"] | None  # type: ignore
-    resolved_labels: Int[" n"] | None  # type: ignore
 
 
 AVAILABLE_LR_SCHEDULERS = ["wcd", "plateau"]
@@ -103,9 +81,10 @@ class AlphaFold3LitModule(LightningModule):
         self.val_loss_best = MinMetric()
 
     @property
-    def is_main(self):
+    def is_main(self) -> bool:
         return self.trainer.global_rank == 0
 
+    @typecheck
     def forward(self, batch: AtomInput) -> Tuple[Float[""], LossBreakdown]:  # type: ignore
         """Perform a forward pass through the model `self.net`.
 
@@ -121,6 +100,7 @@ class AlphaFold3LitModule(LightningModule):
         self.val_loss.reset()
         self.val_loss_best.reset()
 
+    @typecheck
     def model_step(self, batch: AtomInput) -> Tuple[Float[""], LossBreakdown]:  # type: ignore
         """Perform a single model step on a batch of data.
 
@@ -130,6 +110,7 @@ class AlphaFold3LitModule(LightningModule):
         loss, loss_breakdown = self.forward(batch)
         return loss, loss_breakdown
 
+    @typecheck
     def training_step(self, batch: AtomInput, batch_idx: int) -> Tensor:
         """Perform a single training step on a batch of data from the training set.
 
@@ -164,6 +145,7 @@ class AlphaFold3LitModule(LightningModule):
         "Lightning hook that is called when a training epoch ends."
         pass
 
+    @typecheck
     def validation_step(self, batch: AtomInput, batch_idx: int) -> None:
         """Perform a single validation step on a batch of data from the validation set.
 
@@ -203,6 +185,7 @@ class AlphaFold3LitModule(LightningModule):
             prog_bar=True,
         )
 
+    @typecheck
     def test_step(self, batch: AtomInput, batch_idx: int) -> None:
         """Perform a single test step on a batch of data from the test set.
 
@@ -253,6 +236,7 @@ class AlphaFold3LitModule(LightningModule):
                 )
                 self.zero_grad()
 
+    @typecheck
     def setup(self, stage: str) -> None:
         """Lightning hook that is called at the beginning of fit (train + validate), validate,
         test, or predict.
