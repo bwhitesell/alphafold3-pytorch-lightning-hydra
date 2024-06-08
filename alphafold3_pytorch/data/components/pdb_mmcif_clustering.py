@@ -1746,20 +1746,20 @@ if __name__ == "__main__":
     parser.add_argument(
         "--mmcif_dir",
         type=str,
-        default=os.path.join("data", "PDB_set"),
+        default=os.path.join("data", "pdb_data", "mmcifs"),
         help="Path to the input directory containing (filtered) mmCIF files.",
     )
     parser.add_argument(
         "-c",
         "--ccd_dir",
         type=str,
-        default=os.path.join("data", "CCD"),
+        default=os.path.join("data", "ccd_data"),
         help="Path to the directory containing CCD files to reference during data clustering.",
     )
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="data",
+        default=os.path.join("data", "pdb_data", "data_caches", "clusterings"),
         help="Path to the output FASTA file.",
     )
     args = parser.parse_args()

@@ -40,7 +40,7 @@ from typing import Dict, List, Set, Tuple
 import pandas as pd
 import rootutils
 import timeout_decorator
-from Bio.PDB import MMCIFIO, PDBIO, MMCIFParser, PDBParser
+from Bio.PDB import MMCIFIO, PDBIO
 from Bio.PDB.Atom import Atom, DisorderedAtom
 from Bio.PDB.NeighborSearch import NeighborSearch
 from Bio.PDB.Residue import Residue
@@ -51,6 +51,7 @@ from tqdm.contrib.concurrent import process_map
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
+from alphafold3_pytorch.data.components import mmcif_parsing
 from alphafold3_pytorch.utils.typing import typecheck
 from alphafold3_pytorch.utils.utils import exists
 
@@ -59,7 +60,7 @@ from alphafold3_pytorch.utils.utils import exists
 Token = Residue | Atom | DisorderedAtom
 
 PROCESS_STRUCTURE_MAX_SECONDS = (
-    60  # Maximum time allocated to process a single structure (in seconds)
+    180  # Maximum time allocated to process a single structure (in seconds)
 )
 
 COVALENT_BOND_THRESHOLDS = {
@@ -132,17 +133,12 @@ POSEBUSTERS_V2_COMMON_NATURAL_LIGANDS = set(
 
 
 @typecheck
-def parse_structure(filepath: str) -> Structure:
+def parse_structure(filepath: str, file_id: str) -> Structure:
     """Parse a structure from a PDB or mmCIF file."""
-    if filepath.endswith(".pdb"):
-        parser = PDBParser(QUIET=True)
-    elif filepath.endswith(".cif"):
-        parser = MMCIFParser(QUIET=True)
-    else:
-        raise ValueError(f"Unsupported file format: {os.path.splitext(filepath)[-1]}")
-    structure_id = os.path.splitext(os.path.basename(filepath))[0]
-    structure = parser.get_structure(structure_id, filepath)
-    return structure
+    with open(filepath, "r") as f:
+        mmcif_string = f.read()
+    mmcif_object = mmcif_parsing.parse(file_id=file_id, mmcif_string=mmcif_string)
+    return mmcif_object
 
 
 @typecheck
@@ -718,21 +714,21 @@ if __name__ == "__main__":
         "-i",
         "--mmcif_dir",
         type=str,
-        default=os.path.join("data", "mmCIF"),
+        default=os.path.join("data", "pdb_data", "unprocessed_mmcifs"),
         help="Path to the input directory containing mmCIF files to filter.",
     )
     parser.add_argument(
         "-c",
         "--ccd_dir",
         type=str,
-        default=os.path.join("data", "CCD"),
+        default=os.path.join("data", "ccd_data"),
         help="Path to the directory containing CCD files to reference during data filtering.",
     )
     parser.add_argument(
         "-o",
         "--output_dir",
         type=str,
-        default=os.path.join("data", "PDB_set"),
+        default=os.path.join("data", "pdb_data", "mmcifs"),
         help="Path to the output directory in which to store filtered mmCIF dataset files.",
     )
     parser.add_argument(
@@ -770,11 +766,12 @@ if __name__ == "__main__":
     # Load the Chemical Component Dictionary (CCD) into memory
 
     print("Loading the Chemical Component Dictionary (CCD) into memory...")
-    CCD_READER_RESULTS = ccd_reader.read_pdb_components_file(
-        # Load globally to share amongst all worker processes
-        os.path.join(args.ccd_dir, "components.cif"),
-        sanitize=False,  # Reduce loading time
-    )
+    # CCD_READER_RESULTS = ccd_reader.read_pdb_components_file(
+    #     # Load globally to share amongst all worker processes
+    #     os.path.join(args.ccd_dir, "components.cif"),
+    #     sanitize=False,  # Reduce loading time
+    # )
+    CCD_READER_RESULTS = {}
     print("Finished loading the Chemical Component Dictionary (CCD) into memory.")
 
     # Process structures across all worker processes
