@@ -21,12 +21,8 @@ import io
 import logging
 from typing import Any, Mapping, Optional, Sequence, Tuple
 
-import numpy as np
 from Bio import PDB
-from Bio.Data import PDBData
-
-from alphafold3_pytorch.data.components.errors import MultipleChainsError
-from alphafold3_pytorch.np import residue_constants
+from Bio.Data import SCOPData
 
 # Type aliases:
 ChainId = str
@@ -89,7 +85,7 @@ class MmcifObject:
         files being processed.
       header: Biopython header.
       structure: Biopython structure.
-      chain_to_seqres: Dict mapping chain_id to 1 letter amino acid sequence. E.g.
+      chain_to_seqres: Dict mapping chain_id to 1 letter sequence. E.g.
         {'A': 'ABCDEFG'}
       seqres_to_structure: Dict; for each chain_id contains a mapping between
         SEQRES index and a ResidueAtPosition. e.g. {'A': {0: ResidueAtPosition,
@@ -272,7 +268,7 @@ def parse(*, file_id: str, mmcif_string: str, catch_all_errors: bool = True) -> 
             author_chain = mmcif_to_author_chain_id[chain_id]
             seq = []
             for monomer in seq_info:
-                code = PDBData.protein_letters_3to1.get(monomer.id, "X")
+                code = SCOPData.protein_letters_3to1.get(monomer.id, "X")
                 seq.append(code if len(code) == 1 else "X")
             seq = "".join(seq)
             author_chain_to_sequence[author_chain] = seq
@@ -397,7 +393,12 @@ def _get_protein_chains(*, parsed_info: Mapping[str, Any]) -> Mapping[ChainId, S
         chain_ids = entity_to_mmcif_chains[entity_id]
 
         # Reject polymers without any peptide-like components, such as DNA/RNA.
-        if any(["peptide" in chem_comps[monomer.id]["_chem_comp.type"] for monomer in seq_info]):
+        if any(
+            [
+                "peptide" in chem_comps[monomer.id]["_chem_comp.type"].lower()
+                for monomer in seq_info
+            ]
+        ):
             for chain_id in chain_ids:
                 valid_chains[chain_id] = seq_info
     return valid_chains
@@ -406,64 +407,3 @@ def _get_protein_chains(*, parsed_info: Mapping[str, Any]) -> Mapping[ChainId, S
 def _is_set(data: str) -> bool:
     """Returns False if data is a special mmCIF character indicating 'unset'."""
     return data not in (".", "?")
-
-
-def get_atom_coords(
-    mmcif_object: MmcifObject, chain_id: str, _zero_center_positions: bool = False
-) -> Tuple[np.ndarray, np.ndarray]:
-    # Locate the right chain
-    chains = list(mmcif_object.structure.get_chains())
-    relevant_chains = [c for c in chains if c.id == chain_id]
-    if len(relevant_chains) != 1:
-        raise MultipleChainsError(f"Expected exactly one chain in structure with id {chain_id}.")
-    chain = relevant_chains[0]
-
-    # Extract the coordinates
-    num_res = len(mmcif_object.chain_to_seqres[chain_id])
-    all_atom_positions = np.zeros([num_res, residue_constants.atom_type_num, 3], dtype=np.float32)
-    all_atom_mask = np.zeros([num_res, residue_constants.atom_type_num], dtype=np.float32)
-    for res_index in range(num_res):
-        pos = np.zeros([residue_constants.atom_type_num, 3], dtype=np.float32)
-        mask = np.zeros([residue_constants.atom_type_num], dtype=np.float32)
-        res_at_position = mmcif_object.seqres_to_structure[chain_id][res_index]
-        if not res_at_position.is_missing:
-            res = chain[
-                (
-                    res_at_position.hetflag,
-                    res_at_position.position.residue_number,
-                    res_at_position.position.insertion_code,
-                )
-            ]
-            for atom in res.get_atoms():
-                atom_name = atom.get_name()
-                x, y, z = atom.get_coord()
-                if atom_name in residue_constants.atom_order.keys():
-                    pos[residue_constants.atom_order[atom_name]] = [x, y, z]
-                    mask[residue_constants.atom_order[atom_name]] = 1.0
-                elif atom_name.upper() == "SE" and res.get_resname() == "MSE":
-                    # Put the coords of the selenium atom in the sulphur column
-                    pos[residue_constants.atom_order["SD"]] = [x, y, z]
-                    mask[residue_constants.atom_order["SD"]] = 1.0
-
-            # Fix naming errors in arginine residues where NH2 is incorrectly
-            # assigned to be closer to CD than NH1
-            cd = residue_constants.atom_order["CD"]
-            nh1 = residue_constants.atom_order["NH1"]
-            nh2 = residue_constants.atom_order["NH2"]
-            if (
-                res.get_resname() == "ARG"
-                and all(mask[atom_index] for atom_index in (cd, nh1, nh2))
-                and (np.linalg.norm(pos[nh1] - pos[cd]) > np.linalg.norm(pos[nh2] - pos[cd]))
-            ):
-                pos[nh1], pos[nh2] = pos[nh2].copy(), pos[nh1].copy()
-                mask[nh1], mask[nh2] = mask[nh2].copy(), mask[nh1].copy()
-
-        all_atom_positions[res_index] = pos
-        all_atom_mask[res_index] = mask
-
-    if _zero_center_positions:
-        binary_mask = all_atom_mask.astype(bool)
-        translation_vec = all_atom_positions[binary_mask].mean(axis=0)
-        all_atom_positions[binary_mask] -= translation_vec
-
-    return all_atom_positions, all_atom_mask
