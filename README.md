@@ -204,7 +204,7 @@ find data/ccd_data/ -type f -name "*.gz" -exec gzip -d {} \;
 
 Then run the following with `pdb_dir`, `ccd_dir`, and `mmcif_out_dir` replaced with the locations of your local copies of the PDB, CCD, and your desired dataset output directory (i.e., `./data/pdb_data/unprocessed_mmcifs/`, `./data/ccd_data/`, and `./data/pdb_data/mmcifs/`).
 ```bash
-python alphafold3_pytorch/data/components/pdb_mmcif_filtering.py --mmcif_dir <pdb_dir> --ccd_dir <ccd_dir> --out_dir <mmcif_out_dir>
+python scripts/filter_pdb_mmcifs.py --mmcif_dir <pdb_dir> --ccd_dir <ccd_dir> --out_dir <mmcif_out_dir>
 ```
 
 See the script for more options. Each mmCIF that successfully passes
@@ -215,7 +215,7 @@ named according to the mmCIF's second and third PDB ID characters (e.g. `5c`).
 
 Next, run the following with `mmcif_dir`, `ccd_dir`, and `clustering_out_dir` replaced, respectively, with your local output directory created using the dataset curation script above; with the location of your local CCD copy; and with your desired clustering output directory (i.e., `./data/pdb_data/mmcifs/`, `./data/ccd_data/`, and `./data/pdb_data/data_caches/clusterings/`):
 ```bash
-python alphafold3_pytorch/data/components/pdb_mmcif_clustering.py --mmcif_dir <mmcif_dir> --ccd_dir <ccd_dir> --out_dir <clustering_out_dir>
+python scripts/cluster_pdb_mmcifs.py --mmcif_dir <mmcif_dir> --ccd_dir <ccd_dir> --out_dir <clustering_out_dir>
 ```
 
 Once again, see the script above for more options.

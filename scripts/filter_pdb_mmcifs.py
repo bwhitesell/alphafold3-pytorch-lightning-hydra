@@ -51,7 +51,7 @@ from tqdm.contrib.concurrent import process_map
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
-from alphafold3_pytorch.data.components import mmcif_parsing
+from alphafold3_pytorch.data import mmcif_parsing
 from alphafold3_pytorch.utils.typing import typecheck
 from alphafold3_pytorch.utils.utils import exists
 
