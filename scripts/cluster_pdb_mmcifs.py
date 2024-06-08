@@ -18,7 +18,7 @@ rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
 from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.typing import typecheck
-from scripts.filter_pdb_mmcifs import parse_structure
+from scripts.filter_pdb_mmcifs import parse_mmcif
 
 log = RankedLogger(__name__, rank_zero_only=True)
 
@@ -1484,7 +1484,7 @@ def parse_chain_sequences_and_interfaces_from_mmcif_file(
     as well as a set of chain ID pairs denoting structural interfaces.
     """
     assert filepath.endswith(".cif"), "The input file must be an mmCIF file."
-    structure = parse_structure(filepath)
+    structure = parse_mmcif(filepath)
 
     # NOTE: After filtering, only heavy (non-hydrogen) atoms remain in the structure
     # all_atoms = [atom for atom in structure.get_atoms()]

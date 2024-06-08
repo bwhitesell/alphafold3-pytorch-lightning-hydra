@@ -52,6 +52,7 @@ from tqdm.contrib.concurrent import process_map
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
 from alphafold3_pytorch.data import mmcif_parsing
+from alphafold3_pytorch.data.mmcif_parsing import MmcifObject
 from alphafold3_pytorch.utils.typing import typecheck
 from alphafold3_pytorch.utils.utils import exists
 
@@ -60,7 +61,7 @@ from alphafold3_pytorch.utils.utils import exists
 Token = Residue | Atom | DisorderedAtom
 
 PROCESS_STRUCTURE_MAX_SECONDS = (
-    180  # Maximum time allocated to process a single structure (in seconds)
+    60  # Maximum time allocated to process a single structure (in seconds)
 )
 
 COVALENT_BOND_THRESHOLDS = {
@@ -133,12 +134,19 @@ POSEBUSTERS_V2_COMMON_NATURAL_LIGANDS = set(
 
 
 @typecheck
-def parse_structure(filepath: str, file_id: str) -> Structure:
-    """Parse a structure from a PDB or mmCIF file."""
+def parse_mmcif(filepath: str, file_id: str) -> MmcifObject:
+    """Parse an mmCIF file."""
     with open(filepath, "r") as f:
         mmcif_string = f.read()
+
     mmcif_object = mmcif_parsing.parse(file_id=file_id, mmcif_string=mmcif_string)
-    return mmcif_object
+
+    # Crash if an error is encountered. Any parsing errors should have
+    # been dealt with beforehand (e.g., at the alignment stage).
+    if mmcif_object.mmcif_object is None:
+        raise list(mmcif_object.errors.values())[0]
+
+    return mmcif_object.mmcif_object
 
 
 @typecheck
@@ -650,14 +658,14 @@ def process_structure_with_timeout(filepath: str, output_dir: str):
     timeout constraint.
     """
     # Section 2.5.4 of the AlphaFold 3 supplement
-    structure_id = os.path.splitext(os.path.basename(filepath))[0]
-    output_file_dir = os.path.join(output_dir, structure_id[1:3])
-    output_filepath = os.path.join(output_file_dir, f"{structure_id}.cif")
+    file_id = os.path.splitext(os.path.basename(filepath))[0]
+    output_file_dir = os.path.join(output_dir, file_id[1:3])
+    output_filepath = os.path.join(output_file_dir, f"{file_id}.cif")
     os.makedirs(output_file_dir, exist_ok=True)
 
     # Filtering of targets
-    structure = parse_structure(filepath)
-    structure = filter_target(structure)
+    mmcif_object = parse_mmcif(filepath, file_id)
+    structure = filter_target(mmcif_object.structure)
     if exists(structure):
         # Filtering of bioassemblies
         structure = remove_hydrogens_and_waters(structure)
@@ -684,9 +692,9 @@ def process_structure(args: Tuple[str, str, bool]):
     using AlphaFold 3's PDB dataset filtering criteria.
     """
     filepath, output_dir, skip_existing = args
-    structure_id = os.path.splitext(os.path.basename(filepath))[0]
-    output_file_dir = os.path.join(output_dir, structure_id[1:3])
-    output_filepath = os.path.join(output_file_dir, f"{structure_id}.cif")
+    file_id = os.path.splitext(os.path.basename(filepath))[0]
+    output_file_dir = os.path.join(output_dir, file_id[1:3])
+    output_filepath = os.path.join(output_file_dir, f"{file_id}.cif")
     if skip_existing and os.path.exists(output_filepath):
         print(f"Skipping existing output file: {output_filepath}")
         return
