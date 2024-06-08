@@ -739,17 +739,17 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-n",
-        "--num_workers",
+        "--no_workers",
         type=int,
-        default=1,
-        help="Number of worker processes to use for parallel processing.",
+        default=4,
+        help="Number of workers to use for processing.",
     )
     parser.add_argument(
         "-w",
-        "--worker_chunk_size",
+        "--chunksize",
         type=int,
-        default=1,
-        help="Size of mmCIF file chunks sent to worker processes.",
+        default=10,
+        help="How many files should be distributed to each worker at a time.",
     )
     args = parser.parse_args()
 
@@ -783,6 +783,6 @@ if __name__ == "__main__":
     process_map(
         process_structure,
         args_tuples,
-        max_workers=args.num_workers,
-        chunksize=args.worker_chunk_size,
+        max_workers=args.no_workers,
+        chunksize=args.chunksize,
     )
