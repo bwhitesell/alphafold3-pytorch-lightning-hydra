@@ -31,7 +31,7 @@ You can chat with other researchers about this work <a href="https://discord.gg/
 
 - <a href="https://github.com/gitabtion">Heng</a> for pointing out inconsistencies with the paper and pull requesting the solutions
 
-<a href="https://github.com/amorehead">Alex</a> for the PDB dataset preparation script!
+- <a href="https://github.com/amorehead">Alex</a> for the PDB dataset preparation script!
 
 - <a href="https://github.com/patrick-kidger">Patrick</a> for <a href="https://docs.kidger.site/jaxtyping/">jaxtyping</a>, <a href="https://github.com/fferflo">Florian</a> for <a href="https://github.com/fferflo/einx">einx</a>, and of course, <a href="https://github.com/arogozhnikov">Alex</a> for <a href="https://einops.rocks/">einops</a>
 
@@ -46,6 +46,8 @@ You can chat with other researchers about this work <a href="https://discord.gg/
 - [Citations](#citations)
 
 ## Installation
+
+<details>
 
 ### Pip
 
@@ -84,7 +86,11 @@ Then, run the container with GPUs and mount a local volume (for training) using 
 docker run -v .:/data --gpus all -it af3
 ```
 
+</details>
+
 ## Usage
+
+<details>
 
 ```python
 import torch
@@ -163,7 +169,11 @@ sampled_atom_pos = alphafold3(
 sampled_atom_pos.shape # (2, <atom_seqlen>, 3)
 ```
 
+</details>
+
 ## Data preparation
+
+<details>
 
 ### PDB dataset curation
 
@@ -202,6 +212,8 @@ from the project's root directory to download the latest version of the PDB's Ch
 find data/ccd_data/ -type f -name "*.gz" -exec gzip -d {} \;
 ```
 
+### PDB dataset filtering
+
 Then run the following with `pdb_dir`, `ccd_dir`, and `mmcif_output_dir` replaced with the locations of your local copies of the PDB, CCD, and your desired dataset output directory (i.e., `./data/pdb_data/unprocessed_mmcifs/`, `./data/ccd_data/`, and `./data/pdb_data/mmcifs/`).
 ```bash
 python scripts/filter_pdb_mmcifs.py --mmcif_dir <pdb_dir> --ccd_dir <ccd_dir> --output_dir <mmcif_output_dir>
@@ -218,9 +230,22 @@ Next, run the following with `mmcif_dir`, `ccd_dir`, and `clustering_output_dir`
 python scripts/cluster_pdb_mmcifs.py --mmcif_dir <mmcif_dir> --ccd_dir <ccd_dir> --output_dir <clustering_output_dir>
 ```
 
-Once again, see the script above for more options.
+See the script above for more options.
+
+### PDB dataset caching
+
+Now, run the following with `pdb_dir` and `cache_output_path` replaced with the location of your local copy of the PDB and your desired dataset cache output filepath (i.e., `./data/pdb_data/mmcifs/` and `./data/pdb_data/data_caches/chain_data_cache.json`).
+```bash
+python scripts/generate_mmcif_cache.py --mmcif_dir <pdb_dir> --output_path <cache_output_path>
+```
+
+See the script above for more options.
+
+</details>
 
 ## Training
+
+<details>
 
 Train model with default configuration
 
@@ -245,7 +270,11 @@ You can override any parameter from command line like this
 python alphafold3_pytorch/train.py trainer.max_steps=1e6 data.batch_size=128
 ```
 
+</details>
+
 ## Evaluation
+
+<details>
 
 Evaluate a trained set of weights on held-out test data
 
@@ -254,7 +283,11 @@ Evaluate a trained set of weights on held-out test data
 python alphafold3_pytorch/eval.py trainer=gpu
 ```
 
+</details>
+
 ## For developers
+
+<details>
 
 ### Contributing
 
@@ -298,6 +331,8 @@ pre-commit run -a
 ```
 
 Refer to [pre-commit's documentation](https://pre-commit.com/) for more details.
+
+</details>
 
 ## Citations
 

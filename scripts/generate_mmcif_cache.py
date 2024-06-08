@@ -2,11 +2,8 @@ import argparse
 import json
 import logging
 import os
-import sys
 from functools import partial
 from multiprocessing import Pool
-
-sys.path.append(".")  # an innocent hack to get this to run from the top level
 
 from tqdm import tqdm
 
@@ -87,7 +84,7 @@ if __name__ == "__main__":
         default=None,
         help=(
             "Path to a cluster file (e.g. PDB40), one cluster "
-            "({PROT1_ID}_{CHAIN_ID} {PROT2_ID}_{CHAIN_ID} ...) per line. "
+            "({COMP1_ID}_{CHAIN_ID} {COMP1_ID}_{CHAIN_ID} ...) per line. "
             "Chains not in this cluster file will NOT be filtered by cluster "
             "size."
         ),
