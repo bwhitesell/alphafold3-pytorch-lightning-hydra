@@ -19,7 +19,7 @@ import dataclasses
 import functools
 import io
 import logging
-from typing import Any, Mapping, Optional, Sequence, Tuple
+from typing import Any, Mapping, Optional, Sequence, Set, Tuple
 
 import numpy as np
 from Bio import PDB
@@ -34,6 +34,10 @@ PdbHeader = Mapping[str, Any]
 PdbStructure = PDB.Structure.Structure
 SeqRes = str
 MmCIFDict = Mapping[str, Sequence[str]]
+
+AtomFullId = Tuple[str, int, str, Tuple[str, int, str], Tuple[str, str]]
+ResidueFullId = Tuple[str, int, str, Tuple[str, int, str]]
+ChainFullId = Tuple[str, int, str]
 
 
 # Protein, DNA, and RNA letters.
@@ -132,20 +136,23 @@ class MmcifObject:
     """Representation of a parsed mmCIF file.
 
     Contains:
-      file_id: A meaningful name, e.g. a pdb_id. Should be unique amongst all
-        files being processed.
-      header: Biopython header.
-      structure: Biopython structure.
-        chem_comp_details: Dict mapping chain_id to a list of ChemComp. E.g.
-        {'A': [ChemComp, ChemComp, ...]}
-      chain_to_seqres: Dict mapping chain_id to 1 letter sequence. E.g.
-        {'A': 'ABCDEFG'}
-      seqres_to_structure: Dict; for each chain_id contains a mapping between
-        SEQRES index and a ResidueAtPosition. e.g. {'A': {0: ResidueAtPosition,
-                                                          1: ResidueAtPosition,
-                                                          ...}}
-      covalent_bonds: List of CovalentBond.
-      raw_string: The raw string used to construct the MmcifObject.
+        file_id: A meaningful name, e.g. a pdb_id. Should be unique amongst all
+            files being processed.
+        header: Biopython header.
+        structure: Biopython structure.
+            chem_comp_details: Dict mapping chain_id to a list of ChemComp. E.g.
+            {'A': [ChemComp, ChemComp, ...]}
+        chain_to_seqres: Dict mapping chain_id to 1 letter sequence. E.g.
+            {'A': 'ABCDEFG'}
+        seqres_to_structure: Dict; for each chain_id contains a mapping between
+            SEQRES index and a ResidueAtPosition. e.g. {'A': {0: ResidueAtPosition,
+                                                            1: ResidueAtPosition,
+                                                            ...}}
+        covalent_bonds: List of CovalentBond.
+        raw_string: The raw string used to construct the MmcifObject.
+        atoms_to_remove: Optional set of atoms to remove.
+        residues_to_remove: Optional set of residues to remove.
+        chains_to_remove: Optional set of chains to remove.
     """
 
     file_id: str
@@ -156,6 +163,9 @@ class MmcifObject:
     seqres_to_structure: Mapping[ChainId, Mapping[int, ResidueAtPosition]]
     covalent_bonds: Sequence[CovalentBond]
     raw_string: Any
+    atoms_to_remove: Set[AtomFullId]
+    residues_to_remove: Set[ResidueFullId]
+    chains_to_remove: Set[ChainFullId]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -349,7 +359,9 @@ def parse(*, file_id: str, mmcif_string: str, catch_all_errors: bool = True) -> 
                 )
             seq = "".join(seq)
             author_chain_to_sequence[author_chain] = seq
-            chem_comp_details[author_chain] = chem_comp_info
+            chem_comp_details[
+                chain_id
+            ] = chem_comp_info  # NOTE: `ChemComp`s are indexed by internal mmCIF chain ids, not author ids.
 
         # Identify all covalent bonds.
         covalent_bonds = _get_covalent_bond_list(parsed_info)
@@ -363,6 +375,9 @@ def parse(*, file_id: str, mmcif_string: str, catch_all_errors: bool = True) -> 
             seqres_to_structure=seq_to_structure_mappings,
             covalent_bonds=covalent_bonds,
             raw_string=parsed_info,
+            atoms_to_remove=set(),
+            residues_to_remove=set(),
+            chains_to_remove=set(),
         )
         mmcif_object.structure.header = header
 
