@@ -42,9 +42,9 @@ import rootutils
 import timeout_decorator
 from Bio.PDB import MMCIFIO, PDBIO
 from Bio.PDB.Atom import Atom, DisorderedAtom
+from Bio.PDB.Model import Model
 from Bio.PDB.NeighborSearch import NeighborSearch
 from Bio.PDB.Residue import Residue
-from Bio.PDB.Structure import Structure
 from pdbeccdutils.core import ccd_reader
 from pdbeccdutils.core.ccd_reader import CCDReaderResult
 from tqdm.contrib.concurrent import process_map
@@ -61,7 +61,7 @@ from alphafold3_pytorch.utils.utils import exists
 Token = Residue | Atom | DisorderedAtom
 
 PROCESS_STRUCTURE_MAX_SECONDS = (
-    60  # Maximum time allocated to process a single structure (in seconds)
+    600  # Maximum time allocated to process a single structure (in seconds)
 )
 
 COVALENT_BOND_THRESHOLDS = {
@@ -150,19 +150,19 @@ def parse_mmcif(filepath: str, file_id: str) -> MmcifObject:
 
 
 @typecheck
-def filter_pdb_deposition_date(
-    structure: Structure, cutoff_date: pd.Timestamp = pd.to_datetime("2021-09-30")
+def filter_pdb_release_date(
+    structure: Model, cutoff_date: pd.Timestamp = pd.to_datetime("2021-09-30")
 ) -> bool:
-    """Filter based on PDB deposition date."""
+    """Filter based on PDB release date."""
     return (
-        "deposition_date" in structure.header
-        and exists(structure.header["deposition_date"])
-        and pd.to_datetime(structure.header["deposition_date"]) <= cutoff_date
+        "release_date" in structure.header
+        and exists(structure.header["release_date"])
+        and pd.to_datetime(structure.header["release_date"]) <= cutoff_date
     )
 
 
 @typecheck
-def filter_resolution(structure: Structure, max_resolution: float = 9.0) -> bool:
+def filter_resolution(structure: Model, max_resolution: float = 9.0) -> bool:
     """Filter based on resolution."""
     return (
         "resolution" in structure.header
@@ -173,41 +173,76 @@ def filter_resolution(structure: Structure, max_resolution: float = 9.0) -> bool
 
 @typecheck
 def filter_polymer_chains(
-    structure: Structure, max_chains: int = 1000, for_training: bool = False
+    structure: Model, max_chains: int = 1000, for_training: bool = False
 ) -> bool:
     """Filter based on number of polymer chains."""
-    count = sum(1 for chain in structure.get_chains() if chain.id[0] == " ")
+    count = len(list(structure.get_chains()))
     return count <= (300 if for_training else max_chains)
 
 
 @typecheck
-def filter_resolved_chains(structure: Structure) -> Structure | None:
+def remove_chain_from_mmcif_object(mmcif_object: MmcifObject, chain_id: str):
+    """Remove a chain from an mmCIF object."""
+    # Filter any residues present in a given chain
+    mmcif_object.chain_to_seqres.pop(chain_id, None)
+    mmcif_object.chem_comp_details.pop(chain_id, None)
+    mmcif_object.seqres_to_structure.pop(chain_id, None)
+
+    # Filter any covalent bonds present in a given chain
+    filtered_covalent_bonds = []
+    for covalent_bond in mmcif_object.covalent_bonds:
+        # TODO: Verify that referencing `auth_comp_id` is the correct way to filter covalent bonds here
+        if (
+            chain_id == covalent_bond.ptnr1_auth_comp_id
+            or chain_id == covalent_bond.ptnr2_auth_comp_id
+        ):
+            continue
+        filtered_covalent_bonds.append(covalent_bond)
+    mmcif_object.covalent_bonds = filtered_covalent_bonds
+
+    # TODO: Filter the raw metadata
+
+
+@typecheck
+def filter_resolved_chains(
+    mmcif_object: MmcifObject, minimum_polymer_residues: int = 4
+) -> MmcifObject | None:
     """Filter based on number of resolved residues."""
     chains_to_remove = [
-        chain.id
-        for chain in structure.get_chains()
-        if len([res for res in chain if res.id[0] == " "]) < 4
+        chain_id
+        for chain_id in mmcif_object.chem_comp_details
+        if len(
+            [
+                chem_comp
+                for chem_comp in mmcif_object.chem_comp_details[chain_id]
+                if any(
+                    comp_type in chem_comp.type.lower() for comp_type in {"peptide", "dna", "rna"}
+                )
+            ]
+        )
+        < minimum_polymer_residues
     ]
 
     for chain_id in chains_to_remove:
-        structure[0].detach_child(chain_id)
+        mmcif_object.structure[0].detach_child(chain_id)
+        remove_chain_from_mmcif_object(mmcif_object, chain_id)
 
-    return structure if list(structure.get_chains()) else None
+    return mmcif_object if list(mmcif_object.structure.get_chains()) else None
 
 
 @typecheck
-def filter_target(structure: Structure) -> Structure | None:
+def filter_target(mmcif_object) -> MmcifObject | None:
     """Filter a target based on various criteria."""
     target_passes_prefilters = (
-        filter_pdb_deposition_date(structure)
-        and filter_resolution(structure)
-        and filter_polymer_chains(structure)
+        filter_pdb_release_date(mmcif_object.structure)
+        and filter_resolution(mmcif_object.structure)
+        and filter_polymer_chains(mmcif_object.structure)
     )
-    return filter_resolved_chains(structure) if target_passes_prefilters else None
+    return filter_resolved_chains(mmcif_object) if target_passes_prefilters else None
 
 
 @typecheck
-def remove_hydrogens_and_waters(structure: Structure) -> Structure:
+def remove_hydrogens_and_waters(structure: Model) -> Model:
     """
     Remove hydrogens and waters from a structure.
     """
@@ -236,9 +271,7 @@ def remove_hydrogens_and_waters(structure: Structure) -> Structure:
 
 
 @typecheck
-def remove_all_unknown_residue_chains(
-    structure: Structure, standard_residues: Set[str]
-) -> Structure:
+def remove_all_unknown_residue_chains(structure: Model, standard_residues: Set[str]) -> Model:
     """Remove polymer chains with all unknown residues."""
     chains_to_remove = [
         chain.id
@@ -254,8 +287,8 @@ def remove_all_unknown_residue_chains(
 
 @typecheck
 def remove_clashing_chains(
-    structure: Structure, clash_threshold: float = 1.7, clash_percentage: float = 0.3
-) -> Structure:
+    structure: Model, clash_threshold: float = 1.7, clash_percentage: float = 0.3
+) -> Model:
     """Remove clashing chains."""
     chains = list(structure.get_chains())
     clashing_chains = []
@@ -314,7 +347,7 @@ def remove_clashing_chains(
 
 
 @typecheck
-def remove_excluded_ligands(structure: Structure, ligand_exclusion_list: Set[str]) -> Structure:
+def remove_excluded_ligands(structure: Model, ligand_exclusion_list: Set[str]) -> Model:
     """
     Remove ligands in the exclusion list.
 
@@ -341,8 +374,8 @@ def remove_excluded_ligands(structure: Structure, ligand_exclusion_list: Set[str
 
 @typecheck
 def remove_non_ccd_atoms(
-    structure: Structure, ccd_reader_results: Dict[str, CCDReaderResult]
-) -> Structure:
+    structure: Model, ccd_reader_results: Dict[str, CCDReaderResult]
+) -> Model:
     """Remove atoms not in the corresponding CCD code set."""
     residues_to_remove = []
     chains_to_remove = []
@@ -389,8 +422,8 @@ def is_covalently_bonded(atom1: Atom | DisorderedAtom, atom2: Atom | DisorderedA
 
 @typecheck
 def remove_leaving_atoms(
-    structure: Structure, ccd_reader_results: Dict[str, CCDReaderResult]
-) -> Structure:
+    structure: Model, ccd_reader_results: Dict[str, CCDReaderResult]
+) -> Model:
     """
     Remove leaving atoms in covalent ligands.
 
@@ -468,7 +501,7 @@ def remove_leaving_atoms(
 
 
 @typecheck
-def filter_large_ca_distances(structure: Structure, max_distance: float = 10.0) -> Structure:
+def filter_large_ca_distances(structure: Model, max_distance: float = 10.0) -> Model:
     """
     Filter chains with large Ca atom distances.
 
@@ -493,11 +526,11 @@ def filter_large_ca_distances(structure: Structure, max_distance: float = 10.0) 
 
 @typecheck
 def select_closest_chains(
-    structure: Structure,
+    structure: Model,
     protein_residue_center_atoms: Dict[str, str],
     nucleic_acid_residue_center_atoms: Dict[str, str],
     max_chains: int = 20,
-) -> Structure:
+) -> Model:
     """Select the closest chains in large bioassemblies."""
 
     @typecheck
@@ -610,8 +643,8 @@ def select_closest_chains(
 
 @typecheck
 def remove_crystallization_aids(
-    structure: Structure, crystallography_methods: Dict[str, Set[str]]
-) -> Structure:
+    structure: Model, crystallography_methods: Dict[str, Set[str]]
+) -> Model:
     """Remove crystallization aids."""
     if (
         "structure_method" in structure.header
@@ -637,7 +670,7 @@ def remove_crystallization_aids(
 
 
 @typecheck
-def write_structure(structure: Structure, output_filepath: str):
+def write_structure(structure: Model, output_filepath: str):
     """Write a structure to a PDB or mmCIF file."""
     if output_filepath.endswith(".pdb"):
         io = PDBIO()
@@ -665,8 +698,8 @@ def process_structure_with_timeout(filepath: str, output_dir: str):
 
     # Filtering of targets
     mmcif_object = parse_mmcif(filepath, file_id)
-    structure = filter_target(mmcif_object.structure)
-    if exists(structure):
+    mmcif_object = filter_target(mmcif_object)
+    if exists(mmcif_object):
         # Filtering of bioassemblies
         structure = remove_hydrogens_and_waters(structure)
         structure = remove_all_unknown_residue_chains(structure, STANDARD_RESIDUES)

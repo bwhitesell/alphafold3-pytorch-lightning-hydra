@@ -364,6 +364,7 @@ def parse(*, file_id: str, mmcif_string: str, catch_all_errors: bool = True) -> 
             covalent_bonds=covalent_bonds,
             raw_string=parsed_info,
         )
+        mmcif_object.structure.header = header
 
         return ParsingResult(mmcif_object=mmcif_object, errors=errors)
     except Exception as e:  # pylint:disable=broad-except
@@ -445,22 +446,22 @@ def _get_covalent_bond_list(parsed_info: MmCIFDict) -> Sequence[CovalentBond]:
         CovalentBond(*conn)
         for conn in zip(  # pylint:disable=g-complex-comprehension
             # Partner 1
-            parsed_info["_struct_conn.ptnr1_auth_seq_id"],
-            parsed_info["_struct_conn.ptnr1_auth_comp_id"],
-            parsed_info["_struct_conn.ptnr1_auth_asym_id"],
-            parsed_info["_struct_conn.ptnr1_label_atom_id"],
-            parsed_info["_struct_conn.pdbx_ptnr1_label_alt_id"],
+            parsed_info.get("_struct_conn.ptnr1_auth_seq_id", []),
+            parsed_info.get("_struct_conn.ptnr1_auth_comp_id", []),
+            parsed_info.get("_struct_conn.ptnr1_auth_asym_id", []),
+            parsed_info.get("_struct_conn.ptnr1_label_atom_id", []),
+            parsed_info.get("_struct_conn.pdbx_ptnr1_label_alt_id", []),
             # Partner 2
-            parsed_info["_struct_conn.ptnr2_auth_seq_id"],
-            parsed_info["_struct_conn.ptnr2_auth_comp_id"],
-            parsed_info["_struct_conn.ptnr2_auth_asym_id"],
-            parsed_info["_struct_conn.ptnr2_label_atom_id"],
-            parsed_info["_struct_conn.pdbx_ptnr2_label_alt_id"],
+            parsed_info.get("_struct_conn.ptnr2_auth_seq_id", []),
+            parsed_info.get("_struct_conn.ptnr2_auth_comp_id", []),
+            parsed_info.get("_struct_conn.ptnr2_auth_asym_id", []),
+            parsed_info.get("_struct_conn.ptnr2_label_atom_id", []),
+            parsed_info.get("_struct_conn.pdbx_ptnr2_label_alt_id", []),
             # Connection metadata
-            parsed_info["_struct_conn.conn_type_id"],
-            parsed_info["_struct_conn.pdbx_leaving_atom_flag"],
+            parsed_info.get("_struct_conn.conn_type_id", []),
+            parsed_info.get("_struct_conn.pdbx_leaving_atom_flag", []),
         )
-        if conn[-1].lower() == "covale"
+        if len(conn[-1]) and conn[-1].lower() == "covale"
     ]
 
 
