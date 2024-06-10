@@ -40,7 +40,7 @@ from typing import Dict, List, Set, Tuple
 import pandas as pd
 import rootutils
 import timeout_decorator
-from Bio.PDB import MMCIFIO, PDBIO
+from Bio.PDB import MMCIFIO
 from Bio.PDB.Atom import Atom, DisorderedAtom
 from Bio.PDB.Model import Model
 from Bio.PDB.NeighborSearch import NeighborSearch
@@ -60,18 +60,9 @@ from alphafold3_pytorch.utils.utils import exists
 
 Token = Residue | Atom | DisorderedAtom
 
-PROCESS_STRUCTURE_MAX_SECONDS = (
-    600  # Maximum time allocated to process a single structure (in seconds)
+FILTER_STRUCTURE_MAX_SECONDS = (
+    60000  # Maximum time allocated to filter a single structure (in seconds)
 )
-
-COVALENT_BOND_THRESHOLDS = {
-    # Threshold distances for covalent bonds (in Ångströms)
-    # These thresholds may vary depending on the specific types of bonds you are looking for
-    ("C", "C"): 1.54,
-    ("C", "O"): 1.43,
-    ("C", "N"): 1.47,
-    # Add more bond types and thresholds as needed
-}
 
 # Table 9 of the AlphaFold 3 supplement
 CRYSTALLIZATION_AIDS = set(
@@ -209,8 +200,8 @@ def filter_resolved_chains(
 
 
 @typecheck
-def filter_target(mmcif_object) -> MmcifObject | None:
-    """Filter a target based on various criteria."""
+def prefilter_target(mmcif_object) -> MmcifObject | None:
+    """Pre-filter a target based on various criteria."""
     target_passes_prefilters = (
         filter_pdb_release_date(mmcif_object.structure)
         and filter_resolution(mmcif_object.structure)
@@ -237,11 +228,11 @@ def remove_hydrogens_and_waters(mmcif_object: MmcifObject) -> MmcifObject:
                 res_atoms_to_remove = {
                     atom.get_full_id() for atom in res.get_atoms() if atom.element == "H"
                 }
-                atoms_to_remove.update(res_atoms_to_remove)
                 if len(res_atoms_to_remove) == len(
                     list(res.get_atoms())
                 ):  # If no atoms are left in the residue
                     res_to_remove.add(res.get_full_id())
+                atoms_to_remove.update(res_atoms_to_remove)
         if len(res_to_remove) == len(
             list(chain.get_residues())
         ):  # If no residues are left in the chain
@@ -364,164 +355,108 @@ def remove_excluded_ligands(
 
 @typecheck
 def remove_non_ccd_atoms(
-    structure: Model, ccd_reader_results: Dict[str, CCDReaderResult]
-) -> Model:
-    """Remove atoms not in the corresponding CCD code set."""
-    residues_to_remove = []
-    chains_to_remove = []
+    mmcif_object: MmcifObject, ccd_reader_results: Dict[str, CCDReaderResult]
+) -> MmcifObject:
+    """Identify atoms not in the corresponding CCD code set to remove."""
+    atoms_to_remove = set()
+    residues_to_remove = set()
+    chains_to_remove = set()
 
-    for chain in structure.get_chains():
+    for chain in mmcif_object.structure.get_chains():
+        res_to_remove = set()
         for res in chain:
-            if (
-                res.resname in PROTEIN_RESIDUE_CENTER_ATOMS
-                or res.resname in NUCLEIC_ACID_RESIDUE_CENTER_ATOMS
-            ):
-                continue
             if res.resname in ccd_reader_results:
                 ccd_atoms = ccd_reader_results[res.resname].component.atoms_ids
-                atoms_to_remove = [atom.id for atom in res.get_atoms() if atom.id not in ccd_atoms]
-                for atom_id in atoms_to_remove:
-                    res.detach_child(atom_id)
-            if not list(res.get_atoms()):
-                residues_to_remove.append((chain, res.id))
-        if not list(chain.get_residues()):
-            chains_to_remove.append(chain.id)
+                res_atoms_to_remove = {
+                    atom.get_full_id() for atom in res.get_atoms() if atom.id not in ccd_atoms
+                }
+                if len(res_atoms_to_remove) == len(list(res.get_atoms())):
+                    res_to_remove.add(res.get_full_id())
+                atoms_to_remove.update(res_atoms_to_remove)
+        if len(res_to_remove) == len(list(chain.get_residues())):
+            chains_to_remove.add(chain.get_full_id())
+        residues_to_remove.update(res_to_remove)
 
-    for chain, res_id in residues_to_remove:
-        chain.detach_child(res_id)
-    for chain_id in chains_to_remove:
-        structure[0].detach_child(chain_id)
+    mmcif_object.atoms_to_remove.update(atoms_to_remove)
+    mmcif_object.residues_to_remove.update(residues_to_remove)
+    mmcif_object.chains_to_remove.update(chains_to_remove)
 
-    return structure
-
-
-@typecheck
-def is_covalently_bonded(atom1: Atom | DisorderedAtom, atom2: Atom | DisorderedAtom) -> bool:
-    """
-    Check if two atoms are covalently bonded.
-
-    NOTE: Here, we rely on simple distance-based checks,
-    since the AlphaFold 3 supplement doesn't explicitly
-    mention how covalent bonds are classified.
-    """
-    bond_type = tuple(sorted([atom1.element, atom2.element]))
-    if bond_type in COVALENT_BOND_THRESHOLDS:
-        return ((atom1 - atom2) <= COVALENT_BOND_THRESHOLDS[bond_type]).item()
-    return False
+    return mmcif_object
 
 
 @typecheck
 def remove_leaving_atoms(
-    structure: Model, ccd_reader_results: Dict[str, CCDReaderResult]
-) -> Model:
+    mmcif_object: MmcifObject, ccd_reader_results: Dict[str, CCDReaderResult]
+) -> MmcifObject:
     """
-    Remove leaving atoms in covalent ligands.
+    Identify leaving atoms to remove from covalent ligands.
 
-    NOTE: Here, we rely on simple distance-based checks to identify
-    covalent ligands (interacting with protein or nucleic acid atoms),
-    since the AlphaFold 3 supplement doesn't explicitly mention how
-    covalent ligands are identified. Furthermore, we rely on the CCD's
-    `leaving_atom_flag` metadata to discern leaving atoms within each
-    covalent ligand once a covalent ligand is structurally identified.
+    NOTE: We rely on the CCD's `struct_conn` and `leaving_atom_flag`
+    metadata to discern leaving atoms within each covalent ligand
+    once a covalent ligand is structurally identified.
     """
-    residues_to_remove = []
-    chains_to_remove = []
+    atoms_to_remove = set()
 
-    all_atoms = [atom for atom in structure.get_atoms()]
-    neighbor_search = NeighborSearch(all_atoms)
+    for covalent_bond in mmcif_object.covalent_bonds:
+        if covalent_bond.leaving_atom_flag.upper() in {"ONE", "BOTH"}:
+            # ptnr1_atom_id = covalent_bond.ptnr1_label_atom_id
+            # ptnr1_residue_id = covalent_bond.ptnr1_auth_comp_id
+            # ptnr1_chain_id = covalent_bond.ptnr1_auth_asym_id
 
-    for chain in structure.get_chains():
-        for res in chain:
-            if (
-                res.resname in PROTEIN_RESIDUE_CENTER_ATOMS
-                or res.resname in NUCLEIC_ACID_RESIDUE_CENTER_ATOMS
-            ):
-                continue
-            if res.resname in ccd_reader_results:
-                ligand_is_covalent = False
-                leaving_atoms_to_remove = []
+            # ptnr2_atom_id = covalent_bond.ptnr2_label_atom_id
+            # ptnr2_residue_id = covalent_bond.ptnr2_auth_comp_id
+            # ptnr2_chain_id = covalent_bond.ptnr2_auth_asym_id
 
-                for ligand_atom in res:
-                    for neighbor in neighbor_search.search(ligand_atom.coord, 2.0):
-                        neighbor_is_protein_or_nucleic_acid_atom = (
-                            neighbor.parent.resname in PROTEIN_RESIDUE_CENTER_ATOMS
-                            or neighbor.parent.resname in NUCLEIC_ACID_RESIDUE_CENTER_ATOMS
-                        )
-                        if ligand_atom != neighbor and neighbor_is_protein_or_nucleic_acid_atom:
-                            if is_covalently_bonded(ligand_atom, neighbor):
-                                ligand_is_covalent = True
-                                break
+            # if "_chem_comp_atom.pdbx_leaving_atom_flag" in mmcif_object.raw_string:
+            #     pass
+            # else:
+            #     pass
 
-                if ligand_is_covalent:
-                    atom_id_column = ccd_reader_results[
-                        res.resname
-                    ].component.ccd_cif_block.find_loop("_chem_comp_atom.atom_id")
-                    leaving_atom_flag_column = ccd_reader_results[
-                        res.resname
-                    ].component.ccd_cif_block.find_loop("_chem_comp_atom.pdbx_leaving_atom_flag")
-                    assert len(atom_id_column) == len(
-                        leaving_atom_flag_column
-                    ), f"Atom ID ({len(atom_id_column)}) and leaving atom flag ({len(leaving_atom_flag_column)}) columns must have identical lengths to properly identify leaving atoms."
-                    leaving_atom_flag_mappings = {
-                        atom_id.strip().replace('"', ""): (is_leaving_atom.strip().upper() == "Y")
-                        for (atom_id, is_leaving_atom) in zip(
-                            atom_id_column, leaving_atom_flag_column
-                        )
-                    }
-                    for ligand_atom in res:
-                        if (
-                            ligand_atom.id in leaving_atom_flag_mappings
-                            and leaving_atom_flag_mappings[ligand_atom.id]
-                        ):
-                            leaving_atoms_to_remove.append(ligand_atom.id)
+            pass
 
-                for atom_id in leaving_atoms_to_remove:
-                    res.detach_child(atom_id)
-            if not list(res.get_atoms()):
-                residues_to_remove.append((chain, res.id))
-        if not list(chain.get_residues()):
-            chains_to_remove.append(chain.id)
+    mmcif_object.atoms_to_remove.update(atoms_to_remove)
 
-    for chain, res_id in residues_to_remove:
-        chain.detach_child(res_id)
-    for chain_id in chains_to_remove:
-        structure[0].detach_child(chain_id)
-
-    return structure
+    return mmcif_object
 
 
 @typecheck
-def filter_large_ca_distances(structure: Model, max_distance: float = 10.0) -> Model:
+def filter_large_ca_distances(
+    mmcif_object: MmcifObject, max_distance: float = 10.0
+) -> MmcifObject:
     """
-    Filter chains with large Ca atom distances.
+    Identify chains with large sequential Ca-Ca atom distances to be removed.
 
     NOTE: This function currently does not account for residues
-    with missing or alternative Ca atom locations.
+    with alternative Ca atom locations.
     """
-    chains_to_remove = []
+    chains_to_remove = set()
 
-    for chain in structure.get_chains():
-        ca_atoms = [res["CA"] for res in chain if "CA" in res]
+    for chain in mmcif_object.structure.get_chains():
+        ca_atoms = [
+            res["CA"]
+            for (res_index, res) in enumerate(chain)
+            if "CA" in res
+            and "peptide" in mmcif_object.chem_comp_details[chain.id][res_index].type.lower()
+        ]
         for i, ca1 in enumerate(ca_atoms[:-1]):
             ca2 = ca_atoms[i + 1]
             if (ca1 - ca2) > max_distance:
-                chains_to_remove.append(chain.id)
+                chains_to_remove.add(chain.get_full_id())
                 break
 
-    for chain_id in chains_to_remove:
-        structure[0].detach_child(chain_id)
+    mmcif_object.chains_to_remove.update(chains_to_remove)
 
-    return structure
+    return mmcif_object
 
 
 @typecheck
 def select_closest_chains(
-    structure: Model,
+    mmcif_object: MmcifObject,
     protein_residue_center_atoms: Dict[str, str],
     nucleic_acid_residue_center_atoms: Dict[str, str],
     max_chains: int = 20,
-) -> Model:
-    """Select the closest chains in large bioassemblies."""
+) -> MmcifObject:
+    """Identify the closest chains in large bioassemblies."""
 
     @typecheck
     def get_tokens_from_residues(
@@ -596,9 +531,10 @@ def select_closest_chains(
                         interface_tokens.add(token)
         return list(interface_tokens)
 
-    if len(list(structure.get_chains())) > max_chains:
-        chains = list(structure.get_chains())
-        residues = list(structure.get_residues())
+    chains_to_remove = set()
+    if len(list(mmcif_object.structure.get_chains())) > max_chains:
+        chains = list(mmcif_object.structure.get_chains())
+        residues = list(mmcif_object.structure.get_residues())
         tokens = get_tokens_from_residues(
             residues, protein_residue_center_atoms, nucleic_acid_residue_center_atoms
         )
@@ -625,38 +561,55 @@ def select_closest_chains(
                 for atom in chain_token_center_atoms
             )
             chain_min_token_distances.append((chain.id, chain_min_token_distance))
+
         chain_min_token_distances.sort(key=lambda x: x[1])
         for chain_id, _ in chain_min_token_distances[max_chains:]:
-            structure[0].detach_child(chain_id)
-    return structure
+            chains_to_remove.add(mmcif_object.structure[chain_id].get_full_id())
+
+    mmcif_object.chains_to_remove.update(chains_to_remove)
+
+    return mmcif_object
 
 
 @typecheck
 def remove_crystallization_aids(
-    structure: Model, crystallography_methods: Dict[str, Set[str]]
-) -> Model:
-    """Remove crystallization aids."""
+    mmcif_object: MmcifObject, crystallography_methods: Dict[str, Set[str]]
+) -> MmcifObject:
+    """Identify crystallization aids to remove."""
     if (
-        "structure_method" in structure.header
-        and exists(structure.header["structure_method"])
-        and structure.header["structure_method"] in crystallography_methods
+        "structure_method" in mmcif_object.structure.header
+        and exists(mmcif_object.structure.header["structure_method"])
+        and mmcif_object.structure.header["structure_method"] in crystallography_methods
     ):
-        residues_to_remove = []
-        chains_to_remove = []
+        residues_to_remove = set()
+        chains_to_remove = set()
 
-        for chain in structure.get_chains():
-            for res in chain:
-                if res.resname in crystallography_methods[structure.header["structure_method"]]:
-                    residues_to_remove.append((chain, res.id))
-            if not list(chain.get_residues()):
-                chains_to_remove.append(chain.id)
+        structure_method_crystallization_aids = crystallography_methods[
+            mmcif_object.structure.header["structure_method"]
+        ]
+        for chain in mmcif_object.structure.get_chains():
+            res_to_remove = set()
+            for res_index, res in enumerate(chain):
+                res_is_ligand = not any(
+                    chem_type in mmcif_object.chem_comp_details[chain.id][res_index].type.lower()
+                    for chem_type in {"peptide", "dna", "rna"}
+                )
+                if res_is_ligand and res.resname in structure_method_crystallization_aids:
+                    res_to_remove.add(res.get_full_id())
+            if len(res_to_remove) == len(list(chain.get_residues())):
+                chains_to_remove.add(chain.get_full_id())
+            residues_to_remove.update(res_to_remove)
 
-        for chain, res_id in residues_to_remove:
-            chain.detach_child(res_id)
-        for chain_id in chains_to_remove:
-            structure[0].detach_child(chain_id)
+        mmcif_object.residues_to_remove.update(residues_to_remove)
+        mmcif_object.chains_to_remove.update(chains_to_remove)
 
-    return structure
+    return mmcif_object
+
+
+@typecheck
+def filter_mmcif(mmcif_object: MmcifObject) -> MmcifObject:
+    """TODO: Filter an `MmcifObject` based on collected (atom/residue/chain) removal sets."""
+    return mmcif_object
 
 
 @typecheck
@@ -668,10 +621,10 @@ def write_mmcif(mmcif_object: MmcifObject, output_filepath: str):
 
 
 @typecheck
-@timeout_decorator.timeout(PROCESS_STRUCTURE_MAX_SECONDS, use_signals=False)
-def process_structure_with_timeout(filepath: str, output_dir: str):
+@timeout_decorator.timeout(FILTER_STRUCTURE_MAX_SECONDS, use_signals=False)
+def filter_structure_with_timeout(filepath: str, output_dir: str):
     """
-    Given an input mmCIF file, create a new processed mmCIF file
+    Given an input mmCIF file, create a new filtered mmCIF file
     using AlphaFold 3's PDB dataset filtering criteria under a
     timeout constraint.
     """
@@ -683,7 +636,7 @@ def process_structure_with_timeout(filepath: str, output_dir: str):
 
     # Filtering of targets
     mmcif_object = parse_mmcif(filepath, file_id)
-    mmcif_object = filter_target(mmcif_object)
+    mmcif_object = prefilter_target(mmcif_object)
     if exists(mmcif_object):
         # Filtering of bioassemblies
         mmcif_object = remove_hydrogens_and_waters(mmcif_object)
@@ -698,15 +651,16 @@ def process_structure_with_timeout(filepath: str, output_dir: str):
         )
         mmcif_object = remove_crystallization_aids(mmcif_object, CRYSTALLOGRAPHY_METHODS)
         if len(mmcif_object.chains_to_remove) < len(list(mmcif_object.structure.get_chains())):
-            # Save processed structure as an mmCIF file
+            # Save a filtered structure as an mmCIF file along with its latest metadata
+            mmcif_object = filter_mmcif(mmcif_object)
             write_mmcif(mmcif_object, output_filepath)
-            print(f"Finished processing structure: {mmcif_object.structure.id}")
+            print(f"Finished filtering structure: {mmcif_object.structure.id}")
 
 
 @typecheck
-def process_structure(args: Tuple[str, str, bool]):
+def filter_structure(args: Tuple[str, str, bool]):
     """
-    Given an input mmCIF file, create a new processed mmCIF file
+    Given an input mmCIF file, create a new filtered mmCIF file
     using AlphaFold 3's PDB dataset filtering criteria.
     """
     filepath, output_dir, skip_existing = args
@@ -718,15 +672,15 @@ def process_structure(args: Tuple[str, str, bool]):
         return
 
     try:
-        process_structure_with_timeout(filepath, output_dir)
+        filter_structure_with_timeout(filepath, output_dir)
     except Exception as e:
-        print(f"Skipping structure processing of {filepath} due to: {e}")
+        print(f"Skipping structure filtering of {filepath} due to: {e}")
         if os.path.exists(output_filepath):
             try:
                 os.remove(output_filepath)
             except Exception as e:
                 print(
-                    f"Failed to remove partially processed file {output_filepath} due to: {e}. Skipping its removal..."
+                    f"Failed to remove partially filtered file {output_filepath} due to: {e}. Skipping its removal..."
                 )
 
 
@@ -740,7 +694,7 @@ if __name__ == "__main__":
         "-i",
         "--mmcif_dir",
         type=str,
-        default=os.path.join("data", "pdb_data", "unprocessed_mmcifs"),
+        default=os.path.join("data", "pdb_data", "unfiltered_mmcifs"),
         help="Path to the input directory containing mmCIF files to filter.",
     )
     parser.add_argument(
@@ -761,14 +715,14 @@ if __name__ == "__main__":
         "-s",
         "--skip_existing",
         action="store_true",
-        help="Skip processing of existing output files.",
+        help="Skip filtering of existing output files.",
     )
     parser.add_argument(
         "-n",
         "--no_workers",
         type=int,
         default=4,
-        help="Number of workers to use for processing.",
+        help="Number of workers to use for filtering.",
     )
     parser.add_argument(
         "-w",
@@ -800,14 +754,14 @@ if __name__ == "__main__":
     CCD_READER_RESULTS = {}
     print("Finished loading the Chemical Component Dictionary (CCD) into memory.")
 
-    # Process structures across all worker processes
+    # Filter structures across all worker processes
 
     args_tuples = [
         (filepath, args.output_dir, args.skip_existing)
         for filepath in glob.glob(os.path.join(args.mmcif_dir, "*", "*.cif"))
     ]
     process_map(
-        process_structure,
+        filter_structure,
         args_tuples,
         max_workers=args.no_workers,
         chunksize=args.chunksize,

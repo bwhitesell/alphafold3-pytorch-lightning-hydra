@@ -177,12 +177,12 @@ sampled_atom_pos.shape # (2, <atom_seqlen>, 3)
 
 ### PDB dataset curation
 
-To acquire the AlphaFold 3 PDB dataset, first download all complexes in the Protein Data Bank (PDB), and then preprocess them with the script referenced below. The PDB can be downloaded from the RCSB: https://www.wwpdb.org/ftp/pdb-ftp-sites#rcsbpdb. The Python script below (i.e., `pdb_mmcif_filtering.py`) assumes you have downloaded the PDB in the **mmCIF file format**, placing it at `data/pdb_data/unprocessed_mmcifs/`. On the RCSB website, navigate down to "Download Protocols", and follow the download instructions depending on your location.
+To acquire the AlphaFold 3 PDB dataset, first download all complexes in the Protein Data Bank (PDB), and then preprocess them with the script referenced below. The PDB can be downloaded from the RCSB: https://www.wwpdb.org/ftp/pdb-ftp-sites#rcsbpdb. The Python script below (i.e., `pdb_mmcif_filtering.py`) assumes you have downloaded the PDB in the **mmCIF file format**, placing it at `data/pdb_data/unfiltered_mmcifs/`. On the RCSB website, navigate down to "Download Protocols", and follow the download instructions depending on your location.
 
 For example, one can use the following command to download the PDB as a collection of mmCIF files:
 ```bash
 rsync -rlpt -v -z --delete --port=33444 \
-rsync.rcsb.org::ftp_data/structures/divided/mmCIF/ ./data/pdb_data/unprocessed_mmcifs/
+rsync.rcsb.org::ftp_data/structures/divided/mmCIF/ ./data/pdb_data/unfiltered_mmcifs/
 ```
 
 > WARNING: Downloading PDB can take up to 1TB of space.
@@ -214,7 +214,7 @@ find data/ccd_data/ -type f -name "*.gz" -exec gzip -d {} \;
 
 ### PDB dataset filtering
 
-Then run the following with `pdb_dir`, `ccd_dir`, and `mmcif_output_dir` replaced with the locations of your local copies of the PDB, CCD, and your desired dataset output directory (i.e., `./data/pdb_data/unprocessed_mmcifs/`, `./data/ccd_data/`, and `./data/pdb_data/mmcifs/`).
+Then run the following with `pdb_dir`, `ccd_dir`, and `mmcif_output_dir` replaced with the locations of your local copies of the PDB, CCD, and your desired dataset output directory (i.e., `./data/pdb_data/unfiltered_mmcifs/`, `./data/ccd_data/`, and `./data/pdb_data/mmcifs/`).
 ```bash
 python scripts/filter_pdb_mmcifs.py --mmcif_dir <pdb_dir> --ccd_dir <ccd_dir> --output_dir <mmcif_output_dir>
 ```

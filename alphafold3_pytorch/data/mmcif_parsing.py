@@ -359,9 +359,7 @@ def parse(*, file_id: str, mmcif_string: str, catch_all_errors: bool = True) -> 
                 )
             seq = "".join(seq)
             author_chain_to_sequence[author_chain] = seq
-            chem_comp_details[
-                chain_id
-            ] = chem_comp_info  # NOTE: `ChemComp`s are indexed by internal mmCIF chain ids, not author ids.
+            chem_comp_details[author_chain] = chem_comp_info
 
         # Identify all covalent bonds.
         covalent_bonds = _get_covalent_bond_list(parsed_info)
