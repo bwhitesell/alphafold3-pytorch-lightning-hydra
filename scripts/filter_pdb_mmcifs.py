@@ -97,6 +97,7 @@ STANDARD_RESIDUES = set(
         ", "
     )
 )
+STANDARD_KNOWN_RESIDUES = STANDARD_RESIDUES - {"UNK", "N", "DN"}
 PROTEIN_RESIDUE_CENTER_ATOMS = {
     residue: "CA"
     for residue in "ALA, ARG, ASN, ASP, CYS, GLN, GLU, GLY, HIS, ILE, LEU, LYS, MET, PHE, PRO, SER, THR, TRP, TYR, VAL, UNK".split(
@@ -142,33 +143,43 @@ def parse_mmcif(filepath: str, file_id: str) -> MmcifObject:
 
 @typecheck
 def filter_pdb_release_date(
-    structure: Model, cutoff_date: pd.Timestamp = pd.to_datetime("2021-09-30")
+    mmcif_object: MmcifObject, cutoff_date: pd.Timestamp = pd.to_datetime("2021-09-30")
 ) -> bool:
     """Filter based on PDB release date."""
     return (
-        "release_date" in structure.header
-        and exists(structure.header["release_date"])
-        and pd.to_datetime(structure.header["release_date"]) <= cutoff_date
+        "release_date" in mmcif_object.header
+        and exists(mmcif_object.header["release_date"])
+        and pd.to_datetime(mmcif_object.header["release_date"]) <= cutoff_date
     )
 
 
 @typecheck
-def filter_resolution(structure: Model, max_resolution: float = 9.0) -> bool:
+def filter_resolution(mmcif_object: MmcifObject, max_resolution: float = 9.0) -> bool:
     """Filter based on resolution."""
     return (
-        "resolution" in structure.header
-        and exists(structure.header["resolution"])
-        and structure.header["resolution"] <= max_resolution
+        "resolution" in mmcif_object.header
+        and exists(mmcif_object.header["resolution"])
+        and mmcif_object.header["resolution"] <= max_resolution
     )
 
 
 @typecheck
 def filter_polymer_chains(
-    structure: Model, max_chains: int = 1000, for_training: bool = False
+    mmcif_object: MmcifObject, max_chains: int = 1000, for_training: bool = False
 ) -> bool:
     """Filter based on number of polymer chains."""
-    count = len(list(structure.get_chains()))
-    return count <= (300 if for_training else max_chains)
+    polymer_chains = [
+        chain
+        for chain in mmcif_object.structure.get_chains()
+        if any(
+            any(
+                chem_type in mmcif_object.chem_comp_details[chain.id][res_index].type.lower()
+                for chem_type in {"peptide", "dna", "rna"}
+            )
+            for res_index in range(len(chain))
+        )
+    ]
+    return len(polymer_chains) <= (300 if for_training else max_chains)
 
 
 @typecheck
@@ -177,12 +188,12 @@ def filter_resolved_chains(
 ) -> MmcifObject | None:
     """Filter based on number of resolved residues."""
     chains_to_remove = {
-        mmcif_object.structure[chain_id].get_full_id()
-        for chain_id in mmcif_object.chem_comp_details
+        mmcif_object.structure[chain.id].get_full_id()
+        for chain in mmcif_object.structure.get_chains()
         if len(
             [
                 chem_comp
-                for chem_comp in mmcif_object.chem_comp_details[chain_id]
+                for chem_comp in mmcif_object.chem_comp_details[chain.id]
                 if any(
                     comp_type in chem_comp.type.lower() for comp_type in {"peptide", "dna", "rna"}
                 )
@@ -203,9 +214,9 @@ def filter_resolved_chains(
 def prefilter_target(mmcif_object) -> MmcifObject | None:
     """Pre-filter a target based on various criteria."""
     target_passes_prefilters = (
-        filter_pdb_release_date(mmcif_object.structure)
-        and filter_resolution(mmcif_object.structure)
-        and filter_polymer_chains(mmcif_object.structure)
+        filter_pdb_release_date(mmcif_object)
+        and filter_resolution(mmcif_object)
+        and filter_polymer_chains(mmcif_object)
     )
     return filter_resolved_chains(mmcif_object) if target_passes_prefilters else None
 
@@ -254,7 +265,14 @@ def remove_all_unknown_residue_chains(
     chains_to_remove = {
         chain.get_full_id()
         for chain in mmcif_object.structure.get_chains()
-        if not any(res.resname in standard_residues for res in chain)
+        if not any(
+            res.resname in standard_residues
+            and any(
+                chem_type in mmcif_object.chem_comp_details[chain.id][res_index].type.lower()
+                for chem_type in {"peptide", "dna", "rna"}
+            )
+            for res_index, res in enumerate(chain)
+        )
     }
 
     mmcif_object.chains_to_remove.update(chains_to_remove)
@@ -435,8 +453,8 @@ def filter_large_ca_distances(
         ca_atoms = [
             res["CA"]
             for (res_index, res) in enumerate(chain)
-            if "CA" in res
-            and "peptide" in mmcif_object.chem_comp_details[chain.id][res_index].type.lower()
+            if "peptide" in mmcif_object.chem_comp_details[chain.id][res_index].type.lower()
+            and "CA" in res
         ]
         for i, ca1 in enumerate(ca_atoms[:-1]):
             ca2 = ca_atoms[i + 1]
@@ -577,15 +595,15 @@ def remove_crystallization_aids(
 ) -> MmcifObject:
     """Identify crystallization aids to remove."""
     if (
-        "structure_method" in mmcif_object.structure.header
-        and exists(mmcif_object.structure.header["structure_method"])
-        and mmcif_object.structure.header["structure_method"] in crystallography_methods
+        "structure_method" in mmcif_object.header
+        and exists(mmcif_object.header["structure_method"])
+        and mmcif_object.header["structure_method"] in crystallography_methods
     ):
         residues_to_remove = set()
         chains_to_remove = set()
 
         structure_method_crystallization_aids = crystallography_methods[
-            mmcif_object.structure.header["structure_method"]
+            mmcif_object.header["structure_method"]
         ]
         for chain in mmcif_object.structure.get_chains():
             res_to_remove = set()
@@ -640,7 +658,8 @@ def filter_structure_with_timeout(filepath: str, output_dir: str):
     if exists(mmcif_object):
         # Filtering of bioassemblies
         mmcif_object = remove_hydrogens_and_waters(mmcif_object)
-        mmcif_object = remove_all_unknown_residue_chains(mmcif_object, STANDARD_RESIDUES)
+        mmcif_object = remove_all_unknown_residue_chains(mmcif_object, STANDARD_KNOWN_RESIDUES)
+        # TODO: Ensure modified amino acid/nucleotide residues are treated as ligands in subsequent filtering steps
         mmcif_object = remove_clashing_chains(mmcif_object)
         mmcif_object = remove_excluded_ligands(mmcif_object, LIGAND_EXCLUSION_SET)
         mmcif_object = remove_non_ccd_atoms(mmcif_object, CCD_READER_RESULTS)

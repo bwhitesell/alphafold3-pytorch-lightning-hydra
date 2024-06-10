@@ -337,26 +337,25 @@ def parse(*, file_id: str, mmcif_string: str, catch_all_errors: bool = True) -> 
             author_chain = mmcif_to_author_chain_id[chain_id]
             seq = []
             for monomer_index, monomer in enumerate(seq_info):
-                if "peptide" in chem_comp_info[monomer_index].type.lower():
-                    code = protein_letters_3to1.get(monomer.id, "X")
-                elif "dna" in chem_comp_info[monomer_index].type.lower():
-                    code = dna_letters_3to1.get(monomer.id, "X")
-                elif "rna" in chem_comp_info[monomer_index].type.lower():
-                    code = rna_letters_3to1.get(monomer.id, "X")
+                if (
+                    "peptide" in chem_comp_info[monomer_index].type.lower()
+                    and monomer.id in protein_letters_3to1
+                ):
+                    code = protein_letters_3to1.get(monomer.id)
+                elif (
+                    "dna" in chem_comp_info[monomer_index].type.lower()
+                    and monomer.id in dna_letters_3to1
+                ):
+                    code = dna_letters_3to1.get(monomer.id)
+                elif (
+                    "rna" in chem_comp_info[monomer_index].type.lower()
+                    and monomer.id in rna_letters_3to1
+                ):
+                    code = rna_letters_3to1.get(monomer.id)
                 else:
-                    code = monomer.id
-                    raise NotImplementedError(
-                        f"Chemical composition type {chem_comp_info[monomer_index].type} not yet supported."
-                    )
-                seq.append(
-                    code
-                    if len(code) == 1
-                    else (
-                        code
-                        if chem_comp_info[monomer_index].type.lower() in {"non-polymer", "other"}
-                        else "X"
-                    )
-                )
+                    # For residue sequences, skip ligands and modified amino acid/nucleotide residues.
+                    continue
+                seq.append(code if len(code) == 1 else "X")
             seq = "".join(seq)
             author_chain_to_sequence[author_chain] = seq
             chem_comp_details[author_chain] = chem_comp_info
@@ -377,7 +376,6 @@ def parse(*, file_id: str, mmcif_string: str, catch_all_errors: bool = True) -> 
             residues_to_remove=set(),
             chains_to_remove=set(),
         )
-        mmcif_object.structure.header = header
 
         return ParsingResult(mmcif_object=mmcif_object, errors=errors)
     except Exception as e:  # pylint:disable=broad-except
