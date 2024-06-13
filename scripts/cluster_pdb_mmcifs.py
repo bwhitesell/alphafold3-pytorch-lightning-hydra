@@ -1,3 +1,24 @@
+# %% [markdown]
+# # Clustering AlphaFold 3 PDB Dataset
+#
+# For clustering AlphaFold 3's PDB dataset, we follow the clustering procedure outlined in Abramson et al (2024).
+#
+# In order to reduce bias in the training and evaluation sets, clustering was performed on PDB chains and interfaces, as
+# follows.
+# • Chain-based clustering occur at 40% sequence homology for proteins, 100% homology for nucleic acids, 100%
+# homology for peptides (<10 residues) and according to CCD identity for small molecules (i.e. only identical
+# molecules share a cluster).
+# • Chain-based clustering of polymers with modified residues is first done by mapping the modified residues to
+# a standard residue using SCOP [23, 24] convention (https://github.com/biopython/biopython/
+# blob/5ee5e69e649dbe17baefe3919e56e60b54f8e08f/Bio/Data/SCOPData.py). If the mod-
+# ified residue could not be found as a mapping key or was mapped to a value longer than a single character, it was
+# mapped to type unknown.
+# • Interface-based clustering is a join on the cluster IDs of the constituent chains, such that interfaces I and J are
+# in the same interface cluster C^interface only if their constituent chain pairs {I_1,I_2},{J_1,J_2} have the same chain
+# cluster pairs {C_1^chain ,C_2^chain}.
+
+# %%
+
 import argparse
 import glob
 import os
