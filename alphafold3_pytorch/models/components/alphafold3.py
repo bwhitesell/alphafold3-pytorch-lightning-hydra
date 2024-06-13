@@ -3046,6 +3046,8 @@ class AlphaFold3(Module):
         dim_single=384,
         dim_pairwise=128,
         dim_token=768,
+        num_atom_embeds: int | None = None,
+        num_atompair_embeds: int | None = None,
         distance_bins: List[float] = torch.linspace(3, 20, 38).float().tolist(),
         ignore_index=-1,
         num_dist_bins: int | None = None,
@@ -3119,6 +3121,20 @@ class AlphaFold3(Module):
         stochastic_frame_average=False,
     ):
         super().__init__()
+
+        # optional atom and atom bond embeddings
+
+        has_atom_embeds = exists(num_atom_embeds)
+        has_atompair_embeds = exists(num_atompair_embeds)
+
+        if has_atom_embeds:
+            self.atom_embeds = nn.Embedding(num_atom_embeds, dim_atom)
+
+        if has_atompair_embeds:
+            self.atompair_embeds = nn.Embedding(num_atompair_embeds, dim_atompair)
+
+        self.has_atom_embeds = has_atom_embeds
+        self.has_atompair_embeds = has_atompair_embeds
 
         # atoms per window
 
@@ -3275,6 +3291,8 @@ class AlphaFold3(Module):
         atompair_inputs: Float["b m m dapi"] | Float["b nw w1 w2 dapi"],  # type: ignore
         additional_molecule_feats: Float[f"b n {ADDITIONAL_MOLECULE_FEATS}"],  # type: ignore
         molecule_atom_lens: Int["b n"],  # type: ignore
+        atom_ids: Int["b m"] | None = None,  # type: ignore
+        atompair_ids: Int["b m m"] | Int["b nw w1 w2"] | None = None,  # type: ignore
         atom_mask: Bool["b m"] | None = None,  # type: ignore
         token_bond: Bool["b n n"] | None = None,  # type: ignore
         msa: Float["b s n d"] | None = None,  # type: ignore
@@ -3293,7 +3311,7 @@ class AlphaFold3(Module):
         plddt_labels: Int["b n"] | None = None,  # type: ignore
         resolved_labels: Int["b n"] | None = None,  # type: ignore
         return_loss_breakdown=False,
-        return_loss_if_possible: bool = True,
+        return_loss: bool = None,
         num_rollout_steps: int = 20,
         rollout_show_tqdm_pbar: bool = False,
     ) -> Float["b m 3"] | Float[""] | Tuple[Float[""], LossBreakdown]:  # type: ignore
@@ -3322,7 +3340,7 @@ class AlphaFold3(Module):
         :param plddt_labels: The predicted lDDT labels tensor.
         :param resolved_labels: The resolved labels tensor.
         :param return_loss_breakdown: Whether to return the loss breakdown.
-        :param return_loss_if_possible: Whether to return the loss if possible.
+        :param return_loss: Whether to return the loss.
         :param num_rollout_steps: The number of rollout steps.
         :param rollout_show_tqdm_pbar: Whether to show a tqdm progress bar during rollout.
         :return: The atomic coordinates or the loss.
@@ -3385,6 +3403,29 @@ class AlphaFold3(Module):
             additional_molecule_feats=additional_molecule_feats,
             molecule_atom_lens=molecule_atom_lens,
         )
+
+        # handle maybe atom and atompair embeddings
+
+        assert not (
+            exists(atom_ids) ^ self.has_atom_embeds
+        ), "you either set `num_atom_embeds` and did not pass in `atom_ids` or vice versa"
+        assert not (
+            exists(atompair_ids) ^ self.has_atompair_embeds
+        ), "you either set `num_atompair_embeds` and did not pass in `atompair_ids` or vice versa"
+
+        if self.has_atom_embeds:
+            atom_embeds = self.atom_embeds(atom_ids)
+            atom_feats = atom_feats + atom_embeds
+
+        if self.has_atompair_embeds:
+            atompair_embeds = self.atompair_embeds(atompair_ids)
+
+            if atompair_embeds.ndim == 4:
+                atompair_embeds = full_pairwise_repr_to_windowed(
+                    atompair_embeds, window_size=self.atoms_per_window
+                )
+
+            atompair_feats = atompair_feats + atompair_embeds
 
         # relative positional encoding
 
@@ -3488,11 +3529,15 @@ class AlphaFold3(Module):
 
         has_labels = any([*map(exists, all_labels)])
 
-        return_loss = atom_pos_given or has_labels
+        can_return_loss = atom_pos_given or has_labels
+
+        # default whether to return loss by whether labels or atom positions are given
+
+        return_loss = default(return_loss, can_return_loss)
 
         # if neither atom positions or any labels are passed in, sample a structure and return
 
-        if not return_loss_if_possible or not return_loss:
+        if not return_loss:
             return self.edm.sample(
                 num_sample_steps=num_sample_steps,
                 atom_feats=atom_feats,
@@ -3505,6 +3550,16 @@ class AlphaFold3(Module):
                 pairwise_rel_pos_feats=relative_position_encoding,
                 molecule_atom_lens=molecule_atom_lens,
             )
+
+        # if being forced to return loss, but do not have sufficient information to return losses, just return 0
+
+        if return_loss and not can_return_loss:
+            zero = self.zero.requires_grad_()
+
+            if not return_loss_breakdown:
+                return zero
+
+            return zero, LossBreakdown(*((zero,) * 11))
 
         # losses default to 0
 

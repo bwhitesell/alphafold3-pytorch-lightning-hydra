@@ -7,7 +7,7 @@ from lightning import LightningDataModule
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 
-from alphafold3_pytorch.models.alphafold3_module import AtomInput
+from alphafold3_pytorch.models.alphafold3_module import INPUT_TO_ATOM_TRANSFORM, AtomInput
 from alphafold3_pytorch.utils.model_utils import pad_at_dim
 from alphafold3_pytorch.utils.typing import beartype_isinstance, typecheck
 from alphafold3_pytorch.utils.utils import exists
@@ -16,30 +16,47 @@ from alphafold3_pytorch.utils.utils import exists
 
 
 @typecheck
-def collate_af3_inputs(inputs: List, int_pad_value=-1, map_input_fn: Callable | None = None):
+def collate_af3_inputs(
+    inputs: List, int_pad_value=-1, map_input_fn: Callable | None = None
+) -> AtomInput:
     """
     Collate function for AtomInput.
 
     :param inputs: A list of AtomInput.
     :param int_pad_value: The padding value for integer tensors.
     :param map_input_fn: A function to apply to each input before collation.
-    :return: A dictionary of collated inputs.
+    :return: A collated AtomInput.
     """
     if exists(map_input_fn):
         inputs = [map_input_fn(i) for i in inputs]
 
-    # make sure all inputs are AtomInput
+    # go through all the inputs
+    # and for any that is not AtomInput, try to transform it with the registered input type to corresponding registered function
 
-    assert all([beartype_isinstance(i, AtomInput) for i in inputs])
+    atom_inputs = []
+
+    for i in inputs:
+        if beartype_isinstance(i, AtomInput):
+            atom_inputs.append(i)
+            continue
+
+        maybe_to_atom_fn = INPUT_TO_ATOM_TRANSFORM.get(type(i), None)
+
+        if not exists(maybe_to_atom_fn):
+            raise TypeError(
+                f"invalid input type {type(i)} being passed into Trainer that is not converted to AtomInput correctly"
+            )
+
+        atom_inputs.append(maybe_to_atom_fn(i))
 
     # separate input dictionary into keys and values
 
-    keys = inputs[0].keys()
-    inputs = [i.values() for i in inputs]
+    keys = atom_inputs[0].keys()
+    atom_inputs = [i.values() for i in atom_inputs]
 
     outputs = []
 
-    for grouped in zip(*inputs):
+    for grouped in zip(*atom_inputs):
         # if all None, just return None
 
         not_none_grouped = [*filter(exists, grouped)]
@@ -96,7 +113,8 @@ def collate_af3_inputs(inputs: List, int_pad_value=-1, map_input_fn: Callable | 
 
     # reconstitute dictionary
 
-    return dict(tuple(zip(keys, outputs)))
+    batched_atom_inputs = AtomInput(tuple(zip(keys, outputs)))
+    return batched_atom_inputs
 
 
 @typecheck

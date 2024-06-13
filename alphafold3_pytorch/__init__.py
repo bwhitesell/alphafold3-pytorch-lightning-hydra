@@ -37,6 +37,7 @@ from alphafold3_pytorch.models.components.attention import (
     Attention,
     full_pairwise_repr_to_windowed,
 )
+from alphafold3_pytorch.models.components.inputs import register_input_transform
 
 __all__ = [
     Attention,
