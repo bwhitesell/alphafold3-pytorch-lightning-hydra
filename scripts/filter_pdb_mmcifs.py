@@ -192,11 +192,13 @@ def filter_resolved_chains(
         for chain in mmcif_object.structure.get_chains()
         if len(
             [
-                chem_comp
-                for chem_comp in mmcif_object.chem_comp_details[chain.id]
+                res_index
+                for res_index in range(len(mmcif_object.seqres_to_structure[chain.id]))
                 if any(
-                    comp_type in chem_comp.type.lower() for comp_type in {"peptide", "dna", "rna"}
+                    chem_type in mmcif_object.chem_comp_details[chain.id][res_index].type.lower()
+                    for chem_type in {"peptide", "dna", "rna"}
                 )
+                and not mmcif_object.seqres_to_structure[chain.id][res_index].is_missing
             ]
         )
         < minimum_polymer_residues

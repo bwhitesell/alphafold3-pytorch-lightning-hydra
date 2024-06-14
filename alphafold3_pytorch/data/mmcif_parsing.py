@@ -319,14 +319,15 @@ def parse(*, file_id: str, mmcif_string: str, catch_all_errors: bool = True) -> 
             seq = []
             for monomer_index, monomer in enumerate(seq_info):
                 if "peptide" in chem_comp_info[monomer_index].type.lower():
-                    code = PDBData.protein_letters_3to1.get(monomer.id, "X")
-                elif "dna" in chem_comp_info[monomer_index].type.lower():
-                    code = PDBData.nucleic_letters_3to1.get(monomer.id, "X")
-                elif "rna" in chem_comp_info[monomer_index].type.lower():
-                    code = PDBData.nucleic_letters_3to1.get(monomer.id, "X")
+                    code = PDBData.protein_letters_3to1.get(f"{monomer.id: <3}", "X")
+                elif (
+                    "dna" in chem_comp_info[monomer_index].type.lower()
+                    or "rna" in chem_comp_info[monomer_index].type.lower()
+                ):
+                    code = PDBData.nucleic_letters_3to1.get(f"{monomer.id: <3}", "X")
                 else:
-                    # For residue sequences, skip ligand residues.
-                    continue
+                    # For each ligand residue, use its residue name as a sequence token, which will treated as `X`.
+                    code = f"{monomer.id: <3}"
                 seq.append(code if len(code) == 1 else "X")
             seq = "".join(seq)
             author_chain_to_sequence[author_chain] = seq
