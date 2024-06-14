@@ -224,9 +224,9 @@ def prefilter_target(mmcif_object) -> MmcifObject | None:
 
 
 @typecheck
-def remove_hydrogens_and_waters(mmcif_object: MmcifObject) -> MmcifObject:
+def remove_hydrogens(mmcif_object: MmcifObject) -> MmcifObject:
     """
-    Identify hydrogens and waters to remove from a structure.
+    Identify hydrogens to remove from a structure.
     """
     atoms_to_remove = set()
     residues_to_remove = set()
@@ -235,17 +235,14 @@ def remove_hydrogens_and_waters(mmcif_object: MmcifObject) -> MmcifObject:
     for chain in mmcif_object.structure.get_chains():
         res_to_remove = set()
         for res in chain:
-            if res.resname in {"HOH", "WAT"}:
+            res_atoms_to_remove = {
+                atom.get_full_id() for atom in res.get_atoms() if atom.element == "H"
+            }
+            if len(res_atoms_to_remove) == len(
+                list(res.get_atoms())
+            ):  # If no atoms are left in the residue
                 res_to_remove.add(res.get_full_id())
-            else:
-                res_atoms_to_remove = {
-                    atom.get_full_id() for atom in res.get_atoms() if atom.element == "H"
-                }
-                if len(res_atoms_to_remove) == len(
-                    list(res.get_atoms())
-                ):  # If no atoms are left in the residue
-                    res_to_remove.add(res.get_full_id())
-                atoms_to_remove.update(res_atoms_to_remove)
+            atoms_to_remove.update(res_atoms_to_remove)
         if len(res_to_remove) == len(
             list(chain.get_residues())
         ):  # If no residues are left in the chain
@@ -659,7 +656,7 @@ def filter_structure_with_timeout(filepath: str, output_dir: str):
     mmcif_object = prefilter_target(mmcif_object)
     if exists(mmcif_object):
         # Filtering of bioassemblies
-        mmcif_object = remove_hydrogens_and_waters(mmcif_object)
+        mmcif_object = remove_hydrogens(mmcif_object)
         mmcif_object = remove_all_unknown_residue_chains(mmcif_object, STANDARD_KNOWN_RESIDUES)
         # TODO: Ensure modified amino acid/nucleotide residues are treated as ligands in subsequent filtering steps
         mmcif_object = remove_clashing_chains(mmcif_object)
