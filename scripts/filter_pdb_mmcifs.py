@@ -654,10 +654,8 @@ def filter_structure_with_timeout(filepath: str, output_dir: str):
     if exists(mmcif_object):
         # Filtering of bioassemblies
         mmcif_object = remove_hydrogens(mmcif_object)
-        mmcif_object = remove_polymer_chains_with_all_unknown_residue(
-            mmcif_object, STANDARD_KNOWN_RESIDUES
-        )
-        # TODO: Ensure modified amino acid/nucleotide residues are treated as ligands in subsequent filtering steps
+        mmcif_object = remove_polymer_chains_with_all_unknown_residues(mmcif_object)
+        # NOTE: Modified amino acid and nucleotide residues are treated as N-atom ligands in subsequent (structural) filtering steps
         mmcif_object = remove_clashing_chains(mmcif_object)
         mmcif_object = remove_excluded_ligands(mmcif_object, LIGAND_EXCLUSION_SET)
         mmcif_object = remove_non_ccd_atoms(mmcif_object, CCD_READER_RESULTS)
