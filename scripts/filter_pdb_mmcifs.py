@@ -97,7 +97,6 @@ STANDARD_RESIDUES = set(
         ", "
     )
 )
-STANDARD_KNOWN_RESIDUES = STANDARD_RESIDUES - {"UNK", "N", "DN"}
 PROTEIN_RESIDUE_CENTER_ATOMS = {
     residue: "CA"
     for residue in "ALA, ARG, ASN, ASP, CYS, GLN, GLU, GLY, HIS, ILE, LEU, LYS, MET, PHE, PRO, SER, THR, TRP, TYR, VAL, UNK".split(
@@ -257,20 +256,18 @@ def remove_hydrogens(mmcif_object: MmcifObject) -> MmcifObject:
 
 
 @typecheck
-def remove_all_unknown_residue_chains(
-    mmcif_object: MmcifObject, standard_residues: Set[str]
-) -> MmcifObject:
+def remove_polymer_chains_with_all_unknown_residues(mmcif_object: MmcifObject) -> MmcifObject:
     """Identify polymer chains with all unknown residues to remove."""
     chains_to_remove = {
         chain.get_full_id()
         for chain in mmcif_object.structure.get_chains()
         if not any(
-            res.resname in standard_residues
+            mmcif_object.chain_to_seqres[chain.id][res_index] != "X"
             and any(
                 chem_type in mmcif_object.chem_comp_details[chain.id][res_index].type.lower()
                 for chem_type in {"peptide", "dna", "rna"}
             )
-            for res_index, res in enumerate(chain)
+            for res_index in range(len(mmcif_object.chain_to_seqres[chain.id]))
         )
     }
 
@@ -657,7 +654,9 @@ def filter_structure_with_timeout(filepath: str, output_dir: str):
     if exists(mmcif_object):
         # Filtering of bioassemblies
         mmcif_object = remove_hydrogens(mmcif_object)
-        mmcif_object = remove_all_unknown_residue_chains(mmcif_object, STANDARD_KNOWN_RESIDUES)
+        mmcif_object = remove_polymer_chains_with_all_unknown_residue(
+            mmcif_object, STANDARD_KNOWN_RESIDUES
+        )
         # TODO: Ensure modified amino acid/nucleotide residues are treated as ligands in subsequent filtering steps
         mmcif_object = remove_clashing_chains(mmcif_object)
         mmcif_object = remove_excluded_ligands(mmcif_object, LIGAND_EXCLUSION_SET)
