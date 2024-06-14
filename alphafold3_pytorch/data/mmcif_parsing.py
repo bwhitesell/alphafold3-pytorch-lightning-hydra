@@ -258,7 +258,7 @@ def parse(*, file_id: str, mmcif_string: str, catch_all_errors: bool = True) -> 
 
         # Loop over the atoms for which we have coordinates. Populate two mappings:
         # -mmcif_to_author_chain_id (maps internal mmCIF chain ids to chain ids used
-        # the authors / Biopython).
+        # by the authors / Biopython).
         # -seq_to_structure_mappings (maps idx into sequence to ResidueAtPosition).
         mmcif_to_author_chain_id = {}
         seq_to_structure_mappings = {}
@@ -287,8 +287,11 @@ def parse(*, file_id: str, mmcif_string: str, catch_all_errors: bool = True) -> 
                     residue_number=int(atom.author_seq_num),
                     insertion_code=insertion_code,
                 )
-                seq_idx = int(atom.mmcif_seq_num) - seq_start_num[atom.mmcif_chain_id]
                 current = seq_to_structure_mappings.get(atom.author_chain_id, {})
+                if _is_set(atom.mmcif_seq_num):
+                    seq_idx = int(atom.mmcif_seq_num) - seq_start_num[atom.mmcif_chain_id]
+                else:
+                    continue
                 current[seq_idx] = ResidueAtPosition(
                     position=position,
                     name=atom.residue_name,
@@ -298,11 +301,14 @@ def parse(*, file_id: str, mmcif_string: str, catch_all_errors: bool = True) -> 
                 seq_to_structure_mappings[atom.author_chain_id] = current
 
         # Add missing residue information to seq_to_structure_mappings.
-        for chain_id, (seq_info, _) in valid_chains.items():
+        for chain_id, (seq_info, chem_comp_info) in valid_chains.items():
             author_chain = mmcif_to_author_chain_id[chain_id]
             current_mapping = seq_to_structure_mappings[author_chain]
             for idx, monomer in enumerate(seq_info):
-                if idx not in current_mapping:
+                if idx not in current_mapping and any(
+                    chem_type in chem_comp_info[idx].type.lower()
+                    for chem_type in {"peptide", "dna", "rna"}
+                ):
                     current_mapping[idx] = ResidueAtPosition(
                         position=None,
                         name=monomer.id,
@@ -325,12 +331,13 @@ def parse(*, file_id: str, mmcif_string: str, catch_all_errors: bool = True) -> 
                 ):
                     code = PDBData.nucleic_letters_3to1.get(f"{monomer.id: <3}", "X")
                 else:
-                    # For each ligand residue, use its residue name as a sequence token, which will treated as `X`.
-                    code = f"{monomer.id: <3}"
+                    # Skip ligand residues during sequence parsing.
+                    continue
                 seq.append(code if len(code) == 1 else "X")
             seq = "".join(seq)
-            author_chain_to_sequence[author_chain] = seq
-            chem_comp_details[author_chain] = chem_comp_info
+            if seq:
+                author_chain_to_sequence[author_chain] = seq
+                chem_comp_details[author_chain] = chem_comp_info
 
         # Identify all covalent bonds.
         covalent_bonds = _get_covalent_bond_list(parsed_info)
@@ -469,8 +476,24 @@ def _get_complex_chains(
             )
         )
 
+    # Get non-polymer information for each entity in the structure.
+    nonpoly_scheme = mmcif_loop_to_list("_pdbx_nonpoly_scheme.", parsed_info)
+    nonpoly_unique_asym_ids = list(
+        dict.fromkeys([scheme["_pdbx_nonpoly_scheme.asym_id"] for scheme in nonpoly_scheme])
+    )
+
+    non_polymers = collections.defaultdict(lambda: collections.defaultdict(list))
+    for asym_id in nonpoly_unique_asym_ids:
+        for scheme in (s for s in nonpoly_scheme if s["_pdbx_nonpoly_scheme.asym_id"] == asym_id):
+            non_polymers[scheme["_pdbx_nonpoly_scheme.entity_id"]][asym_id].append(
+                Monomer(
+                    id=scheme["_pdbx_nonpoly_scheme.pdb_mon_id"],
+                    num=int(scheme["_pdbx_nonpoly_scheme.pdb_seq_num"]),
+                )
+            )
+
     # Get chemical compositions. Will allow us to identify which of these polymers
-    # are proteins, DNA, RNA, or ligands.
+    # are protein, DNA, or RNA.
     chem_comps = mmcif_loop_to_dict("_chem_comp.", "_chem_comp.id", parsed_info)
 
     # Get chains information for each entity. Necessary so that we can return a
@@ -496,6 +519,19 @@ def _get_complex_chains(
                 for monomer in seq_info
             ]
             valid_chains[chain_id] = (seq_info, chem_comp_info)
+
+    for entity_id, seq_info in non_polymers.items():
+        chain_ids = entity_to_mmcif_chains[entity_id]
+        for chain_id in chain_ids:
+            chem_comp_info = [
+                ChemComp(
+                    id=chem_comps[monomer.id]["_chem_comp.id"],
+                    type=chem_comps[monomer.id]["_chem_comp.type"],
+                )
+                for monomer in seq_info[chain_id]
+            ]
+            valid_chains[chain_id] = (seq_info[chain_id], chem_comp_info)
+
     return valid_chains
 
 
