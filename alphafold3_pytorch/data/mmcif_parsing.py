@@ -23,7 +23,7 @@ from typing import Any, Mapping, Optional, Sequence, Set, Tuple
 
 import numpy as np
 from Bio import PDB
-from Bio.Data import SCOPData
+from Bio.Data import PDBData
 
 from alphafold3_pytorch.data.errors import MultipleChainsError
 from alphafold3_pytorch.np import residue_constants
@@ -38,25 +38,6 @@ MmCIFDict = Mapping[str, Sequence[str]]
 AtomFullId = Tuple[str, int, str, Tuple[str, int, str], Tuple[str, str]]
 ResidueFullId = Tuple[str, int, str, Tuple[str, int, str]]
 ChainFullId = Tuple[str, int, str]
-
-
-# Protein, DNA, and RNA letters.
-protein_letters_3to1 = SCOPData.protein_letters_3to1
-dna_letters_3to1 = {
-    "DA": "A",
-    "DC": "C",
-    "DG": "G",
-    "DT": "T",
-}
-rna_letters_3to1 = {
-    "A": "A",
-    "C": "C",
-    "G": "G",
-    "U": "U",
-}
-protein_letters_1to3 = {v: k for k, v in protein_letters_3to1.items()}
-dna_letters_1to3 = {v: k for k, v in dna_letters_3to1.items()}
-rna_letters_1to3 = {v: k for k, v in rna_letters_3to1.items()}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -337,23 +318,14 @@ def parse(*, file_id: str, mmcif_string: str, catch_all_errors: bool = True) -> 
             author_chain = mmcif_to_author_chain_id[chain_id]
             seq = []
             for monomer_index, monomer in enumerate(seq_info):
-                if (
-                    "peptide" in chem_comp_info[monomer_index].type.lower()
-                    and monomer.id in protein_letters_3to1
-                ):
-                    code = protein_letters_3to1.get(monomer.id)
-                elif (
-                    "dna" in chem_comp_info[monomer_index].type.lower()
-                    and monomer.id in dna_letters_3to1
-                ):
-                    code = dna_letters_3to1.get(monomer.id)
-                elif (
-                    "rna" in chem_comp_info[monomer_index].type.lower()
-                    and monomer.id in rna_letters_3to1
-                ):
-                    code = rna_letters_3to1.get(monomer.id)
+                if "peptide" in chem_comp_info[monomer_index].type.lower():
+                    code = PDBData.protein_letters_3to1.get(monomer.id, "X")
+                elif "dna" in chem_comp_info[monomer_index].type.lower():
+                    code = PDBData.nucleic_letters_3to1.get(monomer.id, "X")
+                elif "rna" in chem_comp_info[monomer_index].type.lower():
+                    code = PDBData.nucleic_letters_3to1.get(monomer.id, "X")
                 else:
-                    # For residue sequences, skip ligands and modified amino acid/nucleotide residues.
+                    # For residue sequences, skip ligand residues.
                     continue
                 seq.append(code if len(code) == 1 else "X")
             seq = "".join(seq)

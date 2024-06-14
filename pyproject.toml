@@ -48,7 +48,7 @@ dependencies = [
 
     # --------- others --------- #
     "beartype",        # runtime type checking
-    "biopython==1.79", # for biological data parsing
+    "biopython>=1.83", # for biological data parsing
     "einx>=0.2.2",     # for Einstein-inspired notation
     "einops>=0.8.0",   # for Einstein-inspired operations
     "frame-averaging-pytorch>=0.0.18", # for geometric data augmentation

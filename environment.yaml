@@ -210,7 +210,7 @@ dependencies:
       - beartype==0.18.5
       - beautifulsoup4==4.12.3
       - biopandas==0.5.1.dev0
-      - biopython==1.79
+      - biopython==1.83
       - bioservices==1.11.2
       - cattrs==23.2.3
       - cfgv==3.4.0
