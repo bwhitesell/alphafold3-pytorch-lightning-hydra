@@ -176,7 +176,7 @@ def filter_polymer_chains(
                 chem_type in mmcif_object.chem_comp_details[chain.id][res_index].type.lower()
                 for chem_type in {"peptide", "dna", "rna"}
             )
-            for res_index in range(len(chain))
+            for res_index in range(len(mmcif_object.chain_to_seqres[chain.id]))
         )
     ]
     return len(polymer_chains) <= (300 if for_training else max_chains)

@@ -265,7 +265,6 @@ def parse(*, file_id: str, mmcif_string: str, catch_all_errors: bool = True) -> 
         for atom in _get_atom_site_list(parsed_info):
             if atom.model_num != "1":
                 # We only process the first model at the moment.
-                # TODO: Expand the first bioassembly, to obtain a biologically relevant complex (AF3 Supplement, Section 2.1).
                 continue
 
             mmcif_to_author_chain_id[atom.mmcif_chain_id] = atom.author_chain_id
@@ -532,17 +531,18 @@ def get_atom_coords(
                     res_at_position.position.insertion_code,
                 )
             ]
-            # TODO: Pick the largest-occupancy atom/residue for each ambiguous atom/residue.
             for atom in res.get_atoms():
                 atom_name = atom.get_name()
                 x, y, z = atom.get_coord()
                 if atom_name in residue_constants.atom_order.keys():
                     pos[residue_constants.atom_order[atom_name]] = [x, y, z]
                     mask[residue_constants.atom_order[atom_name]] = 1.0
+                # TODO: Resolve alternative locations for atoms/residues by taking the one with the largest occupancy.
                 elif atom_name.upper() == "SE" and res.get_resname() == "MSE":
                     # Put the coords of the selenium atom in the sulphur column
                     pos[residue_constants.atom_order["SD"]] = [x, y, z]
                     mask[residue_constants.atom_order["SD"]] = 1.0
+                # TODO: Remove waters.
 
             # Fix naming errors in arginine residues where NH2 is incorrectly
             # assigned to be closer to CD than NH1
@@ -561,7 +561,8 @@ def get_atom_coords(
         all_atom_mask[res_index] = mask
 
     # TODO: Expand the first bioassembly, to obtain a biologically relevant complex (AF3 Supplement, Section 2.1).
-    # mmcif_object.structure = _expand_first_model(mmcif_object.structure)
+    # NOTE: The first bioassembly/model is already extracted in the `parse()` function.
+    # mmcif_object.structure = _expand_model(mmcif_object.structure)
 
     if _zero_center_positions:
         binary_mask = all_atom_mask.astype(bool)
