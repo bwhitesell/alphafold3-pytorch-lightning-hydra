@@ -107,8 +107,8 @@ class CovalentBond:
     ptnr2_label_atom_id: str
     pdbx_ptnr2_label_alt_id: str
 
-    conn_type_id: str
     leaving_atom_flag: str
+    conn_type_id: str
 
 
 # Used to map SEQRES index to a residue in the structure.
@@ -469,8 +469,8 @@ def _get_covalent_bond_list(parsed_info: MmCIFDict) -> Sequence[CovalentBond]:
             parsed_info.get("_struct_conn.ptnr2_label_atom_id", []),
             parsed_info.get("_struct_conn.pdbx_ptnr2_label_alt_id", []),
             # Connection metadata
-            parsed_info.get("_struct_conn.conn_type_id", []),
             parsed_info.get("_struct_conn.pdbx_leaving_atom_flag", []),
+            parsed_info.get("_struct_conn.conn_type_id", []),
         )
         if len(conn[-1]) and conn[-1].lower() == "covale"
     ]
