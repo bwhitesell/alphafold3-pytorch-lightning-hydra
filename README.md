@@ -57,7 +57,7 @@ pip install alphafold3-pytorch-lightning-hydra
 
 ### Conda
 
-Install `mamba` for dependency management (as a fast alternative to Anaconda).
+Install `mamba` for dependency management (as a fast alternative to Anaconda):
 
 ```bash
 wget "https://github.com/conda-forge/miniforge/releases/latest/download/Mambaforge-$(uname)-$(uname -m).sh"
@@ -66,7 +66,7 @@ rm Mambaforge-$(uname)-$(uname -m).sh  # (optionally) remove installer after usi
 source ~/.bashrc  # alternatively, one can restart their shell session to achieve the same result
 ```
 
-Install dependencies
+Install dependencies:
 
 ```bash
 # Clone project
