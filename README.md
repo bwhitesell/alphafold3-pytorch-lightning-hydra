@@ -52,7 +52,7 @@ You can chat with other researchers about this work <a href="https://discord.gg/
 ### Pip
 
 ```bash
-pip install alphafold3-pytorch
+pip install alphafold3-pytorch-lightning-hydra
 ```
 
 ### Docker
@@ -62,8 +62,8 @@ The default base image is `pytorch/pytorch:2.3.0-cuda12.1-cudnn8-runtime` and in
 
 ```bash
 # Clone project
-git clone https://github.com/lucidrains/alphafold3-pytorch
-cd alphafold3-pytorch
+git clone https://github.com/amorehead/alphafold3-pytorch-lightning-hydra
+cd alphafold3-pytorch-lightning-hydra
 
 # Build Docker container
 docker build -t af3 .

@@ -24,6 +24,6 @@ WORKDIR /app/alphafold
 
 ## Clone and install the package + requirements
 ARG GIT_TAG=main
-RUN git clone https://github.com/lucidrains/alphafold3-pytorch . --branch ${GIT_TAG} \
+RUN git clone https://github.com/amorehead/alphafold3-pytorch-lightning-hydra . --branch ${GIT_TAG} \
     # && git checkout main \
     && python -m pip install .

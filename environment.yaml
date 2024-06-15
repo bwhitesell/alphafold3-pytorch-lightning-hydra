@@ -1,4 +1,4 @@
-name: alphafold3-pytorch
+name: alphafold3-plh
 channels:
   - pytorch
   - nvidia

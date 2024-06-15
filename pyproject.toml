@@ -1,5 +1,5 @@
 [project]
-name = "alphafold3-pytorch"
+name = "alphafold3-pytorch-lightning-hydra"
 version = "0.1.48"
 description = "AlphaFold 3 - Pytorch"
 authors = [
@@ -70,8 +70,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://pypi.org/project/alphafold3-pytorch/"
-Repository = "https://github.com/lucidrains/alphafold3-pytorch"
+Homepage = "https://pypi.org/project/alphafold3-pytorch-lightning-hydra/"
+Repository = "https://github.com/amorehead/alphafold3-pytorch-lightning-hydra"
 
 [project.optional-dependencies]
 examples = []
