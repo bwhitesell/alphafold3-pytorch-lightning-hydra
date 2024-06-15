@@ -55,6 +55,32 @@ You can chat with other researchers about this work <a href="https://discord.gg/
 pip install alphafold3-pytorch-lightning-hydra
 ```
 
+### Conda
+
+Install `mamba` for dependency management (as a fast alternative to Anaconda).
+
+```bash
+wget "https://github.com/conda-forge/miniforge/releases/latest/download/Mambaforge-$(uname)-$(uname -m).sh"
+bash Mambaforge-$(uname)-$(uname -m).sh  # accept all terms and install to the default location
+rm Mambaforge-$(uname)-$(uname -m).sh  # (optionally) remove installer after using it
+source ~/.bashrc  # alternatively, one can restart their shell session to achieve the same result
+```
+
+Install dependencies
+
+```bash
+# Clone project
+git clone https://github.com/amorehead/alphafold3-pytorch-lightning-hydra
+cd alphafold3-pytorch-lightning-hydra
+
+# Create Conda environment
+mamba env create -f environment.yaml
+conda activate alphafold3-plh  # note: one still needs to use `conda` to (de)activate environments
+
+# Install local project as package
+pip3 install -e .
+```
+
 ### Docker
 The included `Dockerfile` contains the required dependencies to run the package and to train/inference using PyTorch with GPUs.
 

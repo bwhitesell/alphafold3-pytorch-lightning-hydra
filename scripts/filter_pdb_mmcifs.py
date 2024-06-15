@@ -666,7 +666,7 @@ def filter_structure_with_timeout(filepath: str, output_dir: str):
             # NOTE: Modified amino acid and nucleotide residues are treated as N-atom ligands in this (structural) filtering step
             mmcif_object,
             PROTEIN_RESIDUE_CENTER_ATOMS,
-            NUCLEIC_ACID_RESIDUE_CENTER_ATOMS,  # TODO: Verify chains to be removed are not referenced in this filtering step
+            NUCLEIC_ACID_RESIDUE_CENTER_ATOMS,
         )
         mmcif_object = remove_crystallization_aids(mmcif_object, CRYSTALLOGRAPHY_METHODS)
         if len(mmcif_object.chains_to_remove) < len(list(mmcif_object.structure.get_chains())):
