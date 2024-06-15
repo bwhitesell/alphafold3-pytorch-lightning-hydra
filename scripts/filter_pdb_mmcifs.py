@@ -193,7 +193,7 @@ def filter_resolved_chains(
         if len(
             [
                 res_index
-                for res_index in range(len(mmcif_object.seqres_to_structure[chain.id]))
+                for res_index in range(len(mmcif_object.chain_to_seqres[chain.id]))
                 if any(
                     chem_type in mmcif_object.chem_comp_details[chain.id][res_index].type.lower()
                     for chem_type in {"peptide", "dna", "rna"}
