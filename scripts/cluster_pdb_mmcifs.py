@@ -1546,7 +1546,7 @@ def parse_chain_sequences_and_interfaces_from_mmcif_file(
                 else:
                     assert (
                         molecule_type == chain_most_common_molecule_type
-                    ), f"Residue {res.resname} in chain {chain.id} has an unexpected molecule type of `{molecule_type}` (versus the expected molecule type of `{chain_most_common_molecule_type}`)."
+                    ), f"Residue {res.resname} in chain {chain.id} has an unexpected molecule type of `{molecule_type}` (vs. the expected molecule type of `{chain_most_common_molecule_type}`)."
                     one_letter_seq_tokens.append(one_letter_residue)
                     token_molecule_types.add(molecule_type)
 

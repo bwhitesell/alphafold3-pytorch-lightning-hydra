@@ -43,7 +43,6 @@ import rootutils
 import timeout_decorator
 from Bio.PDB import MMCIFIO
 from Bio.PDB.Atom import Atom, DisorderedAtom
-from Bio.PDB.Model import Model
 from Bio.PDB.NeighborSearch import NeighborSearch
 from Bio.PDB.Residue import Residue
 from pdbeccdutils.core import ccd_reader
@@ -206,9 +205,7 @@ def filter_resolved_chains(
     mmcif_object.chains_to_remove.update(chains_to_remove)
 
     return (
-        None
-        if len(list(mmcif_object.structure.get_chains())) == len(mmcif_object.chains_to_remove)
-        else mmcif_object
+        None if len(mmcif_object.chains_to_remove) == len(mmcif_object.structure) else mmcif_object
     )
 
 
@@ -358,7 +355,7 @@ def remove_excluded_ligands(
         for res in chain:
             if res.resname in ligand_exclusion_set:
                 res_to_remove.add(res.get_full_id())
-        if len(res_to_remove) == len(list(chain.get_residues())):
+        if len(res_to_remove) == len(chain):
             chains_to_remove.add(chain.get_full_id())
         residues_to_remove.update(res_to_remove)
 
@@ -385,10 +382,10 @@ def remove_non_ccd_atoms(
                 res_atoms_to_remove = {
                     atom.get_full_id() for atom in res.get_atoms() if atom.id not in ccd_atoms
                 }
-                if len(res_atoms_to_remove) == len(list(res.get_atoms())):
+                if len(res_atoms_to_remove) == len(res):
                     res_to_remove.add(res.get_full_id())
                 atoms_to_remove.update(res_atoms_to_remove)
-        if len(res_to_remove) == len(list(chain.get_residues())):
+        if len(res_to_remove) == len(chain):
             chains_to_remove.add(chain.get_full_id())
         residues_to_remove.update(res_to_remove)
 
@@ -546,9 +543,7 @@ def select_closest_chains(
         return list(interface_tokens)
 
     chains_to_remove = set()
-    if (
-        len(list(mmcif_object.structure.get_chains())) - len(mmcif_object.chains_to_remove)
-    ) > max_chains:
+    if (len(mmcif_object.structure) - len(mmcif_object.chains_to_remove)) > max_chains:
         chains = [
             chain
             for chain in mmcif_object.structure.get_chains()
@@ -612,7 +607,7 @@ def remove_crystallization_aids(
             for res in chain:
                 if res.resname in structure_method_crystallization_aids:
                     res_to_remove.add(res.get_full_id())
-            if len(res_to_remove) == len(list(chain.get_residues())):
+            if len(res_to_remove) == len(chain):
                 chains_to_remove.add(chain.get_full_id())
             residues_to_remove.update(res_to_remove)
 
@@ -624,7 +619,44 @@ def remove_crystallization_aids(
 
 @typecheck
 def filter_mmcif(mmcif_object: MmcifObject) -> MmcifObject:
-    """TODO: Filter an `MmcifObject` based on collected (atom/residue/chain) removal sets."""
+    """
+    Filter an `MmcifObject` based on collected (atom/residue/chain) removal sets.
+    """
+    model = mmcif_object.structure
+
+    # Filter out specified chains
+    chains_to_remove = set()
+    for chain in model:
+        # Filter out specified residues
+        residues_to_remove = set()
+        assert len(chain) == len(mmcif_object.chem_comp_details[chain.id]), (
+            f"Number of residues in chain {chain.id} does not match "
+            f"number of chemical component details for this chain: {len(chain)} vs. "
+            f"{len(mmcif_object.chem_comp_details[chain.id])}."
+        )
+        for res_index, residue in enumerate(chain):
+            # Filter out specified atoms
+            atoms_to_remove = set()
+            for atom in residue:
+                if atom.get_full_id() in mmcif_object.atoms_to_remove:
+                    atoms_to_remove.add(atom)
+            if len(atoms_to_remove) == len(residue):
+                residues_to_remove.add(residue)
+            for atom in atoms_to_remove:
+                residue.detach_child(atom.id)
+            if residue.get_full_id() in mmcif_object.residues_to_remove:
+                residues_to_remove.add(residue)
+            if residue in residues_to_remove:
+                mmcif_object.chem_comp_details[chain.id].pop(res_index)
+        if len(residues_to_remove) == len(chain):
+            chains_to_remove.add(chain)
+        for residue in residues_to_remove:
+            chain.detach_child(residue.id)
+        if chain.get_full_id() in mmcif_object.chains_to_remove:
+            chains_to_remove.add(chain)
+    for chain in chains_to_remove:
+        model.detach_child(chain.id)
+
     return mmcif_object
 
 
@@ -671,7 +703,7 @@ def filter_structure_with_timeout(filepath: str, output_dir: str):
             NUCLEIC_ACID_RESIDUE_CENTER_ATOMS,
         )
         mmcif_object = remove_crystallization_aids(mmcif_object, CRYSTALLOGRAPHY_METHODS)
-        if len(mmcif_object.chains_to_remove) < len(list(mmcif_object.structure.get_chains())):
+        if len(mmcif_object.chains_to_remove) < len(mmcif_object.structure):
             # Save a filtered structure as an mmCIF file along with its latest metadata
             mmcif_object = filter_mmcif(mmcif_object)
             write_mmcif(mmcif_object, output_filepath)
