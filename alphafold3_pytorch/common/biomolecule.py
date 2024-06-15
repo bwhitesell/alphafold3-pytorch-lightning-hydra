@@ -58,7 +58,12 @@ class Biomolecule:
     # 25 represents the unknown RNA nucleotide `N`;
     # 30 represents the unknown DNA nucleotide `DN`;
     # and 31 represents the gap token `-`.
-    aatype: np.ndarray  # [num_res]
+    restype: np.ndarray  # [num_res]
+
+    # Chemical type of each amino-acid or nucleotide residue represented as an
+    # integer between 0 and 3. This is used to determine whether a residue is
+    # a protein (0), RNA (1), DNA (2), or ligand (3) residue.
+    chemtype: np.ndarray  # [num_res]
 
     # Binary float mask to indicate presence of a particular atom. 1.0 if an atom
     # is present and 0.0 if not. This should be used for loss masking.
@@ -77,21 +82,17 @@ class Biomolecule:
     b_factors: np.ndarray  # [num_res, num_atom_type]
 
 
-def get_residue_constants(res_chem_type: str) -> Tuple[Any, str]:
-    """Returns the residue constants and the unknown residue code for a given residue chemical type."""
+def get_residue_constants(res_chem_type: str) -> Any:
+    """Returns the corresponding residue constants for a given residue chemical type."""
     if "peptide" in res_chem_type.lower():
         residue_constants = amino_acid_constants
-        unk_rescode = "X"
     elif "rna" in res_chem_type.lower():
         residue_constants = rna_constants
-        unk_rescode = "N"
     elif "dna" in res_chem_type.lower():
         residue_constants = dna_constants
-        unk_rescode = "N"
     else:
         residue_constants = ligand_constants
-        unk_rescode = "X"
-    return residue_constants, unk_rescode
+    return residue_constants
 
 
 def _from_mmcif_object(
@@ -124,7 +125,8 @@ def _from_mmcif_object(
         model = models[0]
 
     atom_positions = []
-    aatype = []
+    restype = []
+    chemtype = []
     atom_mask = []
     residue_index = []
     chain_ids = []
@@ -140,8 +142,8 @@ def _from_mmcif_object(
                     f" residue index {res.id[1]}. These are not supported."
                 )
             res_chem_type = mmcif_object.chem_comp_details[chain.id][res_index].type
-            residue_constants, unk_rescode = get_residue_constants(res_chem_type)
-            res_shortname = residue_constants.restype_3to1.get(res.resname, unk_rescode)
+            residue_constants = get_residue_constants(res_chem_type)
+            res_shortname = residue_constants.restype_3to1.get(res.resname, "X")
             restype_idx = residue_constants.restype_order.get(
                 res_shortname, residue_constants.restype_num
             )
@@ -157,7 +159,8 @@ def _from_mmcif_object(
             if np.sum(mask) < 0.5:
                 # If no known atom positions are reported for the residue then skip it.
                 continue
-            aatype.append(restype_idx)
+            restype.append(restype_idx)
+            chemtype.append(residue_constants.chemtype_num)
             atom_positions.append(pos)
             atom_mask.append(mask)
             residue_index.append(res.id[1])
@@ -171,8 +174,9 @@ def _from_mmcif_object(
 
     return Biomolecule(
         atom_positions=np.array(atom_positions),
+        restype=np.array(restype),
+        chemtype=np.array(chemtype),
         atom_mask=np.array(atom_mask),
-        aatype=np.array(aatype),
         residue_index=np.array(residue_index),
         chain_index=chain_index,
         b_factors=np.array(b_factors),
@@ -246,7 +250,7 @@ def to_mmcif(
       too many biomolecule types.
     """
     atom_mask = biomol.atom_mask
-    aatype = biomol.aatype
+    restype = biomol.restype
     atom_positions = biomol.atom_positions
     residue_index = biomol.residue_index.astype(np.int32)
     chain_index = biomol.chain_index.astype(np.int32)
@@ -280,7 +284,7 @@ def to_mmcif(
 
     # Add the residues to the _entity_poly_seq table.
     for entity_id, (res_ids, aas) in _get_entity_poly_seq(
-        aatype, residue_index, chain_index
+        restype, residue_index, chain_index
     ).items():
         for res_id, aa in zip(res_ids, aas):
             mmcif_dict["_entity_poly_seq.entity_id"].append(str(entity_id))
@@ -296,9 +300,9 @@ def to_mmcif(
 
     # Add all atom sites.
     atom_index = 1
-    for i in range(aatype.shape[0]):
-        res_name_3 = amino_acid_constants.resnames[aatype[i]]
-        if aatype[i] <= len(amino_acid_constants.restypes):
+    for i in range(restype.shape[0]):
+        res_name_3 = amino_acid_constants.resnames[restype[i]]
+        if restype[i] <= len(amino_acid_constants.restypes):
             atom_names = amino_acid_constants.atom_types
         else:
             raise ValueError(
@@ -362,23 +366,26 @@ def _int_id_to_str_id(num: int) -> str:
 
 
 def _get_entity_poly_seq(
-    aatypes: np.ndarray, residue_indices: np.ndarray, chain_indices: np.ndarray
+    restypes: np.ndarray, residue_indices: np.ndarray, chain_indices: np.ndarray
 ) -> Dict[int, Tuple[List[int], List[int]]]:
-    """Constructs gapless residue index and aatype lists for each chain.
+    """Constructs gapless residue index and restype lists for each chain.
 
-    :param aatypes: A numpy array with aatypes.
+    :param restypes: A numpy array with restypes.
     :param residue_indices: A numpy array with residue indices.
     :param chain_indices: A numpy array with chain indices.
 
     :return: A dictionary mapping chain indices to a tuple with list of residue indices
-      and a list of aatypes. Missing residues are filled with UNK residue type.
+      and a list of restypes. Missing residues are filled with UNK residue type.
     """
-    if aatypes.shape[0] != residue_indices.shape[0] or aatypes.shape[0] != chain_indices.shape[0]:
-        raise ValueError("aatypes, residue_indices, chain_indices must have the same length.")
+    if (
+        restypes.shape[0] != residue_indices.shape[0]
+        or restypes.shape[0] != chain_indices.shape[0]
+    ):
+        raise ValueError("restypes, residue_indices, chain_indices must have the same length.")
 
     # Group the present residues by chain index.
     present = collections.defaultdict(list)
-    for chain_id, res_id, aa in zip(chain_indices, residue_indices, aatypes):
+    for chain_id, res_id, aa in zip(chain_indices, residue_indices, restypes):
         present[chain_id].append((res_id, aa))
 
     # Add any missing residues (from 1 to the first residue and for any gaps).
@@ -389,16 +396,16 @@ def _get_entity_poly_seq(
         max_res_id = max(present_residue_indices)
 
         new_residue_indices = []
-        new_aatypes = []
+        new_restypes = []
         present_index = 0
         for i in range(min(1, min_res_id), max_res_id + 1):
             new_residue_indices.append(i)
             if i in present_residue_indices:
-                new_aatypes.append(present_residues[present_index][1])
+                new_restypes.append(present_residues[present_index][1])
                 present_index += 1
             else:
-                new_aatypes.append(20)  # Unknown amino acid type.
-        entity_poly_seq[chain_id] = (new_residue_indices, new_aatypes)
+                new_restypes.append(20)  # Unknown amino acid type.
+        entity_poly_seq[chain_id] = (new_residue_indices, new_restypes)
     return entity_poly_seq
 
 

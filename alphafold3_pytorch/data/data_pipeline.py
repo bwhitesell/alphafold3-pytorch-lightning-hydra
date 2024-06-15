@@ -11,7 +11,7 @@ FeatureDict = MutableMapping[str, np.ndarray]
 def make_sequence_features(sequence: str, description: str, num_res: int) -> FeatureDict:
     """Construct a feature dict of sequence features."""
     features = {}
-    features["aatype"] = amino_acid_constants.sequence_to_onehot(
+    features["restype"] = amino_acid_constants.sequence_to_onehot(
         sequence=sequence,
         mapping=amino_acid_constants.restype_order_with_x,
         map_unknown_to_x=True,

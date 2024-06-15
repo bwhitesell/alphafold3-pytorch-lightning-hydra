@@ -1,4 +1,4 @@
-"""Constants used in AlphaFold."""
+"""Amino acid constants used in AlphaFold."""
 
 # This mapping is used when we need to store atom data in a format that requires
 # fixed atom data size for every residue (e.g. a numpy array).
@@ -44,6 +44,35 @@ atom_types = [
 atom_order = {atom_type: i for i, atom_type in enumerate(atom_types)}
 atom_type_num = len(atom_types)  # := 37.
 
+
+# This is the standard residue order when coding AA type as a number.
+# Reproduce it by taking 3-letter AA codes and sorting them alphabetically.
+restypes = [
+    "A",
+    "R",
+    "N",
+    "D",
+    "C",
+    "Q",
+    "E",
+    "G",
+    "H",
+    "I",
+    "L",
+    "K",
+    "M",
+    "F",
+    "P",
+    "S",
+    "T",
+    "W",
+    "Y",
+    "V",
+]
+restype_order = {restype: i for i, restype in enumerate(restypes)}
+restype_num = len(restypes)  # := 20.
+
+
 restype_1to3 = {
     "A": "ALA",
     "R": "ARG",
@@ -73,3 +102,6 @@ restype_1to3 = {
 # keys and maps many of these to the same one letter name
 # (including 'X' and 'U' which we don't use here).
 restype_3to1 = {v: k for k, v in restype_1to3.items()}
+
+# This represents the residue chemical type (i.e., `chemtype`) index of amino acid residues.
+chemtype_num = 0
