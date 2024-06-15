@@ -26,8 +26,8 @@ import numpy as np
 from Bio import PDB
 from Bio.Data import PDBData
 
+from alphafold3_pytorch.common import residue_constants
 from alphafold3_pytorch.data.errors import MultipleChainsError
-from alphafold3_pytorch.np import residue_constants
 
 # Type aliases:
 ChainId = str

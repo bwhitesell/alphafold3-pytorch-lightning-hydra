@@ -10,7 +10,7 @@ from Bio.PDB.mmcifio import MMCIFIO
 from Bio.PDB.Model import Model
 from Bio.PDB.Structure import Structure
 
-from alphafold3_pytorch.np import mmcif_metadata, residue_constants
+from alphafold3_pytorch.common import mmcif_metadata, residue_constants
 
 # Data to fill the _chem_comp table when writing mmCIFs.
 _CHEM_COMP: Mapping[str, Tuple[Tuple[str, str], ...]] = {
@@ -173,9 +173,6 @@ def from_mmcif_string(mmcif_str: str, chain_id: Optional[str] = None) -> Biomole
     with io.StringIO(mmcif_str) as mmcif_fh:
         parser = MMCIFParser(QUIET=True)
         structure = parser.get_structure(structure_id="none", filename=mmcif_fh)
-        # TODO: Expand the first bioassembly/model, to obtain a biologically relevant complex (AF3 Supplement, Section 2.1).
-        # Reference: https://github.com/biotite-dev/biotite/blob/1045f43f80c77a0dc00865e924442385ce8f83ab/src/biotite/structure/io/pdbx/convert.py#L1441
-        # structure = _expand_first_model(structure)
         return _from_bio_structure(structure, chain_id)
 
 
