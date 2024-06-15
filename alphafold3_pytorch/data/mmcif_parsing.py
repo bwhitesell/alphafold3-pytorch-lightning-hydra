@@ -598,10 +598,6 @@ def get_atom_coords(
         all_atom_positions[res_index] = pos
         all_atom_mask[res_index] = mask
 
-    # TODO: Expand the first bioassembly/model, to obtain a biologically relevant complex (AF3 Supplement, Section 2.1).
-    # NOTE: The first bioassembly/model is already extracted in the `parse()` function.
-    # mmcif_object.structure = _expand_model(mmcif_object.structure)
-
     if _zero_center_positions:
         binary_mask = all_atom_mask.astype(bool)
         translation_vec = all_atom_positions[binary_mask].mean(axis=0)

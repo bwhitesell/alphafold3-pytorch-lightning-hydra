@@ -148,9 +148,6 @@ def _from_bio_structure(
     chain_id_mapping = {cid: n for n, cid in enumerate(unique_chain_ids)}
     chain_index = np.array([chain_id_mapping[cid] for cid in chain_ids])
 
-    # TODO: Expand the first bioassembly/model, to obtain a biologically relevant complex (AF3 Supplement, Section 2.1).
-    # mmcif_object.structure = _expand_model(mmcif_object.structure)
-
     return Biomolecule(
         atom_positions=np.array(atom_positions),
         atom_mask=np.array(atom_mask),
@@ -176,6 +173,9 @@ def from_mmcif_string(mmcif_str: str, chain_id: Optional[str] = None) -> Biomole
     with io.StringIO(mmcif_str) as mmcif_fh:
         parser = MMCIFParser(QUIET=True)
         structure = parser.get_structure(structure_id="none", filename=mmcif_fh)
+        # TODO: Expand the first bioassembly/model, to obtain a biologically relevant complex (AF3 Supplement, Section 2.1).
+        # Reference: https://github.com/biotite-dev/biotite/blob/1045f43f80c77a0dc00865e924442385ce8f83ab/src/biotite/structure/io/pdbx/convert.py#L1441
+        # structure = _expand_first_model(structure)
         return _from_bio_structure(structure, chain_id)
 
 
