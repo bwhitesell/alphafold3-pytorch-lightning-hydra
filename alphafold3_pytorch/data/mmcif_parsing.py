@@ -571,14 +571,16 @@ def get_atom_coords(
                 atom_name = atom.get_name()
                 x, y, z = atom.get_coord()
                 if atom_name in residue_constants.atom_order.keys():
+                    # Remove waters.
                     pos[residue_constants.atom_order[atom_name]] = [x, y, z]
                     mask[residue_constants.atom_order[atom_name]] = 1.0
-                # TODO: Resolve alternative locations for atoms/residues by taking the one with the largest occupancy.
+                # Resolve alternative locations for atoms/residues by taking the one with the largest occupancy.
+                # NOTE: For `DisorderedAtom` objects, selecting the highest-occupancy atom is already the default behavior in Biopython.
+                # Reference: https://biopython-tutorial.readthedocs.io/en/latest/notebooks/11%20-%20Going%203D%20-%20The%20PDB%20module.html#Disordered-atoms[disordered-atoms]
                 elif atom_name.upper() == "SE" and res.get_resname() == "MSE":
                     # Put the coords of the selenium atom in the sulphur column
                     pos[residue_constants.atom_order["SD"]] = [x, y, z]
                     mask[residue_constants.atom_order["SD"]] = 1.0
-                # TODO: Remove waters.
 
             # Fix naming errors in arginine residues where NH2 is incorrectly
             # assigned to be closer to CD than NH1
@@ -596,7 +598,7 @@ def get_atom_coords(
         all_atom_positions[res_index] = pos
         all_atom_mask[res_index] = mask
 
-    # TODO: Expand the first bioassembly, to obtain a biologically relevant complex (AF3 Supplement, Section 2.1).
+    # TODO: Expand the first bioassembly/model, to obtain a biologically relevant complex (AF3 Supplement, Section 2.1).
     # NOTE: The first bioassembly/model is already extracted in the `parse()` function.
     # mmcif_object.structure = _expand_model(mmcif_object.structure)
 

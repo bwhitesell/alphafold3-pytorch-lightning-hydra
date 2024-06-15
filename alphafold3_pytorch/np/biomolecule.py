@@ -5,8 +5,10 @@ import io
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
-from Bio.PDB import Structure
+from Bio.PDB import MMCIFParser
 from Bio.PDB.mmcifio import MMCIFIO
+from Bio.PDB.Model import Model
+from Bio.PDB.Structure import Structure
 
 from alphafold3_pytorch.np import mmcif_metadata, residue_constants
 
@@ -70,30 +72,33 @@ class Biomolecule:
     b_factors: np.ndarray  # [num_res, num_atom_type]
 
 
-def _from_bio_structure(structure: Structure, chain_id: Optional[str] = None) -> Biomolecule:
-    """Takes a Biopython structure and creates a `Biomolecule` instance.
+def _from_bio_structure(
+    structure: Structure | Model, chain_id: Optional[str] = None
+) -> Biomolecule:
+    """Takes a Biopython structure/model and creates a `Biomolecule` instance.
 
     WARNING: All non-standard residue types will be converted into UNK. All
       non-standard atoms will be ignored.
 
-    Args:
-      structure: Structure from the Biopython library.
-      chain_id: If chain_id is specified (e.g. A), then only that chain is parsed.
+    :param structure: Structure or Model from the Biopython library.
+    :param chain_id: If chain_id is specified (e.g. A), then only that chain is parsed.
         Otherwise all chains are parsed.
 
-    Returns:
-      A new `Biomolecule` created from the structure contents.
+    :return: A new `Biomolecule` created from the structure/model contents.
 
-    Raises:
-      ValueError: If the number of models included in the structure is not 1.
+    :raise:
+      ValueError: If the number of models included in a given structure is not 1.
       ValueError: If insertion code is detected at a residue.
     """
-    models = list(structure.get_models())
-    if len(models) != 1:
-        raise ValueError(
-            "Only single model PDBs/mmCIFs are supported. Found" f" {len(models)} models."
-        )
-    model = models[0]
+    if isinstance(structure, Model):
+        model = structure
+    else:
+        models = list(structure.get_models())
+        if len(models) != 1:
+            raise ValueError(
+                "Only single model mmCIFs are supported. Found" f" {len(models)} models."
+            )
+        model = models[0]
 
     atom_positions = []
     aatype = []
@@ -108,7 +113,7 @@ def _from_bio_structure(structure: Structure, chain_id: Optional[str] = None) ->
         for res in chain:
             if res.id[2] != " ":
                 raise ValueError(
-                    f"PDB/mmCIF contains an insertion code at chain {chain.id} and"
+                    f"mmCIF contains an insertion code at chain {chain.id} and"
                     f" residue index {res.id[1]}. These are not supported."
                 )
             res_shortname = residue_constants.restype_3to1.get(res.resname, "X")
@@ -120,10 +125,14 @@ def _from_bio_structure(structure: Structure, chain_id: Optional[str] = None) ->
             res_b_factors = np.zeros((residue_constants.atom_type_num,))
             for atom in res:
                 if atom.name not in residue_constants.atom_types:
+                    # Remove waters.
                     continue
                 pos[residue_constants.atom_order[atom.name]] = atom.coord
                 mask[residue_constants.atom_order[atom.name]] = 1.0
                 res_b_factors[residue_constants.atom_order[atom.name]] = atom.bfactor
+                # Resolve alternative locations for atoms/residues by taking the one with the largest occupancy.
+                # NOTE: For `DisorderedAtom` objects, selecting the highest-occupancy atom is already the default behavior in Biopython.
+                # Reference: https://biopython-tutorial.readthedocs.io/en/latest/notebooks/11%20-%20Going%203D%20-%20The%20PDB%20module.html#Disordered-atoms[disordered-atoms]
             if np.sum(mask) < 0.5:
                 # If no known atom positions are reported for the residue then skip it.
                 continue
@@ -139,6 +148,9 @@ def _from_bio_structure(structure: Structure, chain_id: Optional[str] = None) ->
     chain_id_mapping = {cid: n for n, cid in enumerate(unique_chain_ids)}
     chain_index = np.array([chain_id_mapping[cid] for cid in chain_ids])
 
+    # TODO: Expand the first bioassembly/model, to obtain a biologically relevant complex (AF3 Supplement, Section 2.1).
+    # mmcif_object.structure = _expand_model(mmcif_object.structure)
+
     return Biomolecule(
         atom_positions=np.array(atom_positions),
         atom_mask=np.array(atom_mask),
@@ -147,6 +159,24 @@ def _from_bio_structure(structure: Structure, chain_id: Optional[str] = None) ->
         chain_index=chain_index,
         b_factors=np.array(b_factors),
     )
+
+
+def from_mmcif_string(mmcif_str: str, chain_id: Optional[str] = None) -> Biomolecule:
+    """Takes a mmCIF string and constructs a `Biomolecule` object.
+
+    WARNING: All non-standard residue types will be converted into UNK. All
+      non-standard atoms will be ignored.
+
+    :param mmcif_str: The contents of the mmCIF file
+    :param chain_id: If chain_id is specified (e.g. A), then only that chain is parsed.
+        Otherwise all chains are parsed.
+
+    :return: A new `Biomolecule` parsed from the mmCIF contents.
+    """
+    with io.StringIO(mmcif_str) as mmcif_fh:
+        parser = MMCIFParser(QUIET=True)
+        structure = parser.get_structure(structure_id="none", filename=mmcif_fh)
+        return _from_bio_structure(structure, chain_id)
 
 
 def to_mmcif(
@@ -179,15 +209,13 @@ def to_mmcif(
     WARNING 4: In case of multiple identical chains, they are assigned different
       `_atom_site.label_entity_id` values.
 
-    Args:
-      biomol: A biomolecule to convert to mmCIF string.
-      file_id: The file ID (usually the PDB ID) to be used in the mmCIF.
-      model_type: 'Multimer' or 'Monomer'.
+    :param biomol: A biomolecule to convert to mmCIF string.
+    :param file_id: The file ID (usually the PDB ID) to be used in the mmCIF.
+    :param model_type: 'Multimer' or 'Monomer'.
 
-    Returns:
-      A valid mmCIF string.
+    :return: A valid mmCIF string.
 
-    Raises:
+    :raise:
       ValueError: If amino-acid or nucleotide types array contains entries with
       too many biomolecule types.
     """
@@ -290,11 +318,9 @@ def to_mmcif(
 def _int_id_to_str_id(num: int) -> str:
     """Encodes a number as a string, using reverse spreadsheet style naming.
 
-    Args:
-      num: A positive integer.
+    :param num: A positive integer.
 
-    Returns:
-      A string that encodes the positive integer using reverse spreadsheet style,
+    :return: A string that encodes the positive integer using reverse spreadsheet style,
       naming e.g. 1 = A, 2 = B, ..., 27 = AA, 28 = BA, 29 = CA, ... This is the
       usual way to encode chain IDs in mmCIF files.
     """
@@ -314,13 +340,11 @@ def _get_entity_poly_seq(
 ) -> Dict[int, Tuple[List[int], List[int]]]:
     """Constructs gapless residue index and aatype lists for each chain.
 
-    Args:
-      aatypes: A numpy array with aatypes.
-      residue_indices: A numpy array with residue indices.
-      chain_indices: A numpy array with chain indices.
+    :param aatypes: A numpy array with aatypes.
+    :param residue_indices: A numpy array with residue indices.
+    :param chain_indices: A numpy array with chain indices.
 
-    Returns:
-      A dictionary mapping chain indices to a tuple with list of residue indices
+    :return: A dictionary mapping chain indices to a tuple with list of residue indices
       and a list of aatypes. Missing residues are filled with UNK residue type.
     """
     if aatypes.shape[0] != residue_indices.shape[0] or aatypes.shape[0] != chain_indices.shape[0]:
