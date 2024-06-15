@@ -49,7 +49,7 @@ atom_type_num = len(atom_types)  # := 37.
 
 # All ligand residues are mapped to the unknown amino acid type index.
 restype_order = {}
-restype_num = len(amino_acid_constants.amino_acid_restypes)  # := 20.
+restype_num = len(amino_acid_constants.restypes)  # := 20.
 
 
 # NB: restype_3to1 serves as a placeholder for mapping all

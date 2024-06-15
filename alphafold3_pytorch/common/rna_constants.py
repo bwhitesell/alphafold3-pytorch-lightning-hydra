@@ -51,7 +51,7 @@ atom_type_num = len(atom_types)  # := 37.
 # Reproduce it by taking 3-letter RNA codes and sorting them alphabetically.
 restypes = ["A", "C", "G", "U"]
 restype_order = {restype: i for i, restype in enumerate(restypes)}
-restype_num = (len(amino_acid_constants.amino_acid_restypes) + 1) + len(restypes)  # := 25.
+restype_num = (len(amino_acid_constants.restypes) + 1) + len(restypes)  # := 25.
 
 
 restype_1to3 = {"A": "A", "C": "C", "G": "G", "U": "U"}

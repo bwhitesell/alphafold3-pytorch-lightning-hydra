@@ -52,9 +52,7 @@ atom_type_num = len(atom_types)  # := 37.
 restypes = ["A", "C", "G", "T"]
 restype_order = {restype: i for i, restype in enumerate(restypes)}
 restype_num = (
-    (len(amino_acid_constants.amino_acid_restypes) + 1)
-    + (len(rna_constants.rna_restypes) + 1)
-    + len(restypes)
+    (len(amino_acid_constants.restypes) + 1) + (len(rna_constants.restypes) + 1) + len(restypes)
 )  # := 30.
 
 
