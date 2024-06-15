@@ -89,5 +89,5 @@ INPUT_TO_ATOM_TRANSFORM = {
 
 
 @typecheck
-def register_input_transform(input_type: Type, fn: Callable[[TypedDict], AtomInput]):
+def register_input_transform(input_type: Type, fn: Callable[[TypedDict], AtomInput]):  # type: ignore
     INPUT_TO_ATOM_TRANSFORM[input_type] = fn

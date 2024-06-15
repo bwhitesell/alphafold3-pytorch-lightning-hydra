@@ -7,7 +7,8 @@ from lightning import LightningDataModule
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 
-from alphafold3_pytorch.models.alphafold3_module import INPUT_TO_ATOM_TRANSFORM, AtomInput
+from alphafold3_pytorch.models.alphafold3_module import AtomInput
+from alphafold3_pytorch.models.components.inputs import INPUT_TO_ATOM_TRANSFORM
 from alphafold3_pytorch.utils.model_utils import pad_at_dim
 from alphafold3_pytorch.utils.typing import beartype_isinstance, typecheck
 from alphafold3_pytorch.utils.utils import exists
