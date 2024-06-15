@@ -666,7 +666,7 @@ def write_mmcif(
     output_filepath: str,
     model_type: Literal["Multimer", "Monomer"] = "Multimer",
 ):
-    """Write a BioPython `Structure` object to an mmCIF file an a intermediate `Complex` object."""
+    """Write a BioPython `Structure` object to an mmCIF file using an intermediate `Biomolecule` object."""
     biomol = _from_bio_structure(mmcif_object.structure)
     mmcif_string = to_mmcif(biomol, mmcif_object.file_id, model_type)
     with open(output_filepath, "w") as f:
