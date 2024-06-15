@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 import rootutils
+import torch
 from hydra import compose, initialize
 from hydra.core.global_hydra import GlobalHydra
 from omegaconf import DictConfig, open_dict
@@ -47,7 +48,7 @@ def cfg_train_global() -> DictConfig:
             cfg.trainer.limit_train_batches = 0.01
             cfg.trainer.limit_val_batches = 0.1
             cfg.trainer.limit_test_batches = 0.1
-            cfg.trainer.accelerator = "gpu"
+            cfg.trainer.accelerator = "gpu" if torch.cuda.is_available() else "cpu"
             cfg.trainer.devices = 1
 
             if hasattr(cfg, "callbacks") and hasattr(cfg.callbacks, "learning_rate_monitor"):
@@ -94,7 +95,7 @@ def cfg_eval_global() -> DictConfig:
             cfg.paths.root_dir = str(rootutils.find_root(indicator=".project-root"))
             cfg.trainer.max_epochs = 1
             cfg.trainer.limit_test_batches = 0.1
-            cfg.trainer.accelerator = "gpu"
+            cfg.trainer.accelerator = "gpu" if torch.cuda.is_available() else "cpu"
             cfg.trainer.devices = 1
 
             if hasattr(cfg, "callbacks") and hasattr(cfg.callbacks, "learning_rate_monitor"):

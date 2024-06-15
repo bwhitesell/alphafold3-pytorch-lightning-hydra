@@ -2342,7 +2342,7 @@ class ElucidatedAtomDiffusion(Module):
         return ElucidatedAtomDiffusionReturn(total_loss, denoised_atom_pos, loss_breakdown, sigmas)
 
 
-# TODO: modules
+# modules
 
 
 class SmoothLDDTLoss(Module):
