@@ -50,7 +50,7 @@ from tqdm.contrib.concurrent import process_map
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
-from alphafold3_pytorch.common.biomolecule import _from_bio_structure, to_mmcif
+from alphafold3_pytorch.common.biomolecule import _from_mmcif_object, to_mmcif
 from alphafold3_pytorch.data import mmcif_parsing
 from alphafold3_pytorch.data.mmcif_parsing import MmcifObject
 from alphafold3_pytorch.utils.typing import typecheck
@@ -125,7 +125,7 @@ POSEBUSTERS_V2_COMMON_NATURAL_LIGANDS = set(
 
 
 @typecheck
-def parse_mmcif(filepath: str, file_id: str) -> MmcifObject:
+def parse_mmcif_object(filepath: str, file_id: str) -> MmcifObject:
     """Parse an mmCIF file into an `MmcifObject` containing a BioPython `Structure` object as well as associated metadata."""
     with open(filepath, "r") as f:
         mmcif_string = f.read()
@@ -668,7 +668,7 @@ def write_mmcif(
     model_type: Literal["Multimer", "Monomer"] = "Multimer",
 ):
     """Write a BioPython `Structure` object to an mmCIF file using an intermediate `Biomolecule` object."""
-    biomol = _from_bio_structure(mmcif_object.structure)
+    biomol = _from_mmcif_object(mmcif_object)
     mmcif_string = to_mmcif(biomol, mmcif_object.file_id, model_type)
     with open(output_filepath, "w") as f:
         f.write(mmcif_string)
@@ -689,7 +689,7 @@ def filter_structure_with_timeout(filepath: str, output_dir: str):
     os.makedirs(output_file_dir, exist_ok=True)
 
     # Filtering of targets
-    mmcif_object = parse_mmcif(filepath, file_id)
+    mmcif_object = parse_mmcif_object(filepath, file_id)
     mmcif_object = prefilter_target(mmcif_object)
     if exists(mmcif_object):
         # Filtering of bioassemblies
@@ -810,7 +810,9 @@ if __name__ == "__main__":
     #     os.path.join(args.ccd_dir, "components.cif"),
     #     sanitize=False,  # Reduce loading time
     # )
-    CCD_READER_RESULTS = {}
+    CCD_READER_RESULTS = (
+        {}
+    )  # TODO: Restore the above CCD-loading lines once development of this script is completed
     print("Finished loading the Chemical Component Dictionary (CCD) into memory.")
 
     # Filter structures across all worker processes

@@ -39,7 +39,7 @@ rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
 from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.typing import typecheck
-from scripts.filter_pdb_mmcifs import parse_mmcif
+from scripts.filter_pdb_mmcifs import parse_mmcif_object
 
 log = RankedLogger(__name__, rank_zero_only=True)
 
@@ -1505,7 +1505,8 @@ def parse_chain_sequences_and_interfaces_from_mmcif_file(
     as well as a set of chain ID pairs denoting structural interfaces.
     """
     assert filepath.endswith(".cif"), "The input file must be an mmCIF file."
-    structure = parse_mmcif(filepath)
+    mmcif_object = parse_mmcif_object(filepath)
+    model = mmcif_object.structure
 
     # NOTE: After filtering, only heavy (non-hydrogen) atoms remain in the structure
     # all_atoms = [atom for atom in structure.get_atoms()]
@@ -1513,80 +1514,79 @@ def parse_chain_sequences_and_interfaces_from_mmcif_file(
 
     sequences = {}
     interface_chain_ids = set()
-    for model in structure:
-        for chain in model:
-            num_ligands_in_chain = 0
-            one_letter_seq_tokens = []
-            token_molecule_types = set()
+    for chain in model:
+        num_ligands_in_chain = 0
+        one_letter_seq_tokens = []
+        token_molecule_types = set()
 
-            # First find the most common molecule type in the chain
-            molecule_type_counter = Counter(
-                [convert_residue_three_to_one(res.resname, ccd_codes)[-1] for res in chain]
+        # First find the most common molecule type in the chain
+        molecule_type_counter = Counter(
+            [convert_residue_three_to_one(res.resname, ccd_codes)[-1] for res in chain]
+        )
+        chain_most_common_molecule_types = molecule_type_counter.most_common(2)
+        chain_most_common_molecule_type = chain_most_common_molecule_types[0][0]
+        if (
+            chain_most_common_molecule_type == "ligand"
+            and len(chain_most_common_molecule_types) > 1
+        ):
+            # NOTE: Ligands may be the most common molecule type in a chain, in which case
+            # the second most common molecule type is required for sequence mapping
+            chain_most_common_molecule_type = chain_most_common_molecule_types[1][0]
+
+        for res in chain:
+            # Then convert each residue to a one-letter code using the most common molecule type in the chain
+            one_letter_residue, molecule_type = convert_ambiguous_residue_three_to_one(
+                res.resname, ccd_codes, molecule_type=chain_most_common_molecule_type
             )
-            chain_most_common_molecule_types = molecule_type_counter.most_common(2)
-            chain_most_common_molecule_type = chain_most_common_molecule_types[0][0]
-            if (
-                chain_most_common_molecule_type == "ligand"
-                and len(chain_most_common_molecule_types) > 1
-            ):
-                # NOTE: Ligands may be the most common molecule type in a chain, in which case
-                # the second most common molecule type is required for sequence mapping
-                chain_most_common_molecule_type = chain_most_common_molecule_types[1][0]
-
-            for res in chain:
-                # Then convert each residue to a one-letter code using the most common molecule type in the chain
-                one_letter_residue, molecule_type = convert_ambiguous_residue_three_to_one(
-                    res.resname, ccd_codes, molecule_type=chain_most_common_molecule_type
-                )
-                if molecule_type == "ligand":
-                    num_ligands_in_chain += 1
-                    sequences[
-                        f"{chain.id}:{molecule_type}-{res.resname}-{num_ligands_in_chain}"
-                    ] = one_letter_residue
-                else:
-                    assert (
-                        molecule_type == chain_most_common_molecule_type
-                    ), f"Residue {res.resname} in chain {chain.id} has an unexpected molecule type of `{molecule_type}` (vs. the expected molecule type of `{chain_most_common_molecule_type}`)."
-                    one_letter_seq_tokens.append(one_letter_residue)
-                    token_molecule_types.add(molecule_type)
-
-                # TODO: Efficiently compute structural interfaces by precomputing each chain's most common molecule type
-                # Find all interfaces defined as pairs of chains with minimum heavy atom (i.e. non-hydrogen) separation less than 5 Å
-                # for atom in res:
-                #     for neighbor in neighbor_search.search(atom.coord, 5.0, "R"):
-                #         neighbor_one_letter_residue, neighbor_molecule_type = convert_ambiguous_residue_three_to_one(
-                #             neighbor.resname, ccd_codes, molecule_type=chain_most_common_molecule_type
-                #         )
-                #         molecule_index_postfix = f"-{res.resname}-{num_ligands_in_chain}" if molecule_type == "ligand" else ""
-                #         interface_chain_ids.add(f"{chain.id}:{molecule_type}{molecule_index_postfix}+{neighbor.get_parent().get_id()}:{neighbor_molecule_type}-{neighbor.resname}-{neighbor_num_ligands_in_chain}")
-
-            assert (
-                len(one_letter_seq_tokens) > 0
-            ), f"No residues found in chain {chain.id} within the mmCIF file {filepath}."
-
-            token_molecule_types = list(token_molecule_types)
-            if len(token_molecule_types) > 1:
-                assert (
-                    len(token_molecule_types) == 2
-                ), f"More than two molecule types found ({token_molecule_types}) in chain {chain.id} within the mmCIF file {filepath}."
-                molecule_type = [
-                    molecule_type
-                    for molecule_type in token_molecule_types
-                    if molecule_type != "unknown"
-                ][0]
-            elif len(token_molecule_types) == 1 and token_molecule_types[0] == "unknown":
-                molecule_type = "protein"
+            if molecule_type == "ligand":
+                num_ligands_in_chain += 1
+                sequences[
+                    f"{chain.id}:{molecule_type}-{res.resname}-{num_ligands_in_chain}"
+                ] = one_letter_residue
             else:
-                molecule_type = token_molecule_types[0]
+                assert (
+                    molecule_type == chain_most_common_molecule_type
+                ), f"Residue {res.resname} in chain {chain.id} has an unexpected molecule type of `{molecule_type}` (vs. the expected molecule type of `{chain_most_common_molecule_type}`)."
+                one_letter_seq_tokens.append(one_letter_residue)
+                token_molecule_types.add(molecule_type)
 
-            if (
-                molecule_type == "protein"
-                and len(one_letter_seq_tokens) < min_num_residues_for_protein_classification
-            ):
-                molecule_type = "peptide"
+            # TODO: Efficiently compute structural interfaces by precomputing each chain's most common molecule type
+            # Find all interfaces defined as pairs of chains with minimum heavy atom (i.e. non-hydrogen) separation less than 5 Å
+            # for atom in res:
+            #     for neighbor in neighbor_search.search(atom.coord, 5.0, "R"):
+            #         neighbor_one_letter_residue, neighbor_molecule_type = convert_ambiguous_residue_three_to_one(
+            #             neighbor.resname, ccd_codes, molecule_type=chain_most_common_molecule_type
+            #         )
+            #         molecule_index_postfix = f"-{res.resname}-{num_ligands_in_chain}" if molecule_type == "ligand" else ""
+            #         interface_chain_ids.add(f"{chain.id}:{molecule_type}{molecule_index_postfix}+{neighbor.get_parent().get_id()}:{neighbor_molecule_type}-{neighbor.resname}-{neighbor_num_ligands_in_chain}")
 
-            one_letter_seq = "".join(one_letter_seq_tokens)
-            sequences[f"{chain.id}:{molecule_type}"] = one_letter_seq
+        assert (
+            len(one_letter_seq_tokens) > 0
+        ), f"No residues found in chain {chain.id} within the mmCIF file {filepath}."
+
+        token_molecule_types = list(token_molecule_types)
+        if len(token_molecule_types) > 1:
+            assert (
+                len(token_molecule_types) == 2
+            ), f"More than two molecule types found ({token_molecule_types}) in chain {chain.id} within the mmCIF file {filepath}."
+            molecule_type = [
+                molecule_type
+                for molecule_type in token_molecule_types
+                if molecule_type != "unknown"
+            ][0]
+        elif len(token_molecule_types) == 1 and token_molecule_types[0] == "unknown":
+            molecule_type = "protein"
+        else:
+            molecule_type = token_molecule_types[0]
+
+        if (
+            molecule_type == "protein"
+            and len(one_letter_seq_tokens) < min_num_residues_for_protein_classification
+        ):
+            molecule_type = "peptide"
+
+        one_letter_seq = "".join(one_letter_seq_tokens)
+        sequences[f"{chain.id}:{molecule_type}"] = one_letter_seq
 
     return sequences, interface_chain_ids
 

@@ -5,12 +5,11 @@ import io
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
-from Bio.PDB import MMCIFParser
 from Bio.PDB.mmcifio import MMCIFIO
 from Bio.PDB.Model import Model
-from Bio.PDB.Structure import Structure
 
 from alphafold3_pytorch.common import mmcif_metadata, residue_constants
+from alphafold3_pytorch.data import mmcif_parsing
 
 # Data to fill the _chem_comp table when writing mmCIFs.
 _CHEM_COMP: Mapping[str, Tuple[Tuple[str, str], ...]] = {
@@ -72,24 +71,25 @@ class Biomolecule:
     b_factors: np.ndarray  # [num_res, num_atom_type]
 
 
-def _from_bio_structure(
-    structure: Structure | Model, chain_id: Optional[str] = None
+def _from_mmcif_object(
+    mmcif_object: mmcif_parsing.MmcifObject, chain_id: Optional[str] = None
 ) -> Biomolecule:
-    """Takes a Biopython structure/model and creates a `Biomolecule` instance.
+    """Takes a Biopython structure/model mmCIF object and creates a `Biomolecule` instance.
 
     WARNING: All non-standard residue types will be converted into UNK. All
       non-standard atoms will be ignored.
 
-    :param structure: Structure or Model from the Biopython library.
+    :param mmcif_object: The parsed Biopython structure/model mmCIF object.
     :param chain_id: If chain_id is specified (e.g. A), then only that chain is parsed.
         Otherwise all chains are parsed.
 
-    :return: A new `Biomolecule` created from the structure/model contents.
+    :return: A new `Biomolecule` created from the structure/model mmCIF object contents.
 
     :raise:
       ValueError: If the number of models included in a given structure is not 1.
       ValueError: If insertion code is detected at a residue.
     """
+    structure = mmcif_object.structure
     if isinstance(structure, Model):
         model = structure
     else:
@@ -158,22 +158,30 @@ def _from_bio_structure(
     )
 
 
-def from_mmcif_string(mmcif_str: str, chain_id: Optional[str] = None) -> Biomolecule:
+def from_mmcif_string(mmcif_str: str, file_id: str, chain_id: Optional[str] = None) -> Biomolecule:
     """Takes a mmCIF string and constructs a `Biomolecule` object.
 
     WARNING: All non-standard residue types will be converted into UNK. All
       non-standard atoms will be ignored.
 
-    :param mmcif_str: The contents of the mmCIF file
+    :param mmcif_str: The contents of the mmCIF file.
+    :param file_id: The file ID (usually the PDB ID) to be used in the mmCIF.
     :param chain_id: If chain_id is specified (e.g. A), then only that chain is parsed.
         Otherwise all chains are parsed.
 
     :return: A new `Biomolecule` parsed from the mmCIF contents.
+
+    :raise:
+        ValueError: If the mmCIF file is not valid.
     """
-    with io.StringIO(mmcif_str) as mmcif_fh:
-        parser = MMCIFParser(QUIET=True)
-        structure = parser.get_structure(structure_id="none", filename=mmcif_fh)
-        return _from_bio_structure(structure, chain_id)
+    mmcif_object = mmcif_parsing.parse(file_id=file_id, mmcif_string=mmcif_str)
+
+    # Crash if an error is encountered. Any parsing errors should have
+    # been dealt with beforehand (e.g., at the alignment stage).
+    if mmcif_object.mmcif_object is None:
+        raise list(mmcif_object.errors.values())[0]
+
+    return _from_mmcif_object(mmcif_object.structure, mmcif_object.mmcif_object, chain_id)
 
 
 def to_mmcif(
