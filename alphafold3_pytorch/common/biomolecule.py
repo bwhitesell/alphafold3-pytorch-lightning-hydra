@@ -125,14 +125,10 @@ def _from_mmcif_object(
             res_b_factors = np.zeros((residue_constants.atom_type_num,))
             for atom in res:
                 if atom.name not in residue_constants.atom_types:
-                    # Remove waters.
                     continue
                 pos[residue_constants.atom_order[atom.name]] = atom.coord
                 mask[residue_constants.atom_order[atom.name]] = 1.0
                 res_b_factors[residue_constants.atom_order[atom.name]] = atom.bfactor
-                # Resolve alternative locations for atoms/residues by taking the one with the largest occupancy.
-                # NOTE: For `DisorderedAtom` objects, selecting the highest-occupancy atom is already the default behavior in Biopython.
-                # Reference: https://biopython-tutorial.readthedocs.io/en/latest/notebooks/11%20-%20Going%203D%20-%20The%20PDB%20module.html#Disordered-atoms[disordered-atoms]
             if np.sum(mask) < 0.5:
                 # If no known atom positions are reported for the residue then skip it.
                 continue
