@@ -35,13 +35,12 @@ import argparse
 import glob
 import os
 import random
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Literal, Set, Tuple
 
 import numpy as np
 import pandas as pd
 import rootutils
 import timeout_decorator
-from Bio.PDB import MMCIFIO
 from Bio.PDB.Atom import Atom, DisorderedAtom
 from Bio.PDB.NeighborSearch import NeighborSearch
 from Bio.PDB.Residue import Residue
@@ -53,6 +52,7 @@ rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
 from alphafold3_pytorch.data import mmcif_parsing
 from alphafold3_pytorch.data.mmcif_parsing import MmcifObject
+from alphafold3_pytorch.np.biomolecule import _from_bio_structure, to_mmcif
 from alphafold3_pytorch.utils.typing import typecheck
 from alphafold3_pytorch.utils.utils import exists
 
@@ -661,11 +661,16 @@ def filter_mmcif(mmcif_object: MmcifObject) -> MmcifObject:
 
 
 @typecheck
-def write_mmcif(mmcif_object: MmcifObject, output_filepath: str):
+def write_mmcif(
+    mmcif_object: MmcifObject,
+    output_filepath: str,
+    model_type: Literal["Multimer", "Monomer"] = "Multimer",
+):
     """Write a BioPython `Structure` object to an mmCIF file an a intermediate `Complex` object."""
-    io = MMCIFIO()
-    io.set_structure(mmcif_object.structure)
-    io.save(output_filepath)
+    biomol = _from_bio_structure(mmcif_object.structure)
+    mmcif_string = to_mmcif(biomol, mmcif_object.file_id, model_type)
+    with open(output_filepath, "w") as f:
+        f.write(mmcif_string)
 
 
 @typecheck
