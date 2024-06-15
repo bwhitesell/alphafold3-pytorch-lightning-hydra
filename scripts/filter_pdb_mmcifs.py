@@ -37,6 +37,7 @@ import os
 import random
 from typing import Dict, List, Set, Tuple
 
+import numpy as np
 import pandas as pd
 import rootutils
 import timeout_decorator
@@ -534,21 +535,24 @@ def select_closest_chains(
         token_center_atoms = get_token_center_atoms(
             tokens, protein_residue_center_atoms, nucleic_acid_residue_center_atoms
         )
+        token_center_atoms_array = np.array([atom.coord for atom in token_center_atoms])
         for token_index, token in enumerate(tokens):
-            for other_token_index in range(len(tokens)):
-                if token_index != other_token_index:
-                    token_center_atom = token_center_atoms[token_index]
-                    other_token_center_atom = token_center_atoms[other_token_index]
-                    if (
-                        token_center_atom - other_token_center_atom
-                    ) < center_atom_interaction_distance:
-                        interface_tokens.add(token)
+            token_center_atom = token_center_atoms_array[None, token_index]
+            distances = np.linalg.norm(token_center_atoms_array - token_center_atom, axis=1)
+            if np.any(distances < center_atom_interaction_distance).item():
+                interface_tokens.add(token)
         return list(interface_tokens)
 
     chains_to_remove = set()
-    if len(list(mmcif_object.structure.get_chains())) > max_chains:
-        chains = list(mmcif_object.structure.get_chains())
-        residues = list(mmcif_object.structure.get_residues())
+    if (
+        len(list(mmcif_object.structure.get_chains())) - len(mmcif_object.chains_to_remove)
+    ) > max_chains:
+        chains = [
+            chain
+            for chain in mmcif_object.structure.get_chains()
+            if chain.get_full_id() not in mmcif_object.chains_to_remove
+        ]
+        residues = [res for chain in chains for res in chain]
         tokens = get_tokens_from_residues(
             residues, protein_residue_center_atoms, nucleic_acid_residue_center_atoms
         )
@@ -603,12 +607,8 @@ def remove_crystallization_aids(
         ]
         for chain in mmcif_object.structure.get_chains():
             res_to_remove = set()
-            for res_index, res in enumerate(chain):
-                res_is_ligand = not any(
-                    chem_type in mmcif_object.chem_comp_details[chain.id][res_index].type.lower()
-                    for chem_type in {"peptide", "dna", "rna"}
-                )
-                if res_is_ligand and res.resname in structure_method_crystallization_aids:
+            for res in chain:
+                if res.resname in structure_method_crystallization_aids:
                     res_to_remove.add(res.get_full_id())
             if len(res_to_remove) == len(list(chain.get_residues())):
                 chains_to_remove.add(chain.get_full_id())
@@ -656,13 +656,17 @@ def filter_structure_with_timeout(filepath: str, output_dir: str):
         mmcif_object = remove_hydrogens(mmcif_object)
         mmcif_object = remove_polymer_chains_with_all_unknown_residues(mmcif_object)
         mmcif_object = remove_clashing_chains(mmcif_object)
-        # NOTE: Modified amino acid and nucleotide residues are to be treated as N-atom ligands in subsequent (structural) filtering steps
         mmcif_object = remove_excluded_ligands(mmcif_object, LIGAND_EXCLUSION_SET)
         mmcif_object = remove_non_ccd_atoms(mmcif_object, CCD_READER_RESULTS)
-        mmcif_object = remove_leaving_atoms(mmcif_object, CCD_READER_RESULTS)
+        mmcif_object = remove_leaving_atoms(
+            mmcif_object, CCD_READER_RESULTS
+        )  # TODO: Finish implementing this filtering step
         mmcif_object = filter_large_ca_distances(mmcif_object)
         mmcif_object = select_closest_chains(
-            mmcif_object, PROTEIN_RESIDUE_CENTER_ATOMS, NUCLEIC_ACID_RESIDUE_CENTER_ATOMS
+            # NOTE: Modified amino acid and nucleotide residues are treated as N-atom ligands in this (structural) filtering step
+            mmcif_object,
+            PROTEIN_RESIDUE_CENTER_ATOMS,
+            NUCLEIC_ACID_RESIDUE_CENTER_ATOMS,  # TODO: Verify chains to be removed are not referenced in this filtering step
         )
         mmcif_object = remove_crystallization_aids(mmcif_object, CRYSTALLOGRAPHY_METHODS)
         if len(mmcif_object.chains_to_remove) < len(list(mmcif_object.structure.get_chains())):
