@@ -19,6 +19,7 @@ import dataclasses
 import functools
 import io
 import logging
+from collections import defaultdict
 from typing import Any, Mapping, Optional, Sequence, Set, Tuple
 
 import numpy as np
@@ -291,7 +292,7 @@ def parse(*, file_id: str, mmcif_string: str, catch_all_errors: bool = True) -> 
                 if _is_set(atom.mmcif_seq_num):
                     seq_idx = int(atom.mmcif_seq_num) - seq_start_num[atom.mmcif_chain_id]
                 else:
-                    continue
+                    seq_idx = int(atom.author_seq_num) - seq_start_num[atom.author_chain_id]
                 current[seq_idx] = ResidueAtPosition(
                     position=position,
                     name=atom.residue_name,
@@ -300,7 +301,8 @@ def parse(*, file_id: str, mmcif_string: str, catch_all_errors: bool = True) -> 
                 )
                 seq_to_structure_mappings[atom.author_chain_id] = current
 
-        # Add missing residue information to seq_to_structure_mappings.
+        # Add missing residue information to seq_to_structure_mappings,
+        # ignoring hetero (e.g., ligand or water) residues in the process.
         for chain_id, (seq_info, chem_comp_info) in valid_chains.items():
             author_chain = mmcif_to_author_chain_id[chain_id]
             current_mapping = seq_to_structure_mappings[author_chain]
@@ -317,8 +319,8 @@ def parse(*, file_id: str, mmcif_string: str, catch_all_errors: bool = True) -> 
                     )
 
         # Extract sequence and chemical component details.
-        author_chain_to_sequence = {}
-        chem_comp_details = {}
+        author_chain_to_sequence = defaultdict(str)
+        chem_comp_details = defaultdict(list)
         for chain_id, (seq_info, chem_comp_info) in valid_chains.items():
             author_chain = mmcif_to_author_chain_id[chain_id]
             seq = []
@@ -334,10 +336,8 @@ def parse(*, file_id: str, mmcif_string: str, catch_all_errors: bool = True) -> 
                     # Skip ligand residues during sequence parsing.
                     continue
                 seq.append(code if len(code) == 1 else "X")
-            seq = "".join(seq)
-            if seq:
-                author_chain_to_sequence[author_chain] = seq
-                chem_comp_details[author_chain] = chem_comp_info
+            author_chain_to_sequence[author_chain] += "".join(seq)
+            chem_comp_details[author_chain].extend(chem_comp_info)
 
         # Identify all covalent bonds.
         covalent_bonds = _get_covalent_bond_list(parsed_info)
