@@ -656,6 +656,7 @@ def filter_mmcif(mmcif_object: MmcifObject) -> MmcifObject:
             chains_to_remove.add(chain)
     for chain in chains_to_remove:
         model.detach_child(chain.id)
+        mmcif_object.chem_comp_details.pop(chain.id)
 
     return mmcif_object
 
