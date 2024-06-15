@@ -11,7 +11,7 @@ import numpy as np
 from Bio import PDB
 from Bio.Data import PDBData
 
-from alphafold3_pytorch.common import residue_constants
+from alphafold3_pytorch.common import amino_acid_constants
 from alphafold3_pytorch.data.errors import MultipleChainsError
 
 # Type aliases:
@@ -538,11 +538,13 @@ def get_atom_coords(
 
     # Extract the coordinates
     num_res = len(mmcif_object.chain_to_seqres[chain_id])
-    all_atom_positions = np.zeros([num_res, residue_constants.atom_type_num, 3], dtype=np.float32)
-    all_atom_mask = np.zeros([num_res, residue_constants.atom_type_num], dtype=np.float32)
+    all_atom_positions = np.zeros(
+        [num_res, amino_acid_constants.atom_type_num, 3], dtype=np.float32
+    )
+    all_atom_mask = np.zeros([num_res, amino_acid_constants.atom_type_num], dtype=np.float32)
     for res_index in range(num_res):
-        pos = np.zeros([residue_constants.atom_type_num, 3], dtype=np.float32)
-        mask = np.zeros([residue_constants.atom_type_num], dtype=np.float32)
+        pos = np.zeros([amino_acid_constants.atom_type_num, 3], dtype=np.float32)
+        mask = np.zeros([amino_acid_constants.atom_type_num], dtype=np.float32)
         res_at_position = mmcif_object.seqres_to_structure[chain_id][res_index]
         if not res_at_position.is_missing:
             res = chain[
@@ -555,23 +557,23 @@ def get_atom_coords(
             for atom in res.get_atoms():
                 atom_name = atom.get_name()
                 x, y, z = atom.get_coord()
-                if atom_name in residue_constants.atom_order.keys():
+                if atom_name in amino_acid_constants.atom_order.keys():
                     # Remove waters.
-                    pos[residue_constants.atom_order[atom_name]] = [x, y, z]
-                    mask[residue_constants.atom_order[atom_name]] = 1.0
+                    pos[amino_acid_constants.atom_order[atom_name]] = [x, y, z]
+                    mask[amino_acid_constants.atom_order[atom_name]] = 1.0
                 # Resolve alternative locations for atoms/residues by taking the one with the largest occupancy.
                 # NOTE: For `DisorderedAtom` objects, selecting the highest-occupancy atom is already the default behavior in Biopython.
                 # Reference: https://biopython-tutorial.readthedocs.io/en/latest/notebooks/11%20-%20Going%203D%20-%20The%20PDB%20module.html#Disordered-atoms[disordered-atoms]
                 elif atom_name.upper() == "SE" and res.get_resname() == "MSE":
                     # Put the coords of the selenium atom in the sulphur column
-                    pos[residue_constants.atom_order["SD"]] = [x, y, z]
-                    mask[residue_constants.atom_order["SD"]] = 1.0
+                    pos[amino_acid_constants.atom_order["SD"]] = [x, y, z]
+                    mask[amino_acid_constants.atom_order["SD"]] = 1.0
 
             # Fix naming errors in arginine residues where NH2 is incorrectly
             # assigned to be closer to CD than NH1
-            cd = residue_constants.atom_order["CD"]
-            nh1 = residue_constants.atom_order["NH1"]
-            nh2 = residue_constants.atom_order["NH2"]
+            cd = amino_acid_constants.atom_order["CD"]
+            nh1 = amino_acid_constants.atom_order["NH1"]
+            nh2 = amino_acid_constants.atom_order["NH2"]
             if (
                 res.get_resname() == "ARG"
                 and all(mask[atom_index] for atom_index in (cd, nh1, nh2))

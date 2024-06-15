@@ -2,7 +2,7 @@ from typing import MutableMapping
 
 import numpy as np
 
-from alphafold3_pytorch.common import residue_constants
+from alphafold3_pytorch.common import amino_acid_constants
 from alphafold3_pytorch.data import mmcif_parsing
 
 FeatureDict = MutableMapping[str, np.ndarray]
@@ -11,9 +11,9 @@ FeatureDict = MutableMapping[str, np.ndarray]
 def make_sequence_features(sequence: str, description: str, num_res: int) -> FeatureDict:
     """Construct a feature dict of sequence features."""
     features = {}
-    features["aatype"] = residue_constants.sequence_to_onehot(
+    features["aatype"] = amino_acid_constants.sequence_to_onehot(
         sequence=sequence,
-        mapping=residue_constants.restype_order_with_x,
+        mapping=amino_acid_constants.restype_order_with_x,
         map_unknown_to_x=True,
     )
     features["between_segment_residues"] = np.zeros((num_res,), dtype=np.int32)

@@ -8,7 +8,13 @@ import numpy as np
 from Bio.PDB.mmcifio import MMCIFIO
 from Bio.PDB.Model import Model
 
-from alphafold3_pytorch.common import mmcif_metadata, residue_constants
+from alphafold3_pytorch.common import (
+    amino_acid_constants,
+    dna_constants,
+    ligand_constants,
+    mmcif_metadata,
+    rna_constants,
+)
 from alphafold3_pytorch.data import mmcif_parsing
 
 # Data to fill the _chem_comp table when writing mmCIFs.
@@ -71,6 +77,23 @@ class Biomolecule:
     b_factors: np.ndarray  # [num_res, num_atom_type]
 
 
+def get_residue_constants(res_chem_type: str) -> Tuple[Any, str]:
+    """Returns the residue constants and the unknown residue code for a given residue chemical type."""
+    if "peptide" in res_chem_type.lower():
+        residue_constants = amino_acid_constants
+        unk_rescode = "X"
+    elif "rna" in res_chem_type.lower():
+        residue_constants = rna_constants
+        unk_rescode = "N"
+    elif "dna" in res_chem_type.lower():
+        residue_constants = dna_constants
+        unk_rescode = "N"
+    else:
+        residue_constants = ligand_constants
+        unk_rescode = "X"
+    return residue_constants, unk_rescode
+
+
 def _from_mmcif_object(
     mmcif_object: mmcif_parsing.MmcifObject, chain_id: Optional[str] = None
 ) -> Biomolecule:
@@ -110,13 +133,15 @@ def _from_mmcif_object(
     for chain in model:
         if chain_id is not None and chain.id != chain_id:
             continue
-        for res in chain:
+        for res_index, res in enumerate(chain):
             if res.id[2] != " ":
                 raise ValueError(
                     f"mmCIF contains an insertion code at chain {chain.id} and"
                     f" residue index {res.id[1]}. These are not supported."
                 )
-            res_shortname = residue_constants.restype_3to1.get(res.resname, "X")
+            res_chem_type = mmcif_object.chem_comp_details[chain.id][res_index].type
+            residue_constants, unk_rescode = get_residue_constants(res_chem_type)
+            res_shortname = residue_constants.restype_3to1.get(res.resname, unk_rescode)
             restype_idx = residue_constants.restype_order.get(
                 res_shortname, residue_constants.restype_num
             )
@@ -247,11 +272,11 @@ def to_mmcif(
         mmcif_dict["_struct_asym.entity_id"].append(str(entity_id))
         # Add information about the entity to the _entity_poly table.
         mmcif_dict["_entity_poly.entity_id"].append(str(entity_id))
-        mmcif_dict["_entity_poly.type"].append(residue_constants.PROTEIN_CHAIN)
+        mmcif_dict["_entity_poly.type"].append(amino_acid_constants.PROTEIN_CHAIN)
         mmcif_dict["_entity_poly.pdbx_strand_id"].append(chain_id)
         # Generate the _entity table.
         mmcif_dict["_entity.id"].append(str(entity_id))
-        mmcif_dict["_entity.type"].append(residue_constants.POLYMER_CHAIN)
+        mmcif_dict["_entity.type"].append(amino_acid_constants.POLYMER_CHAIN)
 
     # Add the residues to the _entity_poly_seq table.
     for entity_id, (res_ids, aas) in _get_entity_poly_seq(
@@ -260,7 +285,7 @@ def to_mmcif(
         for res_id, aa in zip(res_ids, aas):
             mmcif_dict["_entity_poly_seq.entity_id"].append(str(entity_id))
             mmcif_dict["_entity_poly_seq.num"].append(str(res_id))
-            mmcif_dict["_entity_poly_seq.mon_id"].append(residue_constants.resnames[aa])
+            mmcif_dict["_entity_poly_seq.mon_id"].append(amino_acid_constants.resnames[aa])
 
     # Populate the chem comp table.
     for chem_type, chem_comp in _CHEM_COMP.items():
@@ -272,9 +297,9 @@ def to_mmcif(
     # Add all atom sites.
     atom_index = 1
     for i in range(aatype.shape[0]):
-        res_name_3 = residue_constants.resnames[aatype[i]]
-        if aatype[i] <= len(residue_constants.restypes):
-            atom_names = residue_constants.atom_types
+        res_name_3 = amino_acid_constants.resnames[aatype[i]]
+        if aatype[i] <= len(amino_acid_constants.restypes):
+            atom_names = amino_acid_constants.atom_types
         else:
             raise ValueError(
                 "Amino acid types array contains entries with too many protein types."
@@ -284,7 +309,7 @@ def to_mmcif(
         ):
             if mask < 0.5:
                 continue
-            type_symbol = residue_constants.atom_id_to_type(atom_name)
+            type_symbol = amino_acid_constants.atom_id_to_type(atom_name)
 
             mmcif_dict["_atom_site.group_PDB"].append("ATOM")
             mmcif_dict["_atom_site.id"].append(str(atom_index))
