@@ -429,6 +429,8 @@ def remove_leaving_atoms(
 
             pass
 
+        print(f"Covalent bond found: {covalent_bond}.")
+
     mmcif_object.atoms_to_remove.update(atoms_to_remove)
 
     return mmcif_object
