@@ -3,6 +3,7 @@
 # This mapping is used when we need to store atom data in a format that requires
 # fixed atom data size for every residue (e.g. a numpy array).
 atom_types = [
+    # NOTE: Taken from: https://github.com/google-deepmind/alphafold/blob/f251de6613cb478207c732bf9627b1e853c99c2f/alphafold/common/residue_constants.py#L492C1-L497C2
     "N",
     "CA",
     "C",
@@ -40,9 +41,19 @@ atom_types = [
     "CZ3",
     "NZ",
     "OXT",
+    "_",
+    "_",
+    "_",
+    "_",
+    "_",
+    "_",
+    "_",
+    "_",
+    "_",
+    "_",  # 10 null types.
 ]
 atom_order = {atom_type: i for i, atom_type in enumerate(atom_types)}
-atom_type_num = len(atom_types)  # := 37.
+atom_type_num = len(atom_types)  # := 37 + 10 null types := 47.
 
 
 # This is the standard residue order when coding AA type as a number.
