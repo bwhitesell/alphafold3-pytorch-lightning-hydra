@@ -21,6 +21,10 @@ Implementation of <a href="https://www.nature.com/articles/s41586-024-07487-w">A
 
 You can chat with other researchers about this work <a href="https://discord.gg/x6FuzQPQXY">here</a>
 
+<a href="https://www.youtube.com/watch?v=qjFgthkKxcA">Review of the paper</a> by <a href="https://x.com/sokrypton">Sergey</a>
+
+A fork with full Lightning + Hydra support is being maintained by <a href="https://github.com/amorehead">Alex</a> at <a href="https://github.com/amorehead/alphafold3-pytorch-lightning-hydra">this repository</a>
+
 ## Appreciation
 
 - <a href="https://github.com/joseph-c-kim">Joseph</a> for contributing the Relative Positional Encoding and the Smooth LDDT Loss!
@@ -135,7 +139,9 @@ atom_seq_len = molecule_atom_lens.sum(dim = -1).amax()
 
 atom_inputs = torch.randn(2, atom_seq_len, 77)
 atompair_inputs = torch.randn(2, atom_seq_len, atom_seq_len, 5)
-additional_molecule_feats = torch.randn(2, seq_len, 10)
+
+additional_molecule_feats = torch.randn(2, seq_len, 9)
+molecule_ids = torch.randint(0, 32, (2, seq_len))
 
 template_feats = torch.randn(2, 2, seq_len, seq_len, 44)
 template_mask = torch.ones((2, 2)).bool()
@@ -160,6 +166,7 @@ loss = alphafold3(
     num_recycling_steps = 2,
     atom_inputs = atom_inputs,
     atompair_inputs = atompair_inputs,
+    molecule_ids = molecule_ids,
     molecule_atom_lens = molecule_atom_lens,
     additional_molecule_feats = additional_molecule_feats,
     msa = msa,
@@ -184,6 +191,7 @@ sampled_atom_pos = alphafold3(
     num_sample_steps = 16,
     atom_inputs = atom_inputs,
     atompair_inputs = atompair_inputs,
+    molecule_ids = molecule_ids,
     molecule_atom_lens = molecule_atom_lens,
     additional_molecule_feats = additional_molecule_feats,
     msa = msa,
@@ -438,5 +446,13 @@ Refer to [pre-commit's documentation](https://pre-commit.com/) for more details.
     year    = {2022},
     volume  = {abs/2203.00555},
     url     = {https://api.semanticscholar.org/CorpusID:247187905}
+}
+```
+
+```bibtex
+@inproceedings{Ainslie2023CoLT5FL,
+    title   = {CoLT5: Faster Long-Range Transformers with Conditional Computation},
+    author  = {Joshua Ainslie and Tao Lei and Michiel de Jong and Santiago Ontan'on and Siddhartha Brahma and Yury Zemlyanskiy and David Uthus and Mandy Guo and James Lee-Thorp and Yi Tay and Yun-Hsuan Sung and Sumit Sanghai},
+    year    = {2023}
 }
 ```

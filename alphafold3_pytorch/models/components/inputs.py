@@ -8,6 +8,7 @@ from alphafold3_pytorch.utils.typing import Bool, Float, Int, typecheck
 @typecheck
 class AtomInput(TypedDict):
     atom_inputs: Float["*b m dai"]  # type: ignore
+    molecule_ids: Int["*b n"]  # type: ignore
     molecule_atom_lens: Int["*b n"]  # type: ignore
     atompair_inputs: Float["*b m m dapi"] | Float["*b nw w (w*2) dapi"]  # type: ignore
     additional_molecule_feats: Float["*b n 10"]  # type: ignore

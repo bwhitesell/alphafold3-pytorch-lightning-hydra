@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 from functools import partial
+from importlib.metadata import version
 from math import pi, sqrt
-from typing import List, Literal, NamedTuple, Tuple
+from pathlib import Path
+from typing import Dict, List, Literal, NamedTuple, Tuple
 
 import einx
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from colt5_attention import ConditionalRoutedAttention
 from einops import einsum, pack, rearrange, reduce, repeat, unpack
 from einops.layers.torch import Rearrange
 from frame_averaging_pytorch import FrameAverage
+from huggingface_hub import PyTorchModelHubMixin, hf_hub_download
 from taylor_series_linear_attention import TaylorSeriesLinearAttn
 from torch import Tensor
 from torch.nn import Linear, Module, ModuleList, Sequential
@@ -61,22 +65,21 @@ r - registers
 """
 
 """
-additional_molecule_feats: [*, 10]:
+additional_molecule_feats: [*, 9]:
 0: molecule_index
 1: token_index
 2: asym_id
 3: entity_id
 4: sym_id
-5: restype (must be one hot encoded to 32)
-6: is_protein
-7: is_rna
-8: is_dna
-9: is_ligand
+5: is_protein
+6: is_rna
+7: is_dna
+8: is_ligand
 """
 
 # constants
 
-ADDITIONAL_MOLECULE_FEATS = 10
+ADDITIONAL_MOLECULE_FEATS = 9
 
 LinearNoBias = partial(Linear, bias=False)
 
@@ -1391,6 +1394,10 @@ class DiffusionTransformer(Module):
         serial=False,
         use_linear_attn=False,
         linear_attn_kwargs=dict(heads=8, dim_head=16),
+        use_colt5_attn=False,
+        colt5_attn_kwargs=dict(
+            heavy_dim_head=64, heavy_heads=8, num_heavy_tokens_q=512, num_heavy_tokens_kv=512
+        ),
     ):
         super().__init__()
         self.attn_window_size = attn_window_size
@@ -1408,6 +1415,13 @@ class DiffusionTransformer(Module):
                     prenorm=True,
                     gate_value_heads=True,
                     **linear_attn_kwargs,
+                )
+
+            colt5_attn = None
+
+            if use_colt5_attn:
+                colt5_attn = ConditionalRoutedAttention(
+                    dim=dim, has_light_attn=False, **colt5_attn_kwargs
                 )
 
             pair_bias_attn = AttentionPairBias(
@@ -1430,7 +1444,9 @@ class DiffusionTransformer(Module):
             )
 
             layers.append(
-                ModuleList([linear_attn, conditionable_pair_bias, conditionable_transition])
+                ModuleList(
+                    [linear_attn, colt5_attn, conditionable_pair_bias, conditionable_transition]
+                )
             )
 
         self.layers = layers
@@ -1495,9 +1511,12 @@ class DiffusionTransformer(Module):
 
         # main transformer
 
-        for linear_attn, attn, transition in self.layers:
+        for linear_attn, colt5_attn, attn, transition in self.layers:
             if exists(linear_attn):
                 noised_repr = linear_attn(noised_repr, mask=mask) + noised_repr
+
+            if exists(colt5_attn):
+                noised_repr = colt5_attn(noised_repr, mask=mask) + noised_repr
 
             attn_out = attn(
                 noised_repr,
@@ -2240,7 +2259,7 @@ class ElucidatedAtomDiffusion(Module):
         align_weights = atom_pos_ground_truth.new_ones(atom_pos_ground_truth.shape[:2])
 
         if exists(additional_molecule_feats):
-            is_nucleotide_or_ligand_fields = (additional_molecule_feats[..., 7:] != 0.0).unbind(
+            is_nucleotide_or_ligand_fields = (additional_molecule_feats[..., -3:] != 0.0).unbind(
                 dim=-1
             )
 
@@ -2726,6 +2745,7 @@ class InputFeatureEmbedder(Module):
         dim_token=384,
         dim_single=384,
         dim_pairwise=128,
+        num_molecule_types=32,
         atom_transformer_blocks=3,
         atom_transformer_heads=4,
         atom_transformer_kwargs: dict = dict(),
@@ -2773,6 +2793,11 @@ class InputFeatureEmbedder(Module):
             dim_single_input, dim_pairwise
         )
 
+        # this accounts for the `restypes` in the additional molecule features
+
+        self.single_molecule_embed = nn.Embedding(num_molecule_types, dim_single)
+        self.pairwise_molecule_embed = nn.Embedding(num_molecule_types, dim_pairwise)
+
     @typecheck
     def forward(
         self,
@@ -2782,6 +2807,7 @@ class InputFeatureEmbedder(Module):
         atom_mask: Bool["b m"],  # type: ignore
         additional_molecule_feats: Float[f"b n {ADDITIONAL_MOLECULE_FEATS}"],  # type: ignore
         molecule_atom_lens: Int["b n"],  # type: ignore
+        molecule_ids: Int["b n"],  # type: ignore
     ) -> EmbeddedInputs:
         """
         Compute the embedded inputs.
@@ -2791,6 +2817,7 @@ class InputFeatureEmbedder(Module):
         :param atom_mask: The atom mask tensor.
         :param additional_molecule_feats: The additional molecule features tensor.
         :param molecule_atom_lens: The molecule atom lengths tensor.
+        :param molecule_ids: The molecule ids tensor.
         :return: The embedded inputs.
         """
         assert (
@@ -2843,6 +2870,22 @@ class InputFeatureEmbedder(Module):
 
         single_init = self.single_input_to_single_init(single_inputs)
         pairwise_init = self.single_input_to_pairwise_init(single_inputs)
+
+        # account for molecule id (restypes)
+
+        molecule_ids = torch.where(molecule_ids >= 0, molecule_ids, 0)  # account for padding
+
+        single_molecule_embed = self.single_molecule_embed(molecule_ids)
+
+        pairwise_molecule_embed = self.pairwise_molecule_embed(molecule_ids)
+        pairwise_molecule_embed = einx.add(
+            "b i dp, b j dp -> b i j dp", pairwise_molecule_embed, pairwise_molecule_embed
+        )
+
+        # sum to single init and pairwise init, equivalent to one-hot in additional residue features
+
+        single_init = single_init + single_molecule_embed
+        pairwise_init = pairwise_init + pairwise_molecule_embed
 
         return EmbeddedInputs(
             single_inputs,
@@ -3046,6 +3089,7 @@ class AlphaFold3(Module):
         dim_single=384,
         dim_pairwise=128,
         dim_token=768,
+        num_molecule_types: int = 32,  # NOTE: restype in additional residue information, apparently 32 (must be human amino acids + nucleotides + something else)
         num_atom_embeds: int | None = None,
         num_atompair_embeds: int | None = None,
         distance_bins: List[float] = torch.linspace(3, 20, 38).float().tolist(),
@@ -3276,12 +3320,88 @@ class AlphaFold3(Module):
 
     @property
     def device(self):
-        """
-        Return the device of the module.
-
-        :return: The device of the module.
-        """
+        """Device of the model."""
         return self.zero.device
+
+    @property
+    def state_dict_with_init_args(self):
+        """State dict with the initialization arguments."""
+        return dict(
+            version=self._version,
+            init_args_and_kwargs=self._args_and_kwargs,
+            state_dict=self.state_dict(),
+        )
+
+    @typecheck
+    def save(self, path: str | Path, overwrite=False):
+        """
+        Save the model to a file.
+
+        :param path: The path to save the model.
+        :param overwrite: Whether to overwrite an existing file.
+        """
+        if isinstance(path, str):
+            path = Path(path)
+
+        assert not path.is_dir() and (not path.exists() or overwrite)
+
+        path.parent.mkdir(exist_ok=True, parents=True)
+
+        package = dict(model=self.state_dict_with_init_args)
+
+        torch.save(package, str(path))
+
+    @typecheck
+    def load(self, path: str | Path, strict=False, map_location="cpu"):
+        """
+        Load a saved model.
+
+        :param path: The path to the saved model.
+        :param strict: Whether to strictly load the model.
+        :param map_location: The device to map the model to.
+        """
+        if isinstance(path, str):
+            path = Path(path)
+
+        assert path.exists() and path.is_file()
+
+        package = torch.load(str(path), map_location=map_location)
+
+        model_package = package["model"]
+        current_version = version("alphafold3_pytorch")
+
+        if model_package["version"] != current_version:
+            print(
+                f'loading a saved model from version {model_package["version"]} but you are on version {current_version}'
+            )
+
+        self.load_state_dict(model_package["state_dict"], strict=strict)
+
+        return package.get("id", None)
+
+    @staticmethod
+    @typecheck
+    def init_and_load(path: str | Path, map_location="cpu"):
+        """
+        Initialize and load a saved model.
+
+        :param path: The path to the saved model.
+        :param map_location: The device to map the model to.
+        """
+        if isinstance(path, str):
+            path = Path(path)
+
+        assert path.is_file()
+
+        package = torch.load(str(path), map_location=map_location)
+
+        model_package = package["model"]
+
+        args, kwargs = model_package["init_args_and_kwargs"]
+        alphafold3 = AlphaFold3(*args, **kwargs)
+
+        alphafold3.load(path)
+        return alphafold3
 
     @typecheck
     def forward(
@@ -3291,6 +3411,7 @@ class AlphaFold3(Module):
         atompair_inputs: Float["b m m dapi"] | Float["b nw w1 w2 dapi"],  # type: ignore
         additional_molecule_feats: Float[f"b n {ADDITIONAL_MOLECULE_FEATS}"],  # type: ignore
         molecule_atom_lens: Int["b n"],  # type: ignore
+        molecule_ids: Int["b n"],  # type: ignore
         atom_ids: Int["b m"] | None = None,  # type: ignore
         atompair_ids: Int["b m m"] | Int["b nw w1 w2"] | None = None,  # type: ignore
         atom_mask: Bool["b m"] | None = None,  # type: ignore
@@ -3402,6 +3523,7 @@ class AlphaFold3(Module):
             atom_mask=atom_mask,
             additional_molecule_feats=additional_molecule_feats,
             molecule_atom_lens=molecule_atom_lens,
+            molecule_ids=molecule_ids,
         )
 
         # handle maybe atom and atompair embeddings
@@ -3761,3 +3883,59 @@ class AlphaFold3(Module):
         )
 
         return loss, loss_breakdown
+
+
+# an alphafold3 that can download pretrained weights from huggingface
+
+
+class Alphafold3WithHubMixin(AlphaFold3, PyTorchModelHubMixin):
+    @classmethod
+    def _from_pretrained(
+        cls,
+        *,
+        model_id: str,
+        revision: str | None,
+        cache_dir: str | Path | None,
+        force_download: bool,
+        proxies: Dict | None,
+        resume_download: bool,
+        local_files_only: bool,
+        token: str | bool | None,
+        map_location: str = "cpu",
+        strict: bool = False,
+        **model_kwargs,
+    ):
+        """
+        Load a pretrained model from the HuggingFace Hub.
+
+        :param model_id: The model ID.
+        :param revision: The revision.
+        :param cache_dir: The cache directory.
+        :param force_download: Whether to force download.
+        :param proxies: The proxies.
+        :param resume_download: Whether to resume download.
+        :param local_files_only: Whether to use local files only.
+        :param token: The token.
+        :param map_location: The device to map the model to.
+        :param strict: Whether to strictly load the model.
+        :param model_kwargs: The model keyword arguments.
+        """
+        model_filename = "alphafold3.bin"
+        model_file = Path(model_id) / model_filename
+
+        if not model_file.exists():
+            model_file = hf_hub_download(
+                repo_id=model_id,
+                filename=model_filename,
+                revision=revision,
+                cache_dir=cache_dir,
+                force_download=force_download,
+                proxies=proxies,
+                resume_download=resume_download,
+                token=token,
+                local_files_only=local_files_only,
+            )
+
+        model = cls.init_and_load(model_file, strict=strict, map_location=map_location)
+
+        return model

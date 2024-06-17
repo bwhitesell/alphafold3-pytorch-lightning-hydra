@@ -174,7 +174,8 @@ class AtomDataset(Dataset):
         atom_inputs = torch.randn(atom_seq_len, 77)
         atompair_inputs = torch.randn(atom_seq_len, atom_seq_len, 5)
         molecule_atom_lens = torch.randint(1, self.atoms_per_window, (seq_len,))
-        additional_molecule_feats = torch.randn(seq_len, 10)
+        additional_molecule_feats = torch.randn(seq_len, 9)
+        molecule_ids = torch.randint(0, 32, (seq_len,))
 
         templates = torch.randn(2, seq_len, seq_len, 44)
         template_mask = torch.ones((2,)).bool()
@@ -198,6 +199,7 @@ class AtomDataset(Dataset):
         return AtomInput(
             atom_inputs=atom_inputs,
             atompair_inputs=atompair_inputs,
+            molecule_ids=molecule_ids,
             molecule_atom_lens=molecule_atom_lens,
             additional_molecule_feats=additional_molecule_feats,
             templates=templates,

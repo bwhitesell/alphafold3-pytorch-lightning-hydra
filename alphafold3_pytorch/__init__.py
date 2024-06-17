@@ -8,6 +8,7 @@ from alphafold3_pytorch.models.alphafold3_module import AlphaFold3LitModule, Ato
 from alphafold3_pytorch.models.components.alphafold3 import (
     AdaptiveLayerNorm,
     AlphaFold3,
+    AlphaFold3WithHubMixin,
     AttentionPairBias,
     CentreRandomAugmentation,
     ComputeAlignmentError,
@@ -67,6 +68,7 @@ __all__ = [
     ConfidenceHead,
     DistogramHead,
     AlphaFold3,
+    AlphaFold3WithHubMixin,
     AlphaFold3LitModule,
     AtomInput,
     full_pairwise_repr_to_windowed,
