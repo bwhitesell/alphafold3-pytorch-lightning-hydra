@@ -3888,7 +3888,7 @@ class AlphaFold3(Module):
 # an alphafold3 that can download pretrained weights from huggingface
 
 
-class Alphafold3WithHubMixin(AlphaFold3, PyTorchModelHubMixin):
+class AlphaFold3WithHubMixin(AlphaFold3, PyTorchModelHubMixin):
     @classmethod
     def _from_pretrained(
         cls,
