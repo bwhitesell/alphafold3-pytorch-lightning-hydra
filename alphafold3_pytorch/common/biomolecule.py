@@ -256,11 +256,12 @@ def to_mmcif(
       too many biomolecule types.
     """
     atom_mask = biomol.atom_mask
-    restype = biomol.restype
     atom_positions = biomol.atom_positions
-    residue_index = biomol.residue_index.astype(np.int32)
-    chain_index = biomol.chain_index.astype(np.int32)
     b_factors = biomol.b_factors
+    chain_index = biomol.chain_index.astype(np.int32)
+    # chemtype = biomol.chemtype
+    residue_index = biomol.residue_index.astype(np.int32)
+    restype = biomol.restype
 
     # Construct a mapping from chain integer indices to chain ID strings.
     chain_ids = {}

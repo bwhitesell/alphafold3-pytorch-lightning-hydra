@@ -35,6 +35,7 @@ import argparse
 import glob
 import os
 import random
+from operator import itemgetter
 from typing import Dict, List, Literal, Set, Tuple
 
 import numpy as np
@@ -221,10 +222,8 @@ def prefilter_target(mmcif_object) -> MmcifObject | None:
 
 
 @typecheck
-def remove_hydrogens(mmcif_object: MmcifObject) -> MmcifObject:
-    """
-    Identify hydrogens to remove from a structure.
-    """
+def remove_hydrogens(mmcif_object: MmcifObject, remove_waters: bool = False) -> MmcifObject:
+    """Identify hydrogens (and optionally waters) to remove from a structure."""
     atoms_to_remove = set()
     residues_to_remove = set()
     chains_to_remove = set()
@@ -235,6 +234,8 @@ def remove_hydrogens(mmcif_object: MmcifObject) -> MmcifObject:
             res_atoms_to_remove = {
                 atom.get_full_id() for atom in res.get_atoms() if atom.element == "H"
             }
+            if remove_waters and res.resname in {"HOH", "WAT"}:
+                res_to_remove.add(res.get_full_id())
             if len(res_atoms_to_remove) == len(
                 list(res.get_atoms())
             ):  # If no atoms are left in the residue
@@ -577,7 +578,7 @@ def select_closest_chains(
             )
             chain_min_token_distances.append((chain.id, chain_min_token_distance))
 
-        chain_min_token_distances.sort(key=lambda x: x[1])
+        chain_min_token_distances.sort(key=itemgetter(1))
         for chain_id, _ in chain_min_token_distances[max_chains:]:
             chains_to_remove.add(mmcif_object.structure[chain_id].get_full_id())
 
@@ -641,16 +642,15 @@ def filter_mmcif(mmcif_object: MmcifObject) -> MmcifObject:
                 if atom.get_full_id() in mmcif_object.atoms_to_remove:
                     atoms_to_remove.add(atom)
             if len(atoms_to_remove) == len(residue):
-                residues_to_remove.add(residue)
+                residues_to_remove.add((res_index, residue))
             for atom in atoms_to_remove:
                 residue.detach_child(atom.id)
             if residue.get_full_id() in mmcif_object.residues_to_remove:
-                residues_to_remove.add(residue)
-            if residue in residues_to_remove:
-                mmcif_object.chem_comp_details[chain.id].pop(res_index)
+                residues_to_remove.add((res_index, residue))
         if len(residues_to_remove) == len(chain):
             chains_to_remove.add(chain)
-        for residue in residues_to_remove:
+        for res_index, residue in sorted(residues_to_remove, key=itemgetter(0), reverse=True):
+            del mmcif_object.chem_comp_details[chain.id][res_index]
             chain.detach_child(residue.id)
         if chain.get_full_id() in mmcif_object.chains_to_remove:
             chains_to_remove.add(chain)
@@ -693,7 +693,7 @@ def filter_structure_with_timeout(filepath: str, output_dir: str):
     mmcif_object = prefilter_target(mmcif_object)
     if exists(mmcif_object):
         # Filtering of bioassemblies
-        mmcif_object = remove_hydrogens(mmcif_object)
+        mmcif_object = remove_hydrogens(mmcif_object, remove_waters=True)
         mmcif_object = remove_polymer_chains_with_all_unknown_residues(mmcif_object)
         mmcif_object = remove_clashing_chains(mmcif_object)
         mmcif_object = remove_excluded_ligands(mmcif_object, LIGAND_EXCLUSION_SET)
