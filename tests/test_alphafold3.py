@@ -9,7 +9,7 @@ import torch
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
 from alphafold3_pytorch import (
-    AlphaFold3,
+    Alphafold3,
     Attention,
     CentreRandomAugmentation,
     ComputeAlignmentError,
@@ -461,7 +461,7 @@ def test_alphafold3(window_atompair_inputs: bool, stochastic_frame_average: bool
     plddt_labels = torch.randint(0, 50, (2, seq_len))
     resolved_labels = torch.randint(0, 2, (2, seq_len))
 
-    alphafold3 = AlphaFold3(
+    alphafold3 = Alphafold3(
         dim_atom_inputs=77,
         atoms_per_window=atoms_per_window,
         dim_template_feats=44,
@@ -537,7 +537,7 @@ def test_alphafold3_without_msa_and_templates():
     plddt_labels = torch.randint(0, 50, (2, seq_len))
     resolved_labels = torch.randint(0, 2, (2, seq_len))
 
-    alphafold3 = AlphaFold3(
+    alphafold3 = Alphafold3(
         dim_atom_inputs=77,
         dim_template_feats=44,
         num_dist_bins=38,
@@ -592,7 +592,7 @@ def test_alphafold3_force_return_loss():
     plddt_labels = torch.randint(0, 50, (2, seq_len))
     resolved_labels = torch.randint(0, 2, (2, seq_len))
 
-    alphafold3 = AlphaFold3(
+    alphafold3 = Alphafold3(
         dim_atom_inputs=77,
         dim_template_feats=44,
         num_dist_bins=38,
@@ -643,7 +643,7 @@ def test_alphafold3_force_return_loss():
 
 def test_alphafold3_with_atom_and_bond_embeddings():
     """Test the AlphaFold 3 model with atom and bond embeddings."""
-    alphafold3 = AlphaFold3(
+    alphafold3 = Alphafold3(
         num_atom_embeds=7, num_atompair_embeds=3, dim_atom_inputs=77, dim_template_feats=44
     )
 

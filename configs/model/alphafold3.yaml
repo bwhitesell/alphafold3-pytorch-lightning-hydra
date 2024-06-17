@@ -1,4 +1,4 @@
-_target_: alphafold3_pytorch.models.alphafold3_module.AlphaFold3LitModule
+_target_: alphafold3_pytorch.models.alphafold3_module.Alphafold3LitModule
 
 optimizer:
   _target_: torch.optim.Adam
@@ -14,7 +14,7 @@ scheduler:
   verbose: true
 
 net:
-  _target_: alphafold3_pytorch.models.components.alphafold3.AlphaFold3
+  _target_: alphafold3_pytorch.models.components.alphafold3.Alphafold3
   dim_atom_inputs: 77
   dim_template_feats: 44
   num_dist_bins: 38

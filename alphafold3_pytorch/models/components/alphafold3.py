@@ -3071,7 +3071,7 @@ class LossBreakdown(NamedTuple):
     diffusion_smooth_lddt: Float[""]  # type: ignore
 
 
-class AlphaFold3(Module):
+class Alphafold3(Module):
     """Algorithm 1."""
 
     @typecheck
@@ -3398,7 +3398,7 @@ class AlphaFold3(Module):
         model_package = package["model"]
 
         args, kwargs = model_package["init_args_and_kwargs"]
-        alphafold3 = AlphaFold3(*args, **kwargs)
+        alphafold3 = Alphafold3(*args, **kwargs)
 
         alphafold3.load(path)
         return alphafold3
@@ -3888,7 +3888,7 @@ class AlphaFold3(Module):
 # an alphafold3 that can download pretrained weights from huggingface
 
 
-class AlphaFold3WithHubMixin(AlphaFold3, PyTorchModelHubMixin):
+class Alphafold3WithHubMixin(Alphafold3, PyTorchModelHubMixin):
     @classmethod
     def _from_pretrained(
         cls,

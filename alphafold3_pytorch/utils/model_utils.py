@@ -249,7 +249,7 @@ def atom_ref_pos_to_atompair_inputs(
 
     atom_inv_square_dist = (1 + pairwise_rel_pos.norm(dim=-1, p=2) ** 2) ** -1
 
-    # concat all into atompair_inputs for projection into atompair_feats within Alphafold3
+    # concat all into atompair_inputs for projection into atompair_feats within AlphaFold3
 
     atompair_inputs, _ = pack(
         (

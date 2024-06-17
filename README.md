@@ -124,9 +124,9 @@ docker run -v .:/data --gpus all -it af3
 
 ```python
 import torch
-from alphafold3_pytorch import AlphaFold3
+from alphafold3_pytorch import Alphafold3
 
-alphafold3 = AlphaFold3(
+alphafold3 = Alphafold3(
     dim_atom_inputs = 77,
     dim_template_feats = 44
 )

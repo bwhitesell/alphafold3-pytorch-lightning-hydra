@@ -4,11 +4,11 @@ from typing import Any
 import lightning.pytorch as pl
 from omegaconf import OmegaConf
 
-from alphafold3_pytorch.models.alphafold3_module import AlphaFold3LitModule, AtomInput
+from alphafold3_pytorch.models.alphafold3_module import Alphafold3LitModule, AtomInput
 from alphafold3_pytorch.models.components.alphafold3 import (
     AdaptiveLayerNorm,
-    AlphaFold3,
-    AlphaFold3WithHubMixin,
+    Alphafold3,
+    Alphafold3WithHubMixin,
     AttentionPairBias,
     CentreRandomAugmentation,
     ComputeAlignmentError,
@@ -67,9 +67,9 @@ __all__ = [
     InputFeatureEmbedder,
     ConfidenceHead,
     DistogramHead,
-    AlphaFold3,
-    AlphaFold3WithHubMixin,
-    AlphaFold3LitModule,
+    Alphafold3,
+    Alphafold3WithHubMixin,
+    Alphafold3LitModule,
     AtomInput,
     full_pairwise_repr_to_windowed,
 ]

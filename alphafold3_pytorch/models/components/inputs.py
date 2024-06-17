@@ -2,7 +2,7 @@ from typing import Callable, Literal, Type, TypedDict
 
 from alphafold3_pytorch.utils.typing import Bool, Float, Int, typecheck
 
-# atom level, what Alphafold3 accepts
+# atom level, what AlphaFold3 accepts
 
 
 @typecheck

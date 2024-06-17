@@ -22,7 +22,7 @@ log = RankedLogger(__name__, rank_zero_only=False)
 # lightning module
 
 
-class AlphaFold3LitModule(LightningModule):
+class Alphafold3LitModule(LightningModule):
     """A `LightningModule` for AlphaFold 3.
     Implements details from Section 5.4 of the paper.
 
@@ -280,4 +280,4 @@ class AlphaFold3LitModule(LightningModule):
 
 
 if __name__ == "__main__":
-    _ = AlphaFold3LitModule(None, None, None, None)
+    _ = Alphafold3LitModule(None, None, None, None)
