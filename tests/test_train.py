@@ -100,10 +100,13 @@ def test_train_resume(tmp_path: Path, cfg_train: DictConfig) -> None:
     :param cfg_train: A DictConfig containing a valid training configuration.
     """
     with open_dict(cfg_train):
+        cfg_train.test = True
         cfg_train.trainer.max_steps = 2
 
     HydraConfig().set_config(cfg_train)
-    metric_dict_1, _ = train(cfg_train)
+    train_metric_dict_1, _ = train(cfg_train)
+
+    assert train_metric_dict_1["test/loss"] < 10000.0
 
     files = os.listdir(tmp_path / "checkpoints")
     assert "last.ckpt" in files
@@ -112,7 +115,9 @@ def test_train_resume(tmp_path: Path, cfg_train: DictConfig) -> None:
         cfg_train.ckpt_path = str(tmp_path / "checkpoints" / "last.ckpt")
         cfg_train.trainer.max_steps = 4
 
-    metric_dict_2, _ = train(cfg_train)
+    train_metric_dict_2, _ = train(cfg_train)
+
+    assert train_metric_dict_2["test/loss"] < 10000.0
 
     # NOTE: when sanity-checking the model with a random dataset, the validation loss may not decrease
-    # assert metric_dict_1["val/loss"] > metric_dict_2["val/loss"]
+    # assert train_metric_dict_1["val/loss"] > train_metric_dict_2["val/loss"]

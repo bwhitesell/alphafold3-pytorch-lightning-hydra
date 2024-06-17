@@ -23,7 +23,11 @@ def cfg_train_global() -> DictConfig:
     :return: A DictConfig object containing a default Hydra configuration for training.
     """
     with initialize(version_base="1.3", config_path="../configs"):
-        cfg = compose(config_name="train.yaml", return_hydra_config=True, overrides=[])
+        cfg = compose(
+            config_name="train.yaml",
+            return_hydra_config=True,
+            overrides=["ckpt_path=."],
+        )
 
         # set defaults for all tests
         with open_dict(cfg):
@@ -45,8 +49,6 @@ def cfg_train_global() -> DictConfig:
             }
             cfg.paths.root_dir = str(rootutils.find_root(indicator=".project-root"))
             cfg.trainer.max_epochs = 1
-            cfg.trainer.limit_train_batches = 0.01
-            cfg.trainer.limit_val_batches = 0.1
             cfg.trainer.limit_test_batches = 0.1
             cfg.trainer.accelerator = "gpu" if torch.cuda.is_available() else "cpu"
             cfg.trainer.devices = 1
