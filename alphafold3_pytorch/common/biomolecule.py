@@ -2,6 +2,7 @@ import collections
 import dataclasses
 import functools
 import io
+from types import ModuleType
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
@@ -16,6 +17,7 @@ from alphafold3_pytorch.common import (
     rna_constants,
 )
 from alphafold3_pytorch.data import mmcif_parsing
+from alphafold3_pytorch.utils.typing import typecheck
 
 # Data to fill the _chem_comp table when writing mmCIFs.
 _CHEM_COMP: Mapping[str, Tuple[Tuple[str, str], ...]] = {
@@ -82,7 +84,8 @@ class Biomolecule:
     b_factors: np.ndarray  # [num_res, num_atom_type]
 
 
-def get_residue_constants(res_chem_type: str) -> Any:
+@typecheck
+def get_residue_constants(res_chem_type: str) -> ModuleType:
     """Returns the corresponding residue constants for a given residue chemical type."""
     if "peptide" in res_chem_type.lower():
         residue_constants = amino_acid_constants
@@ -95,6 +98,7 @@ def get_residue_constants(res_chem_type: str) -> Any:
     return residue_constants
 
 
+@typecheck
 def _from_mmcif_object(
     mmcif_object: mmcif_parsing.MmcifObject, chain_id: Optional[str] = None
 ) -> Biomolecule:
@@ -183,6 +187,7 @@ def _from_mmcif_object(
     )
 
 
+@typecheck
 def from_mmcif_string(mmcif_str: str, file_id: str, chain_id: Optional[str] = None) -> Biomolecule:
     """Takes a mmCIF string and constructs a `Biomolecule` object.
 
@@ -209,6 +214,7 @@ def from_mmcif_string(mmcif_str: str, file_id: str, chain_id: Optional[str] = No
     return _from_mmcif_object(mmcif_object.structure, mmcif_object.mmcif_object, chain_id)
 
 
+@typecheck
 def to_mmcif(
     biomol: Biomolecule,
     file_id: str,
@@ -344,6 +350,7 @@ def to_mmcif(
     return _create_mmcif_string(mmcif_dict)
 
 
+@typecheck
 @functools.lru_cache(maxsize=256)
 def _int_id_to_str_id(num: int) -> str:
     """Encodes a number as a string, using reverse spreadsheet style naming.
@@ -365,6 +372,7 @@ def _int_id_to_str_id(num: int) -> str:
     return "".join(output)
 
 
+@typecheck
 def _get_entity_poly_seq(
     restypes: np.ndarray, residue_indices: np.ndarray, chain_indices: np.ndarray
 ) -> Dict[int, Tuple[List[int], List[int]]]:
@@ -409,6 +417,7 @@ def _get_entity_poly_seq(
     return entity_poly_seq
 
 
+@typecheck
 def _create_mmcif_string(mmcif_dict: Dict[str, Any]) -> str:
     """Converts mmCIF dictionary into mmCIF string."""
     mmcifio = MMCIFIO()

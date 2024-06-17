@@ -2,15 +2,29 @@ import argparse
 import json
 import logging
 import os
+from argparse import Namespace
 from functools import partial
 from multiprocessing import Pool
+from typing import Dict, Optional
 
 from tqdm import tqdm
 
 from alphafold3_pytorch.data.mmcif_parsing import parse
+from alphafold3_pytorch.utils.typing import typecheck
 
 
-def parse_file(f, args, chain_cluster_size_dict=None):
+@typecheck
+def parse_file(
+    f: str, args: Namespace, chain_cluster_size_dict: Optional[Dict[str, int]] = None
+) -> Dict[str, Dict]:
+    """
+    Parse a single mmCIF file and return a dictionary with the parsed data.
+
+    :param f: The filename of the mmCIF file
+    :param args: The command line arguments
+    :param chain_cluster_size_dict: A dictionary mapping chain IDs to cluster sizes
+    :return: A dictionary with the parsed data
+    """
     with open(os.path.join(args.mmcif_dir, f), "r") as fp:
         mmcif_string = fp.read()
     file_id = os.path.splitext(f)[0]
@@ -44,7 +58,8 @@ def parse_file(f, args, chain_cluster_size_dict=None):
     return {file_id: local_data}
 
 
-def main(args):
+@typecheck
+def main(args: Namespace):
     chain_cluster_size_dict = None
     if args.cluster_file is not None:
         chain_cluster_size_dict = {}

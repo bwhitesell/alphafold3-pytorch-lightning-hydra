@@ -1397,6 +1397,7 @@ SCOP_CODES_3TO1 = {
 # Helper functions
 
 
+@typecheck
 def read_ccd_codes_from_pdb_components_file(path_to_cif: str) -> Set[str]:
     """
     Collect the CCD codes of multiple compounds stored in the wwPDB CCD
