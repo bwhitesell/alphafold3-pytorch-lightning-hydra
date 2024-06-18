@@ -693,6 +693,7 @@ def filter_structure_with_timeout(filepath: str, output_dir: str):
     mmcif_object = prefilter_target(mmcif_object)
     if exists(mmcif_object):
         # Filtering of bioassemblies
+        # NOTE: Here, we remove waters even though the AlphaFold 3 supplement doesn't mention removing them during filtering.
         mmcif_object = remove_hydrogens(mmcif_object, remove_waters=True)
         mmcif_object = remove_polymer_chains_with_all_unknown_residues(mmcif_object)
         mmcif_object = remove_clashing_chains(mmcif_object)

@@ -1,5 +1,7 @@
 """Amino acid constants used in AlphaFold."""
 
+from typing import Final
+
 # This mapping is used when we need to store atom data in a format that requires
 # fixed atom data size for every residue (e.g. a numpy array).
 atom_types = [
@@ -107,12 +109,43 @@ restype_1to3 = {
     "V": "VAL",
 }
 
+BIOMOLECULE_CHAIN: Final[str] = "polypeptide(L)"
+POLYMER_CHAIN: Final[str] = "polymer"
+
+
+def atom_id_to_type(atom_id: str) -> str:
+    """Convert atom ID to atom type, works only for standard protein residues.
+
+    :param atom_id: Atom ID to be converted.
+    :return: String corresponding to atom type.
+
+    :raise:
+      ValueError: If atom ID not recognized.
+    """
+    if atom_id.startswith("C"):
+        return "C"
+    elif atom_id.startswith("N"):
+        return "N"
+    elif atom_id.startswith("O"):
+        return "O"
+    elif atom_id.startswith("H"):
+        return "H"
+    elif atom_id.startswith("S"):
+        return "S"
+    raise ValueError("Atom ID not recognized.")
+
+
 # NB: restype_3to1 differs from e.g., Bio.Data.PDBData.protein_letters_3to1
 # by being a simple 1-to-1 mapping of 3 letter names to one letter names.
 # The latter contains many more, and less common, three letter names as
 # keys and maps many of these to the same one letter name
 # (including 'X' and 'U' which we don't use here).
 restype_3to1 = {v: k for k, v in restype_1to3.items()}
+
+# Define a restype name for all unknown amino acid residues.
+unk_restype = "UNK"
+
+resnames = [restype_1to3[r] for r in restypes] + [unk_restype]
 
 # This represents the residue chemical type (i.e., `chemtype`) index of amino acid residues.
 chemtype_num = 0

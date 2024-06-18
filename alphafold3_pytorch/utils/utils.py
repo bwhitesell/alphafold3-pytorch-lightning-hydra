@@ -2,6 +2,7 @@ import warnings
 from importlib.util import find_spec
 from typing import Any, Callable, Dict, Optional, Tuple
 
+import numpy as np
 from omegaconf import DictConfig
 
 from alphafold3_pytorch.utils import pylogger, rich_utils
@@ -151,3 +152,11 @@ def always(value):
 def identity(x, *args, **kwargs):
     """Return the input value."""
     return x
+
+
+def np_mode(x: np.ndarray) -> Any:
+    """Return the mode of a 1D NumPy array."""
+    assert x.ndim == 1, f"Input NumPy array must be 1D, not {x.ndim}D."
+    values, counts = np.unique(x, return_counts=True)
+    m = counts.argmax()
+    return values[m], counts[m]
