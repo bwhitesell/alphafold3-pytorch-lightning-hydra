@@ -692,7 +692,7 @@ def filter_structure_with_timeout(filepath: str, output_dir: str):
     os.makedirs(output_file_dir, exist_ok=True)
 
     # Filtering of targets
-    mmcif_object = parse_mmcif_object(filepath, file_id, auth_chains=True, auth_residues=True)
+    mmcif_object = parse_mmcif_object(filepath, file_id)
     mmcif_object = prefilter_target(mmcif_object)
     if exists(mmcif_object):
         # Filtering of bioassemblies
