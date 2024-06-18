@@ -63,13 +63,11 @@ atom_type_num = len(atom_types)  # := 27 + 20 null types := 47.
 # This is the standard residue order when coding DNA type as a number.
 # Reproduce it by taking 3-letter DNA codes and sorting them alphabetically.
 restypes = ["A", "C", "G", "T"]
-restype_order = {
-    restype: (len(amino_acid_constants.restypes) + 1) + (len(rna_constants.restypes) + 1) + i
-    for i, restype in enumerate(restypes)
-}
-restype_num = (
-    (len(amino_acid_constants.restypes) + 1) + (len(rna_constants.restypes) + 1) + len(restypes)
-)  # := 30.
+min_restype_num = (len(amino_acid_constants.restypes) + 1) + (
+    len(rna_constants.restypes) + 1
+)  # := 26.
+restype_order = {restype: min_restype_num + i for i, restype in enumerate(restypes)}
+restype_num = min_restype_num + len(restypes)  # := 26 + 4 := 30.
 
 
 restype_1to3 = {

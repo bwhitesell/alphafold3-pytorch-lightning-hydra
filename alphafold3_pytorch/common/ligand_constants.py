@@ -62,9 +62,8 @@ atom_type_num = len(atom_types)  # := 47.
 
 # All ligand residues are mapped to the unknown amino acid type index (:= 20).
 restypes = ["UNK"]
-restype_order = {
-    restype: len(amino_acid_constants.restypes) + i for i, restype in enumerate(restypes)
-}
+min_restype_num = len(amino_acid_constants.restypes)  # := 20.
+restype_order = {restype: min_restype_num + i for i, restype in enumerate(restypes)}
 restype_num = len(amino_acid_constants.restypes)  # := 20.
 
 BIOMOLECULE_CHAIN: Final[str] = "other"

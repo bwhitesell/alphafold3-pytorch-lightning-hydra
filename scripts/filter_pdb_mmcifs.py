@@ -36,7 +36,7 @@ import glob
 import os
 import random
 from operator import itemgetter
-from typing import Dict, List, Literal, Set, Tuple
+from typing import Dict, List, Set, Tuple
 
 import numpy as np
 import pandas as pd
@@ -126,12 +126,19 @@ POSEBUSTERS_V2_COMMON_NATURAL_LIGANDS = set(
 
 
 @typecheck
-def parse_mmcif_object(filepath: str, file_id: str) -> MmcifObject:
+def parse_mmcif_object(
+    filepath: str, file_id: str, auth_chains: bool = True, auth_residues: bool = True
+) -> MmcifObject:
     """Parse an mmCIF file into an `MmcifObject` containing a BioPython `Structure` object as well as associated metadata."""
     with open(filepath, "r") as f:
         mmcif_string = f.read()
 
-    mmcif_object = mmcif_parsing.parse(file_id=file_id, mmcif_string=mmcif_string)
+    mmcif_object = mmcif_parsing.parse(
+        file_id=file_id,
+        mmcif_string=mmcif_string,
+        auth_chains=auth_chains,
+        auth_residues=auth_residues,
+    )
 
     # Crash if an error is encountered. Any parsing errors should have
     # been dealt with beforehand (e.g., at the alignment stage).
@@ -662,14 +669,10 @@ def filter_mmcif(mmcif_object: MmcifObject) -> MmcifObject:
 
 
 @typecheck
-def write_mmcif(
-    mmcif_object: MmcifObject,
-    output_filepath: str,
-    model_type: Literal["Multimer", "Monomer"] = "Multimer",
-):
+def write_mmcif(mmcif_object: MmcifObject, output_filepath: str):
     """Write a BioPython `Structure` object to an mmCIF file using an intermediate `Biomolecule` object."""
     biomol = _from_mmcif_object(mmcif_object)
-    mmcif_string = to_mmcif(biomol, mmcif_object.file_id, model_type)
+    mmcif_string = to_mmcif(biomol, mmcif_object.file_id, insert_alphafold_mmcif_metadata=False)
     with open(output_filepath, "w") as f:
         f.write(mmcif_string)
 
@@ -689,7 +692,7 @@ def filter_structure_with_timeout(filepath: str, output_dir: str):
     os.makedirs(output_file_dir, exist_ok=True)
 
     # Filtering of targets
-    mmcif_object = parse_mmcif_object(filepath, file_id)
+    mmcif_object = parse_mmcif_object(filepath, file_id, auth_chains=True, auth_residues=True)
     mmcif_object = prefilter_target(mmcif_object)
     if exists(mmcif_object):
         # Filtering of bioassemblies

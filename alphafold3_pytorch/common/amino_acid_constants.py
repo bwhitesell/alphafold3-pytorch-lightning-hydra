@@ -82,8 +82,9 @@ restypes = [
     "Y",
     "V",
 ]
-restype_order = {restype: i for i, restype in enumerate(restypes)}
-restype_num = len(restypes)  # := 20.
+min_restype_num = 0  # := 0.
+restype_order = {restype: min_restype_num + i for i, restype in enumerate(restypes)}
+restype_num = min_restype_num + len(restypes)  # := 0 + 20 := 20.
 
 
 restype_1to3 = {

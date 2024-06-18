@@ -63,10 +63,9 @@ atom_type_num = len(atom_types)  # := 27 + 20 null types := 47.
 # This is the standard residue order when coding RNA type as a number.
 # Reproduce it by taking 3-letter RNA codes and sorting them alphabetically.
 restypes = ["A", "C", "G", "U"]
-restype_order = {
-    restype: (len(amino_acid_constants.restypes) + 1) + i for i, restype in enumerate(restypes)
-}
-restype_num = (len(amino_acid_constants.restypes) + 1) + len(restypes)  # := 25.
+min_restype_num = len(amino_acid_constants.restypes) + 1  # := 21.
+restype_order = {restype: min_restype_num + i for i, restype in enumerate(restypes)}
+restype_num = min_restype_num + len(restypes)  # := 21 + 4 := 25.
 
 
 restype_1to3 = {"A": "A", "C": "C", "G": "G", "U": "U"}

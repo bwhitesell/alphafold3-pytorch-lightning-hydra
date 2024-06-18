@@ -204,7 +204,14 @@ def mmcif_loop_to_dict(
 
 
 @functools.lru_cache(16, typed=False)
-def parse(*, file_id: str, mmcif_string: str, catch_all_errors: bool = True) -> ParsingResult:
+def parse(
+    *,
+    file_id: str,
+    mmcif_string: str,
+    catch_all_errors: bool = True,
+    auth_chains: bool = True,
+    auth_residues: bool = True,
+) -> ParsingResult:
     """Entry point, parses an mmcif_string.
 
     :param file_id: A string identifier for this file. Should be unique within the
@@ -213,12 +220,16 @@ def parse(*, file_id: str, mmcif_string: str, catch_all_errors: bool = True) -> 
     :param catch_all_errors: If True, all exceptions are caught and error messages are
         returned as part of the ParsingResult. If False exceptions will be allowed
         to propagate.
+    :param auth_chains: If True, use author-assigned chain ids. If False, use internal
+        mmCIF chain ids.
+    :param auth_residues: If True, use author-assigned residue numbers. If False, use
+        internal mmCIF residue numbers.
 
     :return: A ParsingResult.
     """
     errors = {}
     try:
-        parser = PDB.MMCIFParser(QUIET=True)
+        parser = PDB.MMCIFParser(QUIET=True, auth_chains=auth_chains, auth_residues=auth_residues)
         with io.StringIO(mmcif_string) as handle:
             full_structure = parser.get_structure("", handle)
         first_model_structure = _get_first_model(full_structure)

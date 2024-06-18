@@ -3,7 +3,7 @@ import dataclasses
 import functools
 import io
 from types import ModuleType
-from typing import Any, Dict, List, Mapping, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import numpy as np
 from Bio.PDB.mmcifio import MMCIFIO
@@ -20,31 +20,17 @@ from alphafold3_pytorch.data import mmcif_parsing
 from alphafold3_pytorch.utils.typing import IntType, typecheck
 from alphafold3_pytorch.utils.utils import exists, np_mode
 
-# Data to fill the _chem_comp table when writing mmCIFs.
-_CHEM_COMP: Mapping[str, Tuple[Tuple[str, str], ...]] = {
-    "L-peptide linking": (
-        ("ALA", "ALANINE"),
-        ("ARG", "ARGININE"),
-        ("ASN", "ASPARAGINE"),
-        ("ASP", "ASPARTIC ACID"),
-        ("CYS", "CYSTEINE"),
-        ("GLN", "GLUTAMINE"),
-        ("GLU", "GLUTAMIC ACID"),
-        ("HIS", "HISTIDINE"),
-        ("ILE", "ISOLEUCINE"),
-        ("LEU", "LEUCINE"),
-        ("LYS", "LYSINE"),
-        ("MET", "METHIONINE"),
-        ("PHE", "PHENYLALANINE"),
-        ("PRO", "PROLINE"),
-        ("SER", "SERINE"),
-        ("THR", "THREONINE"),
-        ("TRP", "TRYPTOPHAN"),
-        ("TYR", "TYROSINE"),
-        ("VAL", "VALINE"),
-    ),
-    "peptide linking": (("GLY", "GLYCINE"),),
-}
+MMCIF_PREFIXES_TO_DROP_POST_PARSING = [
+    "_atom_site.",
+    "_chem_comp.",
+    "_entity.",
+    "_entity_poly.",
+    "_struct_asym.",
+]
+MMCIF_PREFIXES_TO_DROP_POST_AF3 = MMCIF_PREFIXES_TO_DROP_POST_PARSING + [
+    "_citation.",
+    "_citation_author.",
+]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -103,7 +89,7 @@ class Biomolecule:
 
 @typecheck
 def get_residue_constants(
-    res_chem_type: Optional[str] = None, res_chem_index: Optional[int] = None
+    res_chem_type: Optional[str] = None, res_chem_index: Optional[IntType] = None
 ) -> ModuleType:
     """Returns the corresponding residue constants for a given residue chemical type."""
     assert exists(res_chem_type) or exists(
@@ -255,20 +241,40 @@ def atom_id_to_type(atom_id: str) -> str:
 
     :param atom_id: Atom ID to be converted.
     :return: String corresponding to atom type.
+
+    :raise:
+        ValueError: If `atom_id` is empty or does not contain any alphabetic characters.
     """
-    atype = []
-    if atom_id[0].isalpha():
-        atype.append(atom_id[0])
-    atype.append(atom_id[1])
-    atype = "".join(atype)
-    return atype
+    assert len(atom_id) > 0, f"Atom ID must have at least one character, but received: {atom_id}."
+    for char in atom_id:
+        if char.isalpha():
+            return char
+    raise ValueError(
+        f"Atom ID must contain at least one alphabetic character, but received: {atom_id}."
+    )
+
+
+@typecheck
+def remove_metadata_fields_by_prefixes(
+    metadata_dict: Dict[str, List[Any]], field_prefixes: List[str]
+) -> Dict[str, List[Any]]:
+    """Remove metadata fields from the metadata dictionary.
+
+    :param metadata_dict: The metadata default dictionary from which to remove metadata fields.
+    :param field_prefixes: A list of prefixes to remove from the metadata default dictionary.
+
+    :return: A metadata dictionary with the specified metadata fields removed.
+    """
+    return {
+        key: value
+        for key, value in metadata_dict.items()
+        if not any(key.startswith(prefix) for prefix in field_prefixes)
+    }
 
 
 @typecheck
 def to_mmcif(
-    biomol: Biomolecule,
-    file_id: str,
-    model_type: str,
+    biomol: Biomolecule, file_id: str, insert_alphafold_mmcif_metadata: bool = True
 ) -> str:
     """Converts a `Biomolecule` instance to an mmCIF string.
 
@@ -298,7 +304,8 @@ def to_mmcif(
 
     :param biomol: A biomolecule to convert to mmCIF string.
     :param file_id: The file ID (usually the PDB ID) to be used in the mmCIF.
-    :param model_type: 'Multimer' or 'Monomer'.
+    :param insert_alphafold_mmcif_metadata: If True, insert metadata fields
+        referencing AlphaFold in the output mmCIF file.
 
     :return: A valid mmCIF string.
 
@@ -344,25 +351,38 @@ def to_mmcif(
         mmcif_dict["_entity.id"].append(str(entity_id))
         mmcif_dict["_entity.type"].append(residue_constants.POLYMER_CHAIN)
 
-    # Add the residues to the _entity_poly_seq table.
-    for entity_id, (res_ids, aas, aa_chemids, aa_chemtypes) in _get_entity_poly_seq(
+    # Add the polymer residues to the _entity_poly_seq table.
+    for entity_id, (res_ids, aa_chemids) in _get_entity_poly_seq(
         restype,
         residue_index,
         chain_index,
         chemid,
         chemtype,
     ).items():
-        # Determine the chemical type of the chain.
-        res_chem_index = np_mode(chemtype[chain_index == entity_id])[0].item()
-        residue_constants = get_residue_constants(res_chem_index=res_chem_index)
-        for res_id, aa, aa_chemid, aa_chemtype in zip(res_ids, aas, aa_chemids, aa_chemtypes):
+        for res_id, aa_chemid in zip(res_ids, aa_chemids):
             mmcif_dict["_entity_poly_seq.entity_id"].append(str(entity_id))
+            mmcif_dict["_entity_poly_seq.hetero"].append("n")
             mmcif_dict["_entity_poly_seq.num"].append(str(res_id))
-            if aa_chemtype == 3:
-                # NOTE: For ligand residues, we manually track their new three-letter ligand residue names.
-                mmcif_dict["_entity_poly_seq.mon_id"].append(aa_chemid)
-            else:
-                mmcif_dict["_entity_poly_seq.mon_id"].append(residue_constants.resnames[aa])
+            mmcif_dict["_entity_poly_seq.mon_id"].append(aa_chemid)
+
+    # TODO: Add the non-polymer residues to the _pdbx_nonpoly_scheme table.
+    """
+    Reference mmCIF fields to record:
+
+    loop_
+    _pdbx_nonpoly_scheme.asym_id
+    _pdbx_nonpoly_scheme.entity_id
+    _pdbx_nonpoly_scheme.mon_id
+    _pdbx_nonpoly_scheme.ndb_seq_num
+    _pdbx_nonpoly_scheme.pdb_seq_num
+    _pdbx_nonpoly_scheme.auth_seq_num
+    _pdbx_nonpoly_scheme.pdb_mon_id
+    _pdbx_nonpoly_scheme.auth_mon_id
+    _pdbx_nonpoly_scheme.pdb_strand_id
+    _pdbx_nonpoly_scheme.pdb_ins_code
+    C 2 SPM 1  21 21 SPM SPM A .
+    D 3 HOH 1  25 25 HOH HOH A .
+    """
 
     # Populate the chem comp table.
     for chem_comp in biomol.chem_comp_table:
@@ -375,11 +395,8 @@ def to_mmcif(
     for i in range(restype.shape[0]):
         # Determine the chemical type of the residue.
         residue_constants = get_residue_constants(res_chem_index=chemtype[i])
-        # NOTE: We store three-letter ligand residue names within the chemical component metadata.
-        is_ligand_residue = chemtype[i] == 3
-        res_name_3 = chemid[i] if is_ligand_residue else residue_constants.resnames[restype[i]]
-        if restype[i] <= len(residue_constants.restypes) or is_ligand_residue:
-            # NOTE: Ligand residues are always mapped to the unknown amino acid index (:= 20).
+        res_name_3 = chemid[i]
+        if (restype[i] - residue_constants.min_restype_num) <= len(residue_constants.restypes):
             atom_names = residue_constants.atom_types
         else:
             raise ValueError(
@@ -415,10 +432,20 @@ def to_mmcif(
 
             atom_index += 1
 
-    metadata_dict = mmcif_metadata.add_metadata_to_mmcif(mmcif_dict, model_type)
-    mmcif_dict.update(metadata_dict)
+    init_metadata_dict = (
+        remove_metadata_fields_by_prefixes(biomol.mmcif_metadata, MMCIF_PREFIXES_TO_DROP_POST_AF3)
+        if insert_alphafold_mmcif_metadata
+        else remove_metadata_fields_by_prefixes(
+            biomol.mmcif_metadata, MMCIF_PREFIXES_TO_DROP_POST_PARSING
+        )
+    )
+    metadata_dict = mmcif_metadata.add_metadata_to_mmcif(
+        mmcif_dict, insert_alphafold_mmcif_metadata=insert_alphafold_mmcif_metadata
+    )
+    init_metadata_dict.update(metadata_dict)
+    init_metadata_dict.update(mmcif_dict)
 
-    return _create_mmcif_string(mmcif_dict)
+    return _create_mmcif_string(init_metadata_dict)
 
 
 @typecheck
@@ -450,8 +477,8 @@ def _get_entity_poly_seq(
     chain_indices: np.ndarray,
     chemids: np.ndarray,
     chemtypes: np.ndarray,
-) -> Dict[IntType, Tuple[List[IntType], List[IntType], List[IntType]]]:
-    """Constructs gapless residue index and restype lists for each chain.
+) -> Dict[IntType, Tuple[List[IntType], List[str]]]:
+    """Constructs gapless residue index and chemid lists for each chain.
 
     :param restypes: A numpy array with restypes.
     :param residue_indices: A numpy array with residue indices.
@@ -459,10 +486,10 @@ def _get_entity_poly_seq(
     :param chemids: A numpy array with residue chemical IDs.
     :param chemtypes: A numpy array with residue chemical types.
 
-    :return: A dictionary mapping chain indices to a tuple with list of residue indices,
-      a list of restypes, a list of chemids, and a list of chemtypes. Missing residues
-      are filled with the unknown residue type of the corresponding residue chemical type
-      (e.g., `N`, the unknown RNA type, for a majority-RNA chain).
+    :return: A dictionary mapping chain indices to a tuple with a list of residue indices
+      and a list of chemids. Missing residues are filled with the unknown residue type
+      of the corresponding residue chemical type (e.g., `N`, the unknown RNA type,
+      for a majority-RNA chain). Ligand residues are not present in the output.
     """
     if (
         restypes.shape[0] != residue_indices.shape[0]
@@ -472,8 +499,15 @@ def _get_entity_poly_seq(
 
     # Group the present residues by chain index.
     present = collections.defaultdict(list)
-    for chain_id, res_id, aa in zip(chain_indices, residue_indices, restypes):
-        present[chain_id].append((res_id, aa))
+    num_ligand_residues_present = collections.defaultdict(int)
+    for chain_id, res_id, aa, aa_chemtype in zip(
+        chain_indices, residue_indices, restypes, chemtypes
+    ):
+        if aa_chemtype == 3:
+            # Skip ligand residues.
+            num_ligand_residues_present[chain_id] += 1
+            continue
+        present[chain_id].append((res_id - num_ligand_residues_present[chain_id], aa))
 
     # Add any missing residues (from 1 to the first residue and for any gaps).
     entity_poly_seq = {}
@@ -486,23 +520,17 @@ def _get_entity_poly_seq(
         residue_constants = get_residue_constants(res_chem_index=res_chem_index)
 
         new_residue_indices = []
-        new_restypes = []
         new_chemids = []
-        new_chemtypes = []
         present_index = 0
         for i in range(min(1, min_res_id), max_res_id + 1):
             new_residue_indices.append(i)
             if i in present_residue_indices:
-                new_restypes.append(present_residues[present_index][1])
-                new_chemids.append(chemids[i])
-                new_chemtypes.append(chemtypes[i])
+                new_chemids.append(chemids[chain_indices == chain_id][present_index])
                 present_index += 1
             else:
                 # Unknown residue type of the most common residue chemical type in the chain.
-                new_restypes.append(residue_constants.restype_num)
                 new_chemids.append(residue_constants.unk_restype)
-                new_chemtypes.append(res_chem_index)
-        entity_poly_seq[chain_id] = (new_residue_indices, new_restypes, new_chemids, new_chemtypes)
+        entity_poly_seq[chain_id] = (new_residue_indices, new_chemids)
     return entity_poly_seq
 
 
