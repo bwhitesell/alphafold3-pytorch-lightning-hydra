@@ -113,28 +113,6 @@ BIOMOLECULE_CHAIN: Final[str] = "polypeptide(L)"
 POLYMER_CHAIN: Final[str] = "polymer"
 
 
-def atom_id_to_type(atom_id: str) -> str:
-    """Convert atom ID to atom type, works only for standard protein residues.
-
-    :param atom_id: Atom ID to be converted.
-    :return: String corresponding to atom type.
-
-    :raise:
-      ValueError: If atom ID not recognized.
-    """
-    if atom_id.startswith("C"):
-        return "C"
-    elif atom_id.startswith("N"):
-        return "N"
-    elif atom_id.startswith("O"):
-        return "O"
-    elif atom_id.startswith("H"):
-        return "H"
-    elif atom_id.startswith("S"):
-        return "S"
-    raise ValueError("Atom ID not recognized.")
-
-
 # NB: restype_3to1 differs from e.g., Bio.Data.PDBData.protein_letters_3to1
 # by being a simple 1-to-1 mapping of 3 letter names to one letter names.
 # The latter contains many more, and less common, three letter names as

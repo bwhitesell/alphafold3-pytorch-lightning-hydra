@@ -63,7 +63,9 @@ atom_type_num = len(atom_types)  # := 27 + 20 null types := 47.
 # This is the standard residue order when coding RNA type as a number.
 # Reproduce it by taking 3-letter RNA codes and sorting them alphabetically.
 restypes = ["A", "C", "G", "U"]
-restype_order = {restype: i for i, restype in enumerate(restypes)}
+restype_order = {
+    restype: (len(amino_acid_constants.restypes) + 1) + i for i, restype in enumerate(restypes)
+}
 restype_num = (len(amino_acid_constants.restypes) + 1) + len(restypes)  # := 25.
 
 
@@ -71,29 +73,6 @@ restype_1to3 = {"A": "A", "C": "C", "G": "G", "U": "U"}
 
 BIOMOLECULE_CHAIN: Final[str] = "polyribonucleotide"
 POLYMER_CHAIN: Final[str] = "polymer"
-
-
-def atom_id_to_type(atom_id: str) -> str:
-    """Convert atom ID to atom type, works only for standard RNA residues.
-
-    :param atom_id: Atom ID to be converted.
-    :return: String corresponding to atom type.
-
-    :raise:
-      ValueError: If atom ID not recognized.
-    """
-    if atom_id.startswith("C"):
-        return "C"
-    elif atom_id.startswith("N"):
-        return "N"
-    elif atom_id.startswith("O"):
-        return "O"
-    elif atom_id.startswith("H"):
-        return "H"
-    elif atom_id.startswith("S"):
-        return "S"
-    raise ValueError("Atom ID not recognized.")
-
 
 # NB: restype_3to1 differs from e.g., Bio.Data.PDBData.nucleic_letters_3to1
 # by being a simple 1-to-1 mapping of 3 letter names to one letter names.

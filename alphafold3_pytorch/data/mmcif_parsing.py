@@ -40,6 +40,7 @@ class ChemComp:
 
     id: str
     type: str
+    name: str
 
 
 # Note - mmCIF format provides no guarantees on the type of author-assigned
@@ -500,6 +501,7 @@ def _get_complex_chains(
                 ChemComp(
                     id=chem_comps[monomer.id]["_chem_comp.id"],
                     type=chem_comps[monomer.id]["_chem_comp.type"],
+                    name=chem_comps[monomer.id]["_chem_comp.name"],
                 )
                 for monomer in seq_info
             ]
@@ -512,6 +514,7 @@ def _get_complex_chains(
                 ChemComp(
                     id=chem_comps[monomer.id]["_chem_comp.id"],
                     type=chem_comps[monomer.id]["_chem_comp.type"],
+                    name=chem_comps[monomer.id]["_chem_comp.name"],
                 )
                 for monomer in seq_info[chain_id]
             ]

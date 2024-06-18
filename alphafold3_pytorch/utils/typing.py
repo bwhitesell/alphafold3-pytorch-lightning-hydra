@@ -1,5 +1,6 @@
 import os
 
+import numpy as np
 import rootutils
 from beartype import beartype
 from beartype.door import is_bearable
@@ -30,6 +31,10 @@ class TorchTyping:
 Float = TorchTyping(Float)
 Int = TorchTyping(Int)
 Bool = TorchTyping(Bool)
+
+IntType = (
+    int | np.int32 | np.int64
+)  # NOTE: an alias for integer typing in the context of NumPy-heavy code
 
 # NOTE: use env variable `TYPECHECK` (which is set by `rootutils` above using `.env`) to control whether to use `beartype` + `jaxtyping`
 

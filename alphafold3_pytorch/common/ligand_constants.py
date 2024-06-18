@@ -60,45 +60,23 @@ atom_order = {atom_type: i for i, atom_type in enumerate(atom_types)}
 atom_type_num = len(atom_types)  # := 47.
 
 
-# All ligand residues are mapped to the unknown amino acid type index.
+# All ligand residues are mapped to the unknown amino acid type index (:= 20).
 restypes = ["UNK"]
-restype_order = {restype: i for i, restype in enumerate(restypes)}
+restype_order = {
+    restype: len(amino_acid_constants.restypes) + i for i, restype in enumerate(restypes)
+}
 restype_num = len(amino_acid_constants.restypes)  # := 20.
 
 BIOMOLECULE_CHAIN: Final[str] = "other"
 POLYMER_CHAIN: Final[str] = "non-polymer"
 
 
-def atom_id_to_type(atom_id: str) -> str:
-    """Convert atom ID to atom type, works only for standard ligand residues.
-
-    :param atom_id: Atom ID to be converted.
-    :return: String corresponding to atom type.
-
-    :raise:
-      ValueError: If atom ID not recognized.
-    """
-    if atom_id.startswith("C"):
-        return "C"
-    elif atom_id.startswith("N"):
-        return "N"
-    elif atom_id.startswith("O"):
-        return "O"
-    elif atom_id.startswith("H"):
-        return "H"
-    elif atom_id.startswith("S"):
-        return "S"
-    raise ValueError("Atom ID not recognized.")
-
-
 # NB: restype_3to1 serves as a placeholder for mapping all
-# ligand residues to the unknown amino acid type index.
+# ligand residues to the unknown amino acid type index (:= 20).
 restype_3to1 = {}
 
 # Define a restype name for all unknown ligand residues.
 unk_restype = "UNK"
-
-resnames = [restype_1to3[r] for r in restypes] + [unk_restype]
 
 # This represents the residue chemical type (i.e., `chemtype`) index of ligand residues.
 chemtype_num = dna_constants.chemtype_num + 1  # := 3.

@@ -63,7 +63,10 @@ atom_type_num = len(atom_types)  # := 27 + 20 null types := 47.
 # This is the standard residue order when coding DNA type as a number.
 # Reproduce it by taking 3-letter DNA codes and sorting them alphabetically.
 restypes = ["A", "C", "G", "T"]
-restype_order = {restype: i for i, restype in enumerate(restypes)}
+restype_order = {
+    restype: (len(amino_acid_constants.restypes) + 1) + (len(rna_constants.restypes) + 1) + i
+    for i, restype in enumerate(restypes)
+}
 restype_num = (
     (len(amino_acid_constants.restypes) + 1) + (len(rna_constants.restypes) + 1) + len(restypes)
 )  # := 30.
@@ -78,28 +81,6 @@ restype_1to3 = {
 
 BIOMOLECULE_CHAIN: Final[str] = "polydeoxyribonucleotide"
 POLYMER_CHAIN: Final[str] = "polymer"
-
-
-def atom_id_to_type(atom_id: str) -> str:
-    """Convert atom ID to atom type, works only for standard DNA residues.
-
-    :param atom_id: Atom ID to be converted.
-    :return: String corresponding to atom type.
-
-    :raise:
-      ValueError: If atom ID not recognized.
-    """
-    if atom_id.startswith("C"):
-        return "C"
-    elif atom_id.startswith("N"):
-        return "N"
-    elif atom_id.startswith("O"):
-        return "O"
-    elif atom_id.startswith("H"):
-        return "H"
-    elif atom_id.startswith("S"):
-        return "S"
-    raise ValueError("Atom ID not recognized.")
 
 
 # NB: restype_3to1 differs from e.g., Bio.Data.PDBData.nucleic_letters_3to1
