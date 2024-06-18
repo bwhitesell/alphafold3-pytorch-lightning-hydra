@@ -365,25 +365,6 @@ def to_mmcif(
             mmcif_dict["_entity_poly_seq.num"].append(str(res_id))
             mmcif_dict["_entity_poly_seq.mon_id"].append(aa_chemid)
 
-    # TODO: Add the non-polymer residues to the _pdbx_nonpoly_scheme table.
-    """
-    Reference mmCIF fields to record:
-
-    loop_
-    _pdbx_nonpoly_scheme.asym_id
-    _pdbx_nonpoly_scheme.entity_id
-    _pdbx_nonpoly_scheme.mon_id
-    _pdbx_nonpoly_scheme.ndb_seq_num
-    _pdbx_nonpoly_scheme.pdb_seq_num
-    _pdbx_nonpoly_scheme.auth_seq_num
-    _pdbx_nonpoly_scheme.pdb_mon_id
-    _pdbx_nonpoly_scheme.auth_mon_id
-    _pdbx_nonpoly_scheme.pdb_strand_id
-    _pdbx_nonpoly_scheme.pdb_ins_code
-    C 2 SPM 1  21 21 SPM SPM A .
-    D 3 HOH 1  25 25 HOH HOH A .
-    """
-
     # Populate the chem comp table.
     for chem_comp in biomol.chem_comp_table:
         mmcif_dict["_chem_comp.id"].append(chem_comp.id)

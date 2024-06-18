@@ -631,9 +631,14 @@ def filter_mmcif(mmcif_object: MmcifObject) -> MmcifObject:
     Filter an `MmcifObject` based on collected (atom/residue/chain) removal sets.
     """
     model = mmcif_object.structure
+    auth_seq_nums = mmcif_object.raw_string["_pdbx_nonpoly_scheme.auth_seq_num"]
+    auth_mon_ids = mmcif_object.raw_string["_pdbx_nonpoly_scheme.auth_mon_id"]
+    pdb_strand_ids = mmcif_object.raw_string["_pdbx_nonpoly_scheme.pdb_strand_id"]
 
     # Filter out specified chains
     chains_to_remove = set()
+    nonpoly_scheme_indices_to_remove = set()
+
     for chain in model:
         # Filter out specified residues
         residues_to_remove = set()
@@ -657,13 +662,47 @@ def filter_mmcif(mmcif_object: MmcifObject) -> MmcifObject:
         if len(residues_to_remove) == len(chain):
             chains_to_remove.add(chain)
         for res_index, residue in sorted(residues_to_remove, key=itemgetter(0), reverse=True):
+            for i, (auth_seq_num, auth_mon_id, pdb_strand_id) in enumerate(
+                zip(auth_seq_nums, auth_mon_ids, pdb_strand_ids)
+            ):
+                # Identify non-polymer scheme indices associated with the removed residue
+                if (
+                    int(auth_seq_num) == residue.id[1]
+                    and auth_mon_id == residue.resname
+                    and chain.id == pdb_strand_id
+                ):
+                    nonpoly_scheme_indices_to_remove.add(i)
+                    break
             del mmcif_object.chem_comp_details[chain.id][res_index]
             chain.detach_child(residue.id)
         if chain.get_full_id() in mmcif_object.chains_to_remove:
             chains_to_remove.add(chain)
+
     for chain in chains_to_remove:
         model.detach_child(chain.id)
         mmcif_object.chem_comp_details.pop(chain.id)
+
+    nonpoly_scheme_keys = {
+        "_pdbx_nonpoly_scheme.asym_id",
+        "_pdbx_nonpoly_scheme.entity_id",
+        "_pdbx_nonpoly_scheme.mon_id",
+        "_pdbx_nonpoly_scheme.ndb_seq_num",
+        "_pdbx_nonpoly_scheme.pdb_seq_num",
+        "_pdbx_nonpoly_scheme.auth_seq_num",
+        "_pdbx_nonpoly_scheme.pdb_mon_id",
+        "_pdbx_nonpoly_scheme.auth_mon_id",
+        "_pdbx_nonpoly_scheme.pdb_strand_id",
+        "_pdbx_nonpoly_scheme.pdb_ins_code",
+    }
+
+    for key in nonpoly_scheme_keys:
+        mmcif_object.raw_string[key] = [
+            value
+            for i, value in enumerate(mmcif_object.raw_string[key])
+            if i not in nonpoly_scheme_indices_to_remove
+        ]
+        if not len(mmcif_object.raw_string[key]):
+            del mmcif_object.raw_string[key]
 
     return mmcif_object
 
