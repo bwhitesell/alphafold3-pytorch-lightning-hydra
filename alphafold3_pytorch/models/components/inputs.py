@@ -11,7 +11,7 @@ class AtomInput(TypedDict):
     molecule_ids: Int["*b n"]  # type: ignore
     molecule_atom_lens: Int["*b n"]  # type: ignore
     atompair_inputs: Float["*b m m dapi"] | Float["*b nw w (w*2) dapi"]  # type: ignore
-    additional_molecule_feats: Float["*b n 10"]  # type: ignore
+    additional_molecule_feats: Float["*b n 9"]  # type: ignore
     templates: Float["*b t n n dt"]  # type: ignore
     msa: Float["*b s n dm"]  # type: ignore
     atom_ids: Int["*b m"] | None  # type: ignore
