@@ -260,6 +260,7 @@ def parse(
         # -seq_to_structure_mappings (maps idx into sequence to ResidueAtPosition).
         mmcif_to_author_chain_id = {}
         seq_to_structure_mappings = {}
+        mmcif_seq_to_structure_mappings = {}
         for atom in _get_atom_site_list(parsed_info):
             if atom.model_num != "1":
                 # We only process the first model at the moment.
@@ -286,29 +287,53 @@ def parse(
                     insertion_code=insertion_code,
                 )
                 current = seq_to_structure_mappings.get(atom.author_chain_id, {})
+                mmcif_current = mmcif_seq_to_structure_mappings.get(atom.mmcif_chain_id, {})
                 if _is_set(atom.mmcif_seq_num):
                     seq_idx = int(atom.mmcif_seq_num) - seq_start_num[atom.mmcif_chain_id]
                 else:
-                    seq_idx = int(atom.author_seq_num) - seq_start_num[atom.author_chain_id]
+                    seq_idx = int(atom.author_seq_num) - seq_start_num[atom.mmcif_chain_id]
                 current[seq_idx] = ResidueAtPosition(
                     position=position,
                     name=atom.residue_name,
                     is_missing=False,
                     hetflag=hetflag,
                 )
+                mmcif_current[seq_idx] = ResidueAtPosition(
+                    position=None,
+                    name=atom.residue_name,
+                    is_missing=False,
+                    hetflag=hetflag,
+                )
                 seq_to_structure_mappings[atom.author_chain_id] = current
+                mmcif_seq_to_structure_mappings[atom.mmcif_chain_id] = mmcif_current
 
-        # Add missing residue information to seq_to_structure_mappings,
-        # ignoring hetero (e.g., ligand or water) residues in the process.
+        # Add missing residue information to seq_to_structure_mappings
+        # and mmcif_seq_to_structure_mappings, ignoring hetero
+        # (e.g., ligand or water) residues in the process.
         for chain_id, (seq_info, chem_comp_info) in valid_chains.items():
             author_chain = mmcif_to_author_chain_id[chain_id]
             current_mapping = seq_to_structure_mappings[author_chain]
+            mmcif_current_mapping = mmcif_seq_to_structure_mappings[chain_id]
             for idx, monomer in enumerate(seq_info):
-                if idx not in current_mapping and any(
+                # Identify missing residues while also handling
+                # for the case when multiple mmCIF chain IDs map
+                # to the same author chain ID.
+                seq_idx = (idx + seq_start_num[chain_id]) - 1
+                if seq_idx not in current_mapping and any(
                     chem_type in chem_comp_info[idx].type.lower()
                     for chem_type in {"peptide", "dna", "rna"}
                 ):
-                    current_mapping[idx] = ResidueAtPosition(
+                    current_mapping[seq_idx] = ResidueAtPosition(
+                        position=None,
+                        name=monomer.id,
+                        is_missing=True,
+                        hetflag=" ",
+                    )
+                if seq_idx not in mmcif_current_mapping and any(
+                    chem_type in chem_comp_info[idx].type.lower()
+                    for chem_type in {"peptide", "dna", "rna"}
+                ):
+                    mmcif_current_mapping[seq_idx] = ResidueAtPosition(
                         position=None,
                         name=monomer.id,
                         is_missing=True,
@@ -321,7 +346,15 @@ def parse(
         for chain_id, (seq_info, chem_comp_info) in valid_chains.items():
             author_chain = mmcif_to_author_chain_id[chain_id]
             seq = []
+            new_chem_comp_info = []
             for monomer_index, monomer in enumerate(seq_info):
+                seq_idx = (monomer_index + seq_start_num[chain_id]) - 1
+                if (
+                    seq_idx in mmcif_seq_to_structure_mappings[chain_id]
+                    and not mmcif_seq_to_structure_mappings[chain_id][seq_idx].is_missing
+                ):
+                    # Filter out missing polymer residues from chemical component metadata.
+                    new_chem_comp_info.append(chem_comp_info[monomer_index])
                 if "peptide" in chem_comp_info[monomer_index].type.lower():
                     code = PDBData.protein_letters_3to1.get(f"{monomer.id: <3}", "X")
                 elif (
@@ -330,11 +363,14 @@ def parse(
                 ):
                     code = PDBData.nucleic_letters_3to1.get(f"{monomer.id: <3}", "X")
                 else:
-                    # Skip ligand residues during sequence parsing.
+                    # Skip ligand residues during sequence parsing,
+                    # while still retaining their chemical component metadata.
+                    if seq_idx not in mmcif_seq_to_structure_mappings[chain_id]:
+                        new_chem_comp_info.append(chem_comp_info[monomer_index])
                     continue
                 seq.append(code if len(code) == 1 else "X")
             author_chain_to_sequence[author_chain] += "".join(seq)
-            chem_comp_details[author_chain].extend(chem_comp_info)
+            chem_comp_details[author_chain].extend(new_chem_comp_info)
 
         # Identify all covalent bonds.
         covalent_bonds = _get_covalent_bond_list(parsed_info)
@@ -364,9 +400,6 @@ def parse(
 def _get_first_model(structure: PdbStructure) -> PdbStructure:
     """Returns the first model in a Biopython structure."""
     return next(structure.get_models())
-
-
-_MIN_LENGTH_OF_CHAIN_TO_BE_COUNTED_AS_PEPTIDE = 21
 
 
 def get_release_date(parsed_info: MmCIFDict) -> str:

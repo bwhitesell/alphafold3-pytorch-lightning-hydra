@@ -771,13 +771,14 @@ def filter_mmcif(mmcif_object: MmcifObject) -> MmcifObject:
     }
 
     for key in nonpoly_scheme_keys:
-        mmcif_object.raw_string[key] = [
-            value
-            for i, value in enumerate(mmcif_object.raw_string[key])
-            if i not in nonpoly_scheme_indices_to_remove
-        ]
-        if not len(mmcif_object.raw_string[key]):
-            del mmcif_object.raw_string[key]
+        if key in mmcif_object.raw_string:
+            mmcif_object.raw_string[key] = [
+                value
+                for i, value in enumerate(mmcif_object.raw_string[key])
+                if i not in nonpoly_scheme_indices_to_remove
+            ]
+            if not len(mmcif_object.raw_string[key]):
+                del mmcif_object.raw_string[key]
 
     return mmcif_object
 
@@ -819,7 +820,8 @@ def filter_structure_with_timeout(filepath: str, output_dir: str):
         mmcif_object = remove_leaving_atoms(mmcif_object, CCD_READER_RESULTS)
         mmcif_object = filter_large_ca_distances(mmcif_object)
         mmcif_object = select_closest_chains(
-            # NOTE: Modified amino acid and nucleotide residues are treated as N-atom ligands in this (structural) filtering step
+            # NOTE: Modified amino acid and nucleotide residues are
+            # treated as N-atom ligands in this (structural) filtering step
             mmcif_object,
             PROTEIN_RESIDUE_CENTER_ATOMS,
             NUCLEIC_ACID_RESIDUE_CENTER_ATOMS,
@@ -850,6 +852,8 @@ def filter_structure(args: Tuple[str, str, bool]):
         filter_structure_with_timeout(filepath, output_dir)
     except Exception as e:
         print(f"Skipping structure filtering of {filepath} due to: {e}")
+        if "mmCIF contains an insertion code" not in str(e):
+            raise e
         if os.path.exists(output_filepath):
             try:
                 os.remove(output_filepath)
