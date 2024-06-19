@@ -61,7 +61,7 @@ atom_type_num = len(atom_types)  # := 47.
 
 
 # All ligand residues are mapped to the unknown amino acid type index (:= 20).
-restypes = ["UNK"]
+restypes = ["UNL"]
 min_restype_num = len(amino_acid_constants.restypes)  # := 20.
 restype_order = {restype: min_restype_num + i for i, restype in enumerate(restypes)}
 restype_num = len(amino_acid_constants.restypes)  # := 20.
@@ -75,7 +75,7 @@ POLYMER_CHAIN: Final[str] = "non-polymer"
 restype_3to1 = {}
 
 # Define a restype name for all unknown ligand residues.
-unk_restype = "UNK"
+unk_restype = "UNL"
 
 # This represents the residue chemical type (i.e., `chemtype`) index of ligand residues.
 chemtype_num = dna_constants.chemtype_num + 1  # := 3.
