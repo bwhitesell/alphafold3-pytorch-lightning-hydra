@@ -507,12 +507,26 @@ def _get_complex_chains(
         )
 
     # Get non-polymer information for each entity in the structure.
+    branch_scheme = mmcif_loop_to_list("_pdbx_branch_scheme.", parsed_info)
     nonpoly_scheme = mmcif_loop_to_list("_pdbx_nonpoly_scheme.", parsed_info)
+    branch_unique_asym_ids = list(
+        # NOTE: Order must be preserved for downstream processing.
+        dict.fromkeys([scheme["_pdbx_branch_scheme.asym_id"] for scheme in branch_scheme])
+    )
     nonpoly_unique_asym_ids = list(
+        # NOTE: Order must be preserved for downstream processing.
         dict.fromkeys([scheme["_pdbx_nonpoly_scheme.asym_id"] for scheme in nonpoly_scheme])
     )
 
     non_polymers = collections.defaultdict(lambda: collections.defaultdict(list))
+    for asym_id in branch_unique_asym_ids:
+        for scheme in (s for s in branch_scheme if s["_pdbx_branch_scheme.asym_id"] == asym_id):
+            non_polymers[scheme["_pdbx_branch_scheme.entity_id"]][asym_id].append(
+                Monomer(
+                    id=scheme["_pdbx_branch_scheme.pdb_mon_id"],
+                    num=int(scheme["_pdbx_branch_scheme.pdb_seq_num"]),
+                )
+            )
     for asym_id in nonpoly_unique_asym_ids:
         for scheme in (s for s in nonpoly_scheme if s["_pdbx_nonpoly_scheme.asym_id"] == asym_id):
             non_polymers[scheme["_pdbx_nonpoly_scheme.entity_id"]][asym_id].append(

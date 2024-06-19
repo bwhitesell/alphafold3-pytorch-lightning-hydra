@@ -793,7 +793,8 @@ def write_mmcif(mmcif_object: MmcifObject, output_filepath: str):
 
 
 @typecheck
-@timeout_decorator.timeout(FILTER_STRUCTURE_MAX_SECONDS, use_signals=False)
+# @timeout_decorator.timeout(FILTER_STRUCTURE_MAX_SECONDS, use_signals=False)
+# TODO: Re-enable the above timeout decorator once development of this script is completed
 def filter_structure_with_timeout(filepath: str, output_dir: str):
     """
     Given an input mmCIF file, create a new filtered mmCIF file
@@ -941,9 +942,11 @@ if __name__ == "__main__":
         (filepath, args.output_dir, args.skip_existing)
         for filepath in glob.glob(os.path.join(args.mmcif_dir, "*", "*.cif"))
     ]
-    process_map(
-        filter_structure,
-        args_tuples,
-        max_workers=args.no_workers,
-        chunksize=args.chunksize,
-    )
+    for args_tuple in args_tuples:
+        filter_structure(args_tuple)
+    # process_map(
+    #     filter_structure,
+    #     args_tuples,
+    #     max_workers=args.no_workers,
+    #     chunksize=args.chunksize,
+    # ) # TODO: Restore the above process_map lines once development of this script is completed
