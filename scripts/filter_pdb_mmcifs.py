@@ -43,6 +43,7 @@ import pandas as pd
 import rootutils
 import timeout_decorator
 from Bio.PDB.Atom import Atom, DisorderedAtom
+from Bio.PDB.Chain import Chain
 from Bio.PDB.NeighborSearch import NeighborSearch
 from Bio.PDB.Residue import Residue
 from pdbeccdutils.core import ccd_reader
@@ -401,6 +402,50 @@ def remove_non_ccd_atoms(
 
 
 @typecheck
+def get_biopython_chain_residue_by_composite_id(
+    chain: Chain, res_name: str, res_id: int
+) -> Residue:
+    """
+    Get a Biopython `Residue` object by its residue name-residue index composite ID.
+
+    :param chain: Biopython `Chain` object
+    :param res_name: Residue name
+    :param res_id: Residue index
+    :return: Biopython `Residue` object
+    """
+    if ("", res_id, " ") in chain:
+        res = chain[("", res_id, " ")]
+    elif (" ", res_id, " ") in chain:
+        res = chain[(" ", res_id, " ")]
+    elif (
+        f"H_{res_name}",
+        res_id,
+        " ",
+    ) in chain:
+        res = chain[
+            (
+                f"H_{res_name}",
+                res_id,
+                " ",
+            )
+        ]
+    else:
+        assert (
+            f"H_{res_name}",
+            res_id,
+            "A",
+        ) in chain, f"Version A of residue {res_name} of ID {res_id} in chain {chain.id} was missing from the chain's structure."
+        res = chain[
+            (
+                f"H_{res_name}",
+                res_id,
+                "A",
+            )
+        ]
+    return res
+
+
+@typecheck
 def remove_leaving_atoms(
     mmcif_object: MmcifObject, ccd_reader_results: Dict[str, CCDReaderResult]
 ) -> MmcifObject:
@@ -410,100 +455,61 @@ def remove_leaving_atoms(
     NOTE: We rely on the CCD's `struct_conn` and `pdbx_leaving_atom_flag`
     metadata to discern leaving atoms within each covalent ligand
     once a covalent ligand has been structurally identified.
+
+    NOTE: This implementation assumes that if a ligand atom is covalently
+    bonded to any other atom, then any leaving atom within the residue
+    to which the ligand atom belongs should be removed (in contrast to any
+    leaving atom within the "entire chain" to which the ligand atom belongs).
     """
     atoms_to_remove = set()
 
     for covalent_bond in mmcif_object.covalent_bonds:
         if covalent_bond.leaving_atom_flag in {"one", "both"}:
-            if (
-                covalent_bond.ptnr1_auth_comp_id in ccd_reader_results
-                and covalent_bond.ptnr1_label_atom_id
-                in ccd_reader_results[covalent_bond.ptnr1_auth_comp_id].component.atoms_ids
-            ):
-                ptnr1_is_leaving_atom = (
-                    ccd_reader_results[covalent_bond.ptnr1_auth_comp_id]
-                    .component.ccd_cif_block.find(
-                        "_chem_comp_atom.", ["atom_id", "pdbx_leaving_atom_flag"]
-                    )
-                    .find_row(covalent_bond.ptnr1_label_atom_id)["pdbx_leaving_atom_flag"]
-                    == "Y"
-                )
-                if ptnr1_is_leaving_atom:
-                    # Remove "partner 1" leaving atom
-                    ptnr1_chain = mmcif_object.structure[covalent_bond.ptnr1_auth_asym_id]
-                    if ("", int(covalent_bond.ptnr1_auth_seq_id), " ") in ptnr1_chain:
-                        ptnr1_res = ptnr1_chain[("", int(covalent_bond.ptnr1_auth_seq_id), " ")]
-                    elif (
-                        f"H_{covalent_bond.ptnr1_auth_comp_id}",
-                        int(covalent_bond.ptnr1_auth_seq_id),
-                        " ",
-                    ) in ptnr1_chain:
-                        ptnr1_res = ptnr1_chain[
-                            (
-                                f"H_{covalent_bond.ptnr1_auth_comp_id}",
-                                int(covalent_bond.ptnr1_auth_seq_id),
-                                " ",
-                            )
-                        ]
-                    else:
-                        assert (
-                            f"H_{covalent_bond.ptnr1_auth_comp_id}",
-                            int(covalent_bond.ptnr1_auth_seq_id),
-                            "A",
-                        ) in ptnr1_chain, f"In attempting to remove a leaving 'partner 1' atom, version A of residue {covalent_bond.ptnr1_auth_comp_id} of ID {covalent_bond.ptnr1_auth_seq_id} in chain {covalent_bond.ptnr1_auth_asym_id} was missing from the structure."
-                        ptnr1_res = ptnr1_chain[
-                            (
-                                f"H_{covalent_bond.ptnr1_auth_comp_id}",
-                                int(covalent_bond.ptnr1_auth_seq_id),
-                                "A",
-                            )
-                        ]
-                    atoms_to_remove.add(ptnr1_res[covalent_bond.ptnr1_label_atom_id].get_full_id())
+            # Identify the chemical types of the residues of the "partner 1" and "partner 2" bond atoms in the structure
+            ptnr1_chain = mmcif_object.structure[covalent_bond.ptnr1_auth_asym_id]
+            ptnr2_chain = mmcif_object.structure[covalent_bond.ptnr2_auth_asym_id]
+            ptnr1_res = get_biopython_chain_residue_by_composite_id(
+                ptnr1_chain, covalent_bond.ptnr1_auth_comp_id, int(covalent_bond.ptnr1_auth_seq_id)
+            )
+            ptnr2_res = get_biopython_chain_residue_by_composite_id(
+                ptnr2_chain, covalent_bond.ptnr2_auth_comp_id, int(covalent_bond.ptnr2_auth_seq_id)
+            )
+            # NOTE: This is the main bottleneck of the function, since (for each chain)
+            # we need a zero-based index into the residue's chemical component details
+            ptnr1_res_index = list(ptnr1_chain).index(ptnr1_res)
+            ptnr2_res_index = list(ptnr2_chain).index(ptnr2_res)
+            ptnr1_res_is_ligand = not any(
+                chem_type
+                in mmcif_object.chem_comp_details[ptnr1_chain.id][ptnr1_res_index].type.lower()
+                for chem_type in {"peptide", "dna", "rna"}
+            )
+            ptnr2_res_is_ligand = not any(
+                chem_type
+                in mmcif_object.chem_comp_details[ptnr2_chain.id][ptnr2_res_index].type.lower()
+                for chem_type in {"peptide", "dna", "rna"}
+            )
 
-            if (
-                covalent_bond.ptnr2_auth_comp_id in ccd_reader_results
-                and covalent_bond.ptnr2_label_atom_id
-                in ccd_reader_results[covalent_bond.ptnr2_auth_comp_id].component.atoms_ids
-            ):
-                ptnr2_is_leaving_atom = (
-                    ccd_reader_results[covalent_bond.ptnr2_auth_comp_id]
-                    .component.ccd_cif_block.find(
-                        "_chem_comp_atom.", ["atom_id", "pdbx_leaving_atom_flag"]
-                    )
-                    .find_row(covalent_bond.ptnr2_label_atom_id)["pdbx_leaving_atom_flag"]
-                    == "Y"
+            # Remove all leaving atoms in the "partner 1" covalent ligand residue
+            if ptnr1_res_is_ligand and covalent_bond.ptnr1_auth_comp_id in ccd_reader_results:
+                ptnr1_atom_id_leaving_atom_table = ccd_reader_results[
+                    covalent_bond.ptnr1_auth_comp_id
+                ].component.ccd_cif_block.find(
+                    "_chem_comp_atom.", ["atom_id", "pdbx_leaving_atom_flag"]
                 )
-                if ptnr2_is_leaving_atom:
-                    # Remove "partner 2" leaving atom
-                    ptnr2_chain = mmcif_object.structure[covalent_bond.ptnr2_auth_asym_id]
-                    if ("", int(covalent_bond.ptnr2_auth_seq_id), " ") in ptnr2_chain:
-                        ptnr2_res = ptnr2_chain[("", int(covalent_bond.ptnr2_auth_seq_id), " ")]
-                    elif (
-                        f"H_{covalent_bond.ptnr2_auth_comp_id}",
-                        int(covalent_bond.ptnr2_auth_seq_id),
-                        " ",
-                    ) in ptnr2_chain:
-                        ptnr2_res = ptnr2_chain[
-                            (
-                                f"H_{covalent_bond.ptnr2_auth_comp_id}",
-                                int(covalent_bond.ptnr2_auth_seq_id),
-                                " ",
-                            )
-                        ]
-                    else:
-                        assert (
-                            f"H_{covalent_bond.ptnr2_auth_comp_id}",
-                            int(covalent_bond.ptnr2_auth_seq_id),
-                            "A",
-                        ) in ptnr2_chain, f"In attempting to remove a leaving 'partner 2' atom, version A of residue {covalent_bond.ptnr2_auth_comp_id} of ID {covalent_bond.ptnr2_auth_seq_id} in chain {covalent_bond.ptnr2_auth_asym_id} was missing from the structure."
-                        ptnr2_res = ptnr2_chain[
-                            (
-                                f"H_{covalent_bond.ptnr2_auth_comp_id}",
-                                int(covalent_bond.ptnr2_auth_seq_id),
-                                "A",
-                            )
-                        ]
-                    atoms_to_remove.add(ptnr2_res[covalent_bond.ptnr2_label_atom_id].get_full_id())
+                for row in ptnr1_atom_id_leaving_atom_table:
+                    if row["pdbx_leaving_atom_flag"] == "Y" and row["atom_id"] in ptnr1_res:
+                        atoms_to_remove.add(ptnr1_res[row["atom_id"]].get_full_id())
+
+            # Remove all leaving atoms in the "partner 2" covalent ligand residue
+            if ptnr2_res_is_ligand and covalent_bond.ptnr2_auth_comp_id in ccd_reader_results:
+                ptnr2_atom_id_leaving_atom_table = ccd_reader_results[
+                    covalent_bond.ptnr2_auth_comp_id
+                ].component.ccd_cif_block.find(
+                    "_chem_comp_atom.", ["atom_id", "pdbx_leaving_atom_flag"]
+                )
+                for row in ptnr2_atom_id_leaving_atom_table:
+                    if row["pdbx_leaving_atom_flag"] == "Y" and row["atom_id"] in ptnr2_res:
+                        atoms_to_remove.add(ptnr2_res[row["atom_id"]].get_full_id())
 
     mmcif_object.atoms_to_remove.update(atoms_to_remove)
 
@@ -915,14 +921,14 @@ if __name__ == "__main__":
     # Load the Chemical Component Dictionary (CCD) into memory
 
     print("Loading the Chemical Component Dictionary (CCD) into memory...")
-    # CCD_READER_RESULTS = ccd_reader.read_pdb_components_file(
-    #     # Load globally to share amongst all worker processes
-    #     os.path.join(args.ccd_dir, "components.cif"),
-    #     sanitize=False,  # Reduce loading time
-    # )
-    CCD_READER_RESULTS = (
-        {}
-    )  # TODO: Restore the above CCD-loading lines once development of this script is completed
+    CCD_READER_RESULTS = ccd_reader.read_pdb_components_file(
+        # Load globally to share amongst all worker processes
+        os.path.join(args.ccd_dir, "components.cif"),
+        sanitize=False,  # Reduce loading time
+    )
+    # CCD_READER_RESULTS = (
+    #     {}
+    # )  # TODO: Restore the above CCD-loading lines once development of this script is completed
     print("Finished loading the Chemical Component Dictionary (CCD) into memory.")
 
     # Filter structures across all worker processes
