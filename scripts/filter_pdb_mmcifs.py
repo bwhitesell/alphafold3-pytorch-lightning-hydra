@@ -706,9 +706,9 @@ def filter_mmcif(mmcif_object: MmcifObject) -> MmcifObject:
     Filter an `MmcifObject` based on collected (atom/residue/chain) removal sets.
     """
     model = mmcif_object.structure
-    auth_seq_nums = mmcif_object.raw_string["_pdbx_nonpoly_scheme.auth_seq_num"]
-    auth_mon_ids = mmcif_object.raw_string["_pdbx_nonpoly_scheme.auth_mon_id"]
-    pdb_strand_ids = mmcif_object.raw_string["_pdbx_nonpoly_scheme.pdb_strand_id"]
+    auth_seq_nums = mmcif_object.raw_string.get("_pdbx_nonpoly_scheme.auth_seq_num", [])
+    auth_mon_ids = mmcif_object.raw_string.get("_pdbx_nonpoly_scheme.auth_mon_id", [])
+    pdb_strand_ids = mmcif_object.raw_string.get("_pdbx_nonpoly_scheme.pdb_strand_id", [])
 
     # Filter out specified chains
     chains_to_remove = set()
@@ -829,7 +829,7 @@ def filter_structure_with_timeout(filepath: str, output_dir: str):
             # Save a filtered structure as an mmCIF file along with its latest metadata
             mmcif_object = filter_mmcif(mmcif_object)
             write_mmcif(mmcif_object, output_filepath)
-            print(f"Finished filtering structure: {mmcif_object.structure.id}")
+            print(f"Finished filtering structure: {mmcif_object.file_id}")
 
 
 @typecheck
@@ -921,14 +921,14 @@ if __name__ == "__main__":
     # Load the Chemical Component Dictionary (CCD) into memory
 
     print("Loading the Chemical Component Dictionary (CCD) into memory...")
-    CCD_READER_RESULTS = ccd_reader.read_pdb_components_file(
-        # Load globally to share amongst all worker processes
-        os.path.join(args.ccd_dir, "components.cif"),
-        sanitize=False,  # Reduce loading time
-    )
-    # CCD_READER_RESULTS = (
-    #     {}
-    # )  # TODO: Restore the above CCD-loading lines once development of this script is completed
+    # CCD_READER_RESULTS = ccd_reader.read_pdb_components_file(
+    #     # Load globally to share amongst all worker processes
+    #     os.path.join(args.ccd_dir, "components.cif"),
+    #     sanitize=False,  # Reduce loading time
+    # )
+    CCD_READER_RESULTS = (
+        {}
+    )  # TODO: Restore the above CCD-loading lines once development of this script is completed
     print("Finished loading the Chemical Component Dictionary (CCD) into memory.")
 
     # Filter structures across all worker processes
