@@ -1390,6 +1390,7 @@ class DiffusionTransformer(Module):
         attn_window_size=None,
         attn_pair_bias_kwargs: dict = dict(),
         attn_num_memory_kv=False,
+        trans_expansion_factor=2,
         num_register_tokens=0,
         serial=False,
         use_linear_attn=False,
@@ -1433,7 +1434,10 @@ class DiffusionTransformer(Module):
                 **attn_pair_bias_kwargs,
             )
 
-            transition = Transition(dim=dim)
+            transition = Transition(
+                dim=dim,
+                expansion_factor=trans_expansion_factor,
+            )
 
             conditionable_pair_bias = ConditionWrapper(
                 pair_bias_attn, dim=dim, dim_cond=dim_single_cond
@@ -1918,20 +1922,20 @@ class ElucidatedAtomDiffusion(Module):
         self,
         net: DiffusionModule,
         *,
-        num_sample_steps=32,
-        sigma_min=0.002,
-        sigma_max=80,
-        sigma_data=0.5,
-        rho=7,
-        P_mean=-1.2,
-        P_std=1.2,
-        S_churn=80,
+        num_sample_steps=32,  # number of sampling steps
+        sigma_min=0.002,  # min noise level
+        sigma_max=80,  # max noise level
+        sigma_data=0.5,  # standard deviation of data distribution
+        rho=7,  # controls the sampling schedule
+        P_mean=-1.2,  # mean of log-normal distribution from which noise is drawn for training
+        P_std=1.5,  # standard deviation of log-normal distribution from which noise is drawn for training
+        S_churn=80,  # parameters for stochastic sampling - depends on dataset, Table 5 in paper
         S_tmin=0.05,
         S_tmax=50,
         S_noise=1.003,
         smooth_lddt_loss_kwargs: dict = dict(),
         weighted_rigid_align_kwargs: dict = dict(),
-    ):  # number of sampling steps  # min noise level  # max noise level  # standard deviation of data distribution  # controls the sampling schedule  # mean of log-normal distribution from which noise is drawn for training  # standard deviation of log-normal distribution from which noise is drawn for training  # parameters for stochastic sampling - depends on dataset, Table 5 in apper
+    ):
         super().__init__()
         self.net = net
 
