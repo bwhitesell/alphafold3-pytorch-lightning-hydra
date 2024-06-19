@@ -810,9 +810,7 @@ def filter_structure_with_timeout(filepath: str, output_dir: str):
         mmcif_object = remove_clashing_chains(mmcif_object)
         mmcif_object = remove_excluded_ligands(mmcif_object, LIGAND_EXCLUSION_SET)
         mmcif_object = remove_non_ccd_atoms(mmcif_object, CCD_READER_RESULTS)
-        mmcif_object = remove_leaving_atoms(
-            mmcif_object, CCD_READER_RESULTS
-        )  # TODO: Finish implementing this filtering step
+        mmcif_object = remove_leaving_atoms(mmcif_object, CCD_READER_RESULTS)
         mmcif_object = filter_large_ca_distances(mmcif_object)
         mmcif_object = select_closest_chains(
             # NOTE: Modified amino acid and nucleotide residues are treated as N-atom ligands in this (structural) filtering step
@@ -917,14 +915,14 @@ if __name__ == "__main__":
     # Load the Chemical Component Dictionary (CCD) into memory
 
     print("Loading the Chemical Component Dictionary (CCD) into memory...")
-    CCD_READER_RESULTS = ccd_reader.read_pdb_components_file(
-        # Load globally to share amongst all worker processes
-        os.path.join(args.ccd_dir, "components.cif"),
-        sanitize=False,  # Reduce loading time
-    )
-    # CCD_READER_RESULTS = (
-    #     {}
-    # )  # TODO: Restore the above CCD-loading lines once development of this script is completed
+    # CCD_READER_RESULTS = ccd_reader.read_pdb_components_file(
+    #     # Load globally to share amongst all worker processes
+    #     os.path.join(args.ccd_dir, "components.cif"),
+    #     sanitize=False,  # Reduce loading time
+    # )
+    CCD_READER_RESULTS = (
+        {}
+    )  # TODO: Restore the above CCD-loading lines once development of this script is completed
     print("Finished loading the Chemical Component Dictionary (CCD) into memory.")
 
     # Filter structures across all worker processes
