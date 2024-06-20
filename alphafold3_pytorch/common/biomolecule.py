@@ -274,7 +274,10 @@ def remove_metadata_fields_by_prefixes(
 
 @typecheck
 def to_mmcif(
-    biomol: Biomolecule, file_id: str, insert_alphafold_mmcif_metadata: bool = True
+    biomol: Biomolecule,
+    file_id: str,
+    gapless_poly_seq: bool = True,
+    insert_alphafold_mmcif_metadata: bool = True,
 ) -> str:
     """Converts a `Biomolecule` instance to an mmCIF string.
 
@@ -304,6 +307,7 @@ def to_mmcif(
 
     :param biomol: A biomolecule to convert to mmCIF string.
     :param file_id: The file ID (usually the PDB ID) to be used in the mmCIF.
+    :param gapless_poly_seq: If True, the polymer output will contain gapless residue indices.
     :param insert_alphafold_mmcif_metadata: If True, insert metadata fields
         referencing AlphaFold in the output mmCIF file.
 
@@ -358,6 +362,7 @@ def to_mmcif(
         chain_index,
         chemid,
         chemtype,
+        gapless=gapless_poly_seq,
     ).items():
         for res_id, aa_chemid in zip(res_ids, aa_chemids):
             mmcif_dict["_entity_poly_seq.entity_id"].append(str(entity_id))
@@ -458,14 +463,16 @@ def _get_entity_poly_seq(
     chain_indices: np.ndarray,
     chemids: np.ndarray,
     chemtypes: np.ndarray,
+    gapless: bool = True,
 ) -> Dict[IntType, Tuple[List[IntType], List[str]]]:
-    """Constructs gapless residue index and chemid lists for each chain.
+    """Constructs (as desired) gapless residue index and chemid lists for each chain.
 
     :param restypes: A numpy array with restypes.
     :param residue_indices: A numpy array with residue indices.
     :param chain_indices: A numpy array with chain indices.
     :param chemids: A numpy array with residue chemical IDs.
     :param chemtypes: A numpy array with residue chemical types.
+    :param gapless: If True, the output will contain gapless residue indices.
 
     :return: A dictionary mapping chain indices to a tuple with a list of residue indices
       and a list of chemids. Missing residues are filled with the unknown residue type
@@ -503,7 +510,7 @@ def _get_entity_poly_seq(
         new_residue_indices = []
         new_chemids = []
         present_index = 0
-        for i in range(min(1, min_res_id), max_res_id + 1):
+        for i in range(min((1 if gapless else min_res_id), min_res_id), max_res_id + 1):
             new_residue_indices.append(i)
             if i in present_residue_indices:
                 new_chemids.append(chemids[chain_indices == chain_id][present_index])

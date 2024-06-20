@@ -702,9 +702,7 @@ def remove_crystallization_aids(
 
 @typecheck
 def filter_mmcif(mmcif_object: MmcifObject) -> MmcifObject:
-    """
-    Filter an `MmcifObject` based on collected (atom/residue/chain) removal sets.
-    """
+    """Filter an `MmcifObject` based on collected (atom/residue/chain) removal sets."""
     model = mmcif_object.structure
 
     branch_scheme_auth_seq_nums = mmcif_object.raw_string.get(
@@ -811,14 +809,28 @@ def filter_mmcif(mmcif_object: MmcifObject) -> MmcifObject:
             if not len(mmcif_object.raw_string[key]):
                 del mmcif_object.raw_string[key]
 
+    mmcif_object.atoms_to_remove.clear()
+    mmcif_object.residues_to_remove.clear()
+    mmcif_object.chains_to_remove.clear()
+
     return mmcif_object
 
 
 @typecheck
-def write_mmcif(mmcif_object: MmcifObject, output_filepath: str):
+def write_mmcif(
+    mmcif_object: MmcifObject,
+    output_filepath: str,
+    gapless_poly_seq: bool = True,
+    insert_alphafold_mmcif_metadata: bool = True,
+):
     """Write a BioPython `Structure` object to an mmCIF file using an intermediate `Biomolecule` object."""
     biomol = _from_mmcif_object(mmcif_object)
-    mmcif_string = to_mmcif(biomol, mmcif_object.file_id, insert_alphafold_mmcif_metadata=False)
+    mmcif_string = to_mmcif(
+        biomol,
+        mmcif_object.file_id,
+        gapless_poly_seq=gapless_poly_seq,
+        insert_alphafold_mmcif_metadata=insert_alphafold_mmcif_metadata,
+    )
     with open(output_filepath, "w") as f:
         f.write(mmcif_string)
 
@@ -862,7 +874,12 @@ def filter_structure_with_timeout(filepath: str, output_dir: str):
         if len(mmcif_object.chains_to_remove) < len(mmcif_object.structure):
             # Save a filtered structure as an mmCIF file along with its latest metadata
             mmcif_object = filter_mmcif(mmcif_object)
-            write_mmcif(mmcif_object, output_filepath)
+            write_mmcif(
+                mmcif_object,
+                output_filepath,
+                gapless_poly_seq=False,
+                insert_alphafold_mmcif_metadata=False,
+            )
             print(f"Finished filtering structure: {mmcif_object.file_id}")
 
 

@@ -299,7 +299,7 @@ def parse(
                     hetflag=hetflag,
                 )
                 mmcif_current[seq_idx] = ResidueAtPosition(
-                    position=None,
+                    position=position,
                     name=atom.residue_name,
                     is_missing=False,
                     hetflag=hetflag,
@@ -329,6 +329,9 @@ def parse(
                         and mmcif_current_mapping[idx].name == monomer.id
                     )
                     if alt_mapping_is_present:
+                        if current_mapping == mmcif_current_mapping:
+                            # Handle re-parsing of previously-filtered chains.
+                            continue
                         # Handle irregular cases where the peptide sequence index is not contiguous (e.g., see `207l.cif`).
                         last_idx = list(current_mapping.keys())[-1] + 1
                         current_mapping[last_idx] = ResidueAtPosition(
@@ -354,6 +357,9 @@ def parse(
                         and mmcif_current_mapping[idx].name == monomer.id
                     )
                     if alt_mapping_is_present:
+                        if current_mapping == mmcif_current_mapping:
+                            # Handle re-parsing of previously-filtered chains.
+                            continue
                         # Handle irregular cases where the peptide sequence index is not contiguous (e.g., see `207l.cif`).
                         last_idx = list(mmcif_current_mapping.keys())[-1] + 1
                         mmcif_current_mapping[last_idx] = ResidueAtPosition(
