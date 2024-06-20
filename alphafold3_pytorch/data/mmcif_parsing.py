@@ -323,22 +323,52 @@ def parse(
                     chem_type in chem_comp_info[idx].type.lower()
                     for chem_type in {"peptide", "dna", "rna"}
                 ):
-                    current_mapping[seq_idx] = ResidueAtPosition(
-                        position=None,
-                        name=monomer.id,
-                        is_missing=True,
-                        hetflag=" ",
+                    alt_mapping_is_present = (
+                        idx in mmcif_current_mapping
+                        and not mmcif_current_mapping[idx].is_missing
+                        and mmcif_current_mapping[idx].name == monomer.id
                     )
+                    if alt_mapping_is_present:
+                        # Handle irregular cases where the peptide sequence index is not contiguous (e.g., see `207l.cif`).
+                        last_idx = list(current_mapping.keys())[-1] + 1
+                        current_mapping[last_idx] = ResidueAtPosition(
+                            position=None,
+                            name=monomer.id,
+                            is_missing=False,
+                            hetflag=" ",
+                        )
+                    else:
+                        current_mapping[seq_idx] = ResidueAtPosition(
+                            position=None,
+                            name=monomer.id,
+                            is_missing=True,
+                            hetflag=" ",
+                        )
                 if seq_idx not in mmcif_current_mapping and any(
                     chem_type in chem_comp_info[idx].type.lower()
                     for chem_type in {"peptide", "dna", "rna"}
                 ):
-                    mmcif_current_mapping[seq_idx] = ResidueAtPosition(
-                        position=None,
-                        name=monomer.id,
-                        is_missing=True,
-                        hetflag=" ",
+                    alt_mapping_is_present = (
+                        idx in mmcif_current_mapping
+                        and not mmcif_current_mapping[idx].is_missing
+                        and mmcif_current_mapping[idx].name == monomer.id
                     )
+                    if alt_mapping_is_present:
+                        # Handle irregular cases where the peptide sequence index is not contiguous (e.g., see `207l.cif`).
+                        last_idx = list(mmcif_current_mapping.keys())[-1] + 1
+                        mmcif_current_mapping[last_idx] = ResidueAtPosition(
+                            position=None,
+                            name=monomer.id,
+                            is_missing=False,
+                            hetflag=" ",
+                        )
+                    else:
+                        mmcif_current_mapping[seq_idx] = ResidueAtPosition(
+                            position=None,
+                            name=monomer.id,
+                            is_missing=True,
+                            hetflag=" ",
+                        )
 
         # Extract sequence and chemical component details.
         author_chain_to_sequence = defaultdict(str)
@@ -349,23 +379,33 @@ def parse(
             new_chem_comp_info = []
             for monomer_index, monomer in enumerate(seq_info):
                 seq_idx = (monomer_index + seq_start_num[chain_id]) - 1
-                if (
+                seq_res_is_present = (
                     seq_idx in mmcif_seq_to_structure_mappings[chain_id]
                     and not mmcif_seq_to_structure_mappings[chain_id][seq_idx].is_missing
-                ):
+                )
+                alt_seq_res_is_present = (
+                    monomer_index in mmcif_seq_to_structure_mappings[chain_id]
+                    and not mmcif_seq_to_structure_mappings[chain_id][monomer_index].is_missing
+                    and monomer.id == mmcif_seq_to_structure_mappings[chain_id][monomer_index].name
+                )
+                if seq_res_is_present:
                     # Filter out missing polymer residues from chemical component metadata.
                     new_chem_comp_info.append(chem_comp_info[monomer_index])
                 if "peptide" in chem_comp_info[monomer_index].type.lower():
                     code = PDBData.protein_letters_3to1.get(f"{monomer.id: <3}", "X")
+                    if not seq_res_is_present and alt_seq_res_is_present:
+                        new_chem_comp_info.append(chem_comp_info[monomer_index])
                 elif (
                     "dna" in chem_comp_info[monomer_index].type.lower()
                     or "rna" in chem_comp_info[monomer_index].type.lower()
                 ):
                     code = PDBData.nucleic_letters_3to1.get(f"{monomer.id: <3}", "X")
+                    if not seq_res_is_present and alt_seq_res_is_present:
+                        new_chem_comp_info.append(chem_comp_info[monomer_index])
                 else:
                     # Skip ligand residues during sequence parsing,
                     # while still retaining their chemical component metadata.
-                    if seq_idx not in mmcif_seq_to_structure_mappings[chain_id]:
+                    if not seq_res_is_present:
                         new_chem_comp_info.append(chem_comp_info[monomer_index])
                     continue
                 seq.append(code if len(code) == 1 else "X")
