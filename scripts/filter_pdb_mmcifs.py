@@ -790,6 +790,7 @@ def filter_mmcif(mmcif_object: MmcifObject) -> MmcifObject:
         model.detach_child(chain.id)
         mmcif_object.chem_comp_details.pop(chain.id)
 
+    struct_assembly_gen_indices_to_remove = set()
     raw_string_keys = list(mmcif_object.raw_string.keys())
     for key in raw_string_keys:
         if key.startswith("_pdbx_branch_scheme."):
@@ -808,6 +809,52 @@ def filter_mmcif(mmcif_object: MmcifObject) -> MmcifObject:
             ]
             if not len(mmcif_object.raw_string[key]):
                 del mmcif_object.raw_string[key]
+        elif key == "_pdbx_struct_assembly_gen.asym_id_list":
+            for struct_assembly_gen_index, chain_ids_str in enumerate(
+                mmcif_object.raw_string[key]
+            ):
+                mmcif_object.raw_string[key][struct_assembly_gen_index] = (
+                    # NOTE: Assumes that chain IDs are comma-separated in this context
+                    ",".join(
+                        [
+                            chain_id
+                            for chain_id in chain_ids_str.split(",")
+                            if chain_id not in chains_to_remove
+                        ]
+                    )
+                )
+                if not mmcif_object.raw_string[key][struct_assembly_gen_index]:
+                    struct_assembly_gen_indices_to_remove.add(struct_assembly_gen_index)
+            for raw_string_key in raw_string_keys:
+                if raw_string_key.startswith("_pdbx_struct_assembly_gen."):
+                    mmcif_object.raw_string[raw_string_key] = [
+                        value
+                        for i, value in enumerate(mmcif_object.raw_string[raw_string_key])
+                        if i not in struct_assembly_gen_indices_to_remove
+                    ]
+                    if not len(mmcif_object.raw_string[raw_string_key]):
+                        del mmcif_object.raw_string[raw_string_key]
+
+    # Remove any (now-)unreferenced bioassemblies
+    struct_assembly_indices_to_remove = set()
+    struct_assembly_ids = mmcif_object.raw_string.get("_pdbx_struct_assembly.id", [])
+    struct_assembly_gen_ids = mmcif_object.raw_string.get(
+        "_pdbx_struct_assembly_gen.assembly_id", []
+    )
+    for key in raw_string_keys:
+        if key == "_pdbx_struct_assembly.id":
+            for assembly_index, assembly_id in enumerate(struct_assembly_ids):
+                if assembly_id not in struct_assembly_gen_ids:
+                    struct_assembly_indices_to_remove.add(assembly_index)
+            for raw_string_key in raw_string_keys:
+                if raw_string_key.startswith("_pdbx_struct_assembly."):
+                    mmcif_object.raw_string[raw_string_key] = [
+                        value
+                        for i, value in enumerate(mmcif_object.raw_string[raw_string_key])
+                        if i not in struct_assembly_indices_to_remove
+                    ]
+                    if not len(mmcif_object.raw_string[raw_string_key]):
+                        del mmcif_object.raw_string[raw_string_key]
 
     mmcif_object.atoms_to_remove.clear()
     mmcif_object.residues_to_remove.clear()
