@@ -42,7 +42,6 @@ import numpy as np
 import pandas as pd
 import rootutils
 import timeout_decorator
-from Bio.PDB.Chain import Chain
 from Bio.PDB.NeighborSearch import NeighborSearch
 from pdbeccdutils.core import ccd_reader
 from pdbeccdutils.core.ccd_reader import CCDReaderResult
