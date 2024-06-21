@@ -67,8 +67,8 @@ from alphafold3_pytorch.utils.utils import exists
 
 # Constants
 
-FILTER_STRUCTURE_MAX_SECONDS = (
-    60000  # Maximum time allocated to filter a single structure (in seconds)
+FILTER_STRUCTURE_MAX_SECONDS_PER_INPUT = (
+    600  # Maximum time allocated to filter a single structure (in seconds)
 )
 
 # Helper functions
@@ -774,8 +774,7 @@ def write_mmcif(
 
 
 @typecheck
-# @timeout_decorator.timeout(FILTER_STRUCTURE_MAX_SECONDS, use_signals=False)
-# TODO: Re-enable the above timeout decorator once development of this script is completed
+@timeout_decorator.timeout(FILTER_STRUCTURE_MAX_SECONDS_PER_INPUT, use_signals=False)
 def filter_structure_with_timeout(filepath: str, output_dir: str):
     """
     Given an input mmCIF file, create a new filtered mmCIF file
@@ -841,8 +840,6 @@ def filter_structure(args: Tuple[str, str, bool]):
         filter_structure_with_timeout(filepath, output_dir)
     except Exception as e:
         print(f"Skipping structure filtering of {filepath} due to: {e}")
-        if "mmCIF contains an insertion code" not in str(e):
-            raise e
         if os.path.exists(output_filepath):
             try:
                 os.remove(output_filepath)
@@ -914,14 +911,11 @@ if __name__ == "__main__":
     # Load the Chemical Component Dictionary (CCD) into memory
 
     print("Loading the Chemical Component Dictionary (CCD) into memory...")
-    # CCD_READER_RESULTS = ccd_reader.read_pdb_components_file(
-    #     # Load globally to share amongst all worker processes
-    #     os.path.join(args.ccd_dir, "components.cif"),
-    #     sanitize=False,  # Reduce loading time
-    # )
-    CCD_READER_RESULTS = (
-        {}
-    )  # TODO: Restore the above CCD-loading lines once development of this script is completed
+    CCD_READER_RESULTS = ccd_reader.read_pdb_components_file(
+        # Load globally to share amongst all worker processes
+        os.path.join(args.ccd_dir, "components.cif"),
+        sanitize=False,  # Reduce loading time
+    )
     print("Finished loading the Chemical Component Dictionary (CCD) into memory.")
 
     # Filter structures across all worker processes
@@ -930,11 +924,9 @@ if __name__ == "__main__":
         (filepath, args.output_dir, args.skip_existing)
         for filepath in glob.glob(os.path.join(args.mmcif_dir, "*", "*.cif"))
     ]
-    for args_tuple in args_tuples:
-        filter_structure(args_tuple)
-    # process_map(
-    #     filter_structure,
-    #     args_tuples,
-    #     max_workers=args.no_workers,
-    #     chunksize=args.chunksize,
-    # ) # TODO: Restore the above process_map lines once development of this script is completed
+    process_map(
+        filter_structure,
+        args_tuples,
+        max_workers=args.no_workers,
+        chunksize=args.chunksize,
+    )
