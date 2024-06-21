@@ -88,6 +88,17 @@ def unpack_one(t: Tensor, ps: List[Shape], pattern: str) -> List[Tensor]:
     return unpack(t, ps, pattern)[0]
 
 
+def exclusive_cumsum(t: Tensor, dim: int = -1) -> Tensor:
+    """
+    Perform an exclusive cumulative summation on a Tensor.
+
+    :param t: The Tensor.
+    :param dim: The dimension to sum over.
+    :return: The exclusive cumulative sum Tensor.
+    """
+    return t.cumsum(dim=dim) - t
+
+
 # decorators
 
 
@@ -359,8 +370,7 @@ def repeat_consecutive_with_lens(
     window_size = mask.shape[-1]
     arange = torch.arange(window_size, device=device)
 
-    cumsum_len = lens.cumsum(dim=-1)
-    offsets = F.pad(cumsum_len, (1, -1), value=0)
+    offsets = exclusive_cumsum(lens)
     indices = einx.add("w, b n -> b n w", arange, offsets)
 
     # create output tensor + a sink position on the very right (index max_len)

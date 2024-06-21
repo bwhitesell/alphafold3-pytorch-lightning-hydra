@@ -4,6 +4,9 @@ import numpy as np
 import rootutils
 from beartype import beartype
 from beartype.door import is_bearable
+from Bio.PDB.Atom import Atom, DisorderedAtom
+from Bio.PDB.Chain import Chain
+from Bio.PDB.Residue import DisorderedResidue, Residue
 from jaxtyping import Bool, Float, Int, jaxtyped
 from torch import Tensor
 
@@ -32,9 +35,13 @@ Float = TorchTyping(Float)
 Int = TorchTyping(Int)
 Bool = TorchTyping(Bool)
 
-IntType = (
-    int | np.int32 | np.int64
-)  # NOTE: an alias for integer typing in the context of NumPy-heavy code
+# helper type aliases
+
+IntType = int | np.int32 | np.int64
+AtomType = Atom | DisorderedAtom
+ResidueType = Residue | DisorderedResidue
+ChainType = Chain
+TokenType = AtomType | ResidueType
 
 # NOTE: use env variable `TYPECHECK` (which is set by `rootutils` above using `.env`) to control whether to use `beartype` + `jaxtyping`
 

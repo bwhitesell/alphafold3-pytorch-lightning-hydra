@@ -29,6 +29,7 @@ from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.custom_typing import Bool, Float, Int, typecheck
 from alphafold3_pytorch.utils.model_utils import (
     concat_previous_window,
+    exclusive_cumsum,
     lens_to_mask,
     log,
     max_neg_value,
@@ -3505,9 +3506,7 @@ class Alphafold3(Module):
         # handle offsets for molecule atom indices
 
         if exists(molecule_atom_indices):
-            molecule_atom_indices = molecule_atom_indices + F.pad(
-                molecule_atom_lens.cumsum(dim=-1), (1, -1), value=0
-            )
+            molecule_atom_indices = molecule_atom_indices + exclusive_cumsum(molecule_atom_lens)
 
         # get atom sequence length and molecule sequence length depending on whether using packed atomic seq
 
