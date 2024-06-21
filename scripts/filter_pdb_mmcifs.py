@@ -55,7 +55,7 @@ rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 from alphafold3_pytorch.common.biomolecule import _from_mmcif_object, to_mmcif
 from alphafold3_pytorch.data import mmcif_parsing
 from alphafold3_pytorch.data.mmcif_parsing import MmcifObject
-from alphafold3_pytorch.utils.typing import typecheck
+from alphafold3_pytorch.utils.custom_typing import typecheck
 from alphafold3_pytorch.utils.utils import exists
 
 # Constants

@@ -1,6 +1,6 @@
 from typing import Callable, Literal, Type, TypedDict
 
-from alphafold3_pytorch.utils.typing import Bool, Float, Int, typecheck
+from alphafold3_pytorch.utils.custom_typing import Bool, Float, Int, typecheck
 
 # atom level, what AlphaFold3 accepts
 

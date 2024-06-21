@@ -26,6 +26,7 @@ from alphafold3_pytorch.models.components.attention import (
     full_pairwise_repr_to_windowed,
 )
 from alphafold3_pytorch.utils import RankedLogger
+from alphafold3_pytorch.utils.custom_typing import Bool, Float, Int, typecheck
 from alphafold3_pytorch.utils.model_utils import (
     concat_previous_window,
     lens_to_mask,
@@ -39,7 +40,6 @@ from alphafold3_pytorch.utils.model_utils import (
     repeat_consecutive_with_lens,
     unpack_one,
 )
-from alphafold3_pytorch.utils.typing import Bool, Float, Int, typecheck
 from alphafold3_pytorch.utils.utils import default, exists, identity
 
 """
@@ -3506,7 +3506,7 @@ class Alphafold3(Module):
 
         if exists(molecule_atom_indices):
             molecule_atom_indices = molecule_atom_indices + F.pad(
-                molecule_atom_lens, (-1, 1), value=0
+                molecule_atom_lens.cumsum(dim=-1), (1, -1), value=0
             )
 
         # get atom sequence length and molecule sequence length depending on whether using packed atomic seq

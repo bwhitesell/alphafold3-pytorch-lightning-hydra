@@ -38,7 +38,7 @@ from tqdm import tqdm
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
 from alphafold3_pytorch.utils import RankedLogger
-from alphafold3_pytorch.utils.typing import typecheck
+from alphafold3_pytorch.utils.custom_typing import typecheck
 from scripts.filter_pdb_mmcifs import parse_mmcif_object
 
 log = RankedLogger(__name__, rank_zero_only=True)
