@@ -22,6 +22,7 @@ from alphafold3_pytorch.utils.utils import exists, np_mode
 
 MMCIF_PREFIXES_TO_DROP_POST_PARSING = [
     "_atom_site.",
+    "_atom_type.",
     "_chem_comp.",
     "_entity.",
     "_entity_poly.",
@@ -225,14 +226,14 @@ def from_mmcif_string(mmcif_str: str, file_id: str, chain_id: Optional[str] = No
     :raise:
         ValueError: If the mmCIF file is not valid.
     """
-    mmcif_object = mmcif_parsing.parse(file_id=file_id, mmcif_string=mmcif_str)
+    parsing_result = mmcif_parsing.parse(file_id=file_id, mmcif_string=mmcif_str)
 
     # Crash if an error is encountered. Any parsing errors should have
     # been dealt with beforehand (e.g., at the alignment stage).
-    if mmcif_object.mmcif_object is None:
-        raise list(mmcif_object.errors.values())[0]
+    if parsing_result.mmcif_object is None:
+        raise list(parsing_result.errors.values())[0]
 
-    return _from_mmcif_object(mmcif_object.structure, mmcif_object.mmcif_object, chain_id)
+    return _from_mmcif_object(parsing_result.mmcif_object, chain_id)
 
 
 @typecheck
@@ -314,7 +315,7 @@ def to_mmcif(
     :return: A valid mmCIF string.
 
     :raise:
-      ValueError: If amino-acid or nucleotide types array contains entries with
+      ValueError: If amino-acid or nucleotide residue types array contains entries with
       too many biomolecule types.
     """
     atom_positions = biomol.atom_positions
@@ -386,7 +387,7 @@ def to_mmcif(
             atom_names = residue_constants.atom_types
         else:
             raise ValueError(
-                "Amino acid types array contains entries with too many protein types."
+                "Residue types array contains entries with too many biomolecule types."
             )
         for atom_name, pos, mask, b_factor in zip(
             atom_names, atom_positions[i], atom_mask[i], b_factors[i]

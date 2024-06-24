@@ -9,7 +9,7 @@ from typing import Dict, Optional
 
 from tqdm import tqdm
 
-from alphafold3_pytorch.data.mmcif_parsing import parse
+from alphafold3_pytorch.data import mmcif_parsing
 from alphafold3_pytorch.utils.custom_typing import typecheck
 
 
@@ -28,17 +28,17 @@ def parse_file(
     with open(os.path.join(args.mmcif_dir, f), "r") as fp:
         mmcif_string = fp.read()
     file_id = os.path.splitext(f)[0]
-    mmcif = parse(file_id=file_id, mmcif_string=mmcif_string)
-    if mmcif.mmcif_object is None:
+    parsing_result = mmcif_parsing.parse(file_id=file_id, mmcif_string=mmcif_string)
+    if parsing_result.mmcif_object is None:
         logging.info(f"Could not parse {f}. Skipping...")
         return {}
     else:
-        mmcif = mmcif.mmcif_object
+        parsing_result = parsing_result.mmcif_object
 
     local_data = {}
-    local_data["release_date"] = mmcif.header["release_date"]
+    local_data["release_date"] = parsing_result.header["release_date"]
 
-    chain_ids, seqs = list(zip(*mmcif.chain_to_seqres.items()))
+    chain_ids, seqs = list(zip(*parsing_result.chain_to_seqres.items()))
 
     if chain_cluster_size_dict is not None:
         cluster_sizes = []
@@ -53,7 +53,7 @@ def parse_file(
     local_data["seqs"] = seqs
     local_data["no_chains"] = len(chain_ids)
 
-    local_data["resolution"] = mmcif.header["resolution"]
+    local_data["resolution"] = parsing_result.header["resolution"]
 
     return {file_id: local_data}
 

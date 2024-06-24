@@ -68,7 +68,7 @@ from alphafold3_pytorch.utils.utils import exists
 # Constants
 
 FILTER_STRUCTURE_MAX_SECONDS_PER_INPUT = (
-    600  # Maximum time allocated to filter a single structure (in seconds)
+    60  # Maximum time allocated to filter a single structure (in seconds)
 )
 
 # Helper functions
@@ -82,7 +82,7 @@ def parse_mmcif_object(
     with open(filepath, "r") as f:
         mmcif_string = f.read()
 
-    mmcif_object = mmcif_parsing.parse(
+    parsing_result = mmcif_parsing.parse(
         file_id=file_id,
         mmcif_string=mmcif_string,
         auth_chains=auth_chains,
@@ -91,10 +91,10 @@ def parse_mmcif_object(
 
     # Crash if an error is encountered. Any parsing errors should have
     # been dealt with beforehand (e.g., at the alignment stage).
-    if mmcif_object.mmcif_object is None:
-        raise list(mmcif_object.errors.values())[0]
+    if parsing_result.mmcif_object is None:
+        raise list(parsing_result.errors.values())[0]
 
-    return mmcif_object.mmcif_object
+    return parsing_result.mmcif_object
 
 
 @typecheck
