@@ -12,12 +12,25 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "--no_workers", "1",
                 // "--skip_existing",
+                // "--no_workers", "1",
             ]
         },
         {
-            "name": "alphafold3_pytorch/train.py",
+            "name": "filter_pdb_mmcifs.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "scripts/filter_pdb_mmcifs.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--output_dir", "data/pdb_data/dev_mmcifs",
+                // "--skip_existing",
+                "--no_workers", "1",
+            ]
+        },
+        {
+            "name": "train.py",
             "type": "debugpy",
             "request": "launch",
             "program": "alphafold3_pytorch/train.py",
@@ -40,7 +53,7 @@
             ]
         },
         {
-            "name": "alphafold3_pytorch/eval.py",
+            "name": "eval.py",
             "type": "debugpy",
             "request": "launch",
             "program": "alphafold3_pytorch/eval.py",

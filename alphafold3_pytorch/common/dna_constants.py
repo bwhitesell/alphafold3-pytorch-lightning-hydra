@@ -87,8 +87,10 @@ POLYMER_CHAIN: Final[str] = "polymer"
 # keys and maps many of these to the same one letter name.
 restype_3to1 = {v: k for k, v in restype_1to3.items()}
 
-# Define a restype name for all unknown DNA residues.
+# Define residue metadata for all unknown DNA residues.
 unk_restype = "DN"
+unk_chemtype = "DNA linking"
+unk_chemname = "UNKNOWN DNA RESIDUE"
 
 resnames = [restype_1to3[r] for r in restypes] + [unk_restype]
 

@@ -74,8 +74,10 @@ POLYMER_CHAIN: Final[str] = "non-polymer"
 # ligand residues to the unknown amino acid type index (:= 20).
 restype_3to1 = {}
 
-# Define a restype name for all unknown ligand residues.
+# Define residue metadata for all unknown ligand residues.
 unk_restype = "UNL"
+unk_chemtype = "non-polymer"
+unk_chemname = "UNKNOWN LIGAND RESIDUE"
 
 # This represents the residue chemical type (i.e., `chemtype`) index of ligand residues.
 chemtype_num = dna_constants.chemtype_num + 1  # := 3.

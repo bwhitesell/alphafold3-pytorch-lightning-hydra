@@ -79,8 +79,10 @@ POLYMER_CHAIN: Final[str] = "polymer"
 # keys and maps many of these to the same one letter name.
 restype_3to1 = {v: k for k, v in restype_1to3.items()}
 
-# Define a restype name for all unknown RNA residues.
+# Define residue metadata for all unknown RNA residues.
 unk_restype = "N"
+unk_chemtype = "RNA linking"
+unk_chemname = "UNKNOWN RNA RESIDUE"
 
 resnames = [restype_1to3[r] for r in restypes] + [unk_restype]
 

@@ -14,7 +14,7 @@ os.environ["TYPECHECK"] = "True"
 
 
 @pytest.mark.parametrize("mmcif_dir", [os.path.join("data", "pdb_data", "mmcifs")])
-@pytest.mark.parametrize("complex_id", ["100d", "1k7a"])
+@pytest.mark.parametrize("complex_id", ["6adq", "100d", "1k7a"])
 @pytest.mark.parametrize("auth_chains", [True])
 @pytest.mark.parametrize("auth_residues", [True])
 def test_mmcif_object_parsing(

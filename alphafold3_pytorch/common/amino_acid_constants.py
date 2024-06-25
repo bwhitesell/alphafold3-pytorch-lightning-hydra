@@ -121,8 +121,10 @@ POLYMER_CHAIN: Final[str] = "polymer"
 # (including 'X' and 'U' which we don't use here).
 restype_3to1 = {v: k for k, v in restype_1to3.items()}
 
-# Define a restype name for all unknown amino acid residues.
+# Define residue metadata for all unknown amino acid residues.
 unk_restype = "UNK"
+unk_chemtype = "peptide linking"
+unk_chemname = "UNKNOWN AMINO ACID RESIDUE"
 
 resnames = [restype_1to3[r] for r in restypes] + [unk_restype]
 
