@@ -49,7 +49,11 @@ from tqdm.contrib.concurrent import process_map
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
-from alphafold3_pytorch.common.biomolecule import _from_mmcif_object, to_mmcif
+from alphafold3_pytorch.common.biomolecule import (
+    _from_mmcif_object,
+    get_residue_constants,
+    to_mmcif,
+)
 from alphafold3_pytorch.common.paper_constants import (
     CRYSTALLOGRAPHY_METHODS,
     LIGAND_EXCLUSION_SET,
@@ -228,16 +232,19 @@ def remove_clashing_chains(
 
     clashing_chains = []
     chains = list(mmcif_object.structure.get_chains())
-    for i, chain1 in enumerate(chains):
-        chain1_atoms = set(chain1.get_atoms())
-        for chain2 in chains[i + 1 :]:
-            chain2_atoms = set(chain2.get_atoms())
+    chain_atoms = {chain.id: set(chain.get_atoms()) for chain in chains}
 
-            close_atoms = neighbor_search.search_all(clash_threshold, level="A")
+    close_atoms = neighbor_search.search_all(clash_threshold, level="A")
+    atom_pairs = [(atom1, atom2) for atom1, atom2 in close_atoms]
+
+    # Find clashing chains
+    for i, chain1 in enumerate(chains):
+        for chain2 in chains[i + 1 :]:
+            chain1_atoms = chain_atoms[chain1.id]
+            chain2_atoms = chain_atoms[chain2.id]
+
             clash_count = sum(
-                1
-                for atom1, atom2 in close_atoms
-                if atom1 in chain1_atoms and atom2 in chain2_atoms
+                1 for atom1, atom2 in atom_pairs if atom1 in chain1_atoms and atom2 in chain2_atoms
             )
             if (
                 clash_count / len(chain1_atoms) > clash_percentage
@@ -247,26 +254,30 @@ def remove_clashing_chains(
 
     chains_to_remove = set()
     for chain1, chain2, clash_count in clashing_chains:
+        len_chain1_atoms = len(chain_atoms[chain1.id])
+        len_chain2_atoms = len(chain_atoms[chain2.id])
+
+        chain1_clash_ratio = clash_count / len_chain1_atoms
+        chain2_clash_ratio = clash_count / len_chain2_atoms
+
         if (
-            clash_count / len(list(chain1.get_atoms()))
-            > clash_count / len(list(chain2.get_atoms()))
+            chain1_clash_ratio > chain2_clash_ratio
             and chain1.get_full_id() not in chains_to_remove
         ):
             chains_to_remove.add(chain1.get_full_id())
         elif (
-            clash_count / len(list(chain2.get_atoms()))
-            > clash_count / len(list(chain1.get_atoms()))
+            chain2_clash_ratio > chain1_clash_ratio
             and chain2.get_full_id() not in chains_to_remove
         ):
             chains_to_remove.add(chain2.get_full_id())
         else:
             if (
-                len(list(chain1.get_atoms())) < len(list(chain2.get_atoms()))
+                len_chain1_atoms < len_chain2_atoms
                 and chain1.get_full_id() not in chains_to_remove
             ):
                 chains_to_remove.add(chain1.get_full_id())
             elif (
-                len(list(chain2.get_atoms())) < len(list(chain1.get_atoms()))
+                len_chain2_atoms < len_chain1_atoms
                 and chain2.get_full_id() not in chains_to_remove
             ):
                 chains_to_remove.add(chain2.get_full_id())
@@ -596,26 +607,8 @@ def filter_mmcif(mmcif_object: MmcifObject) -> MmcifObject:
     """Filter an `MmcifObject` based on collected (atom/residue/chain) removal sets."""
     model = mmcif_object.structure
 
-    branch_scheme_auth_seq_nums = mmcif_object.raw_string.get(
-        "_pdbx_branch_scheme.auth_seq_num", []
-    )
-    branch_scheme_auth_mon_ids = mmcif_object.raw_string.get("_pdbx_branch_scheme.auth_mon_id", [])
-    branch_scheme_pdb_asym_ids = mmcif_object.raw_string.get("_pdbx_branch_scheme.pdb_asym_id", [])
-
-    nonpoly_scheme_auth_seq_nums = mmcif_object.raw_string.get(
-        "_pdbx_nonpoly_scheme.auth_seq_num", []
-    )
-    nonpoly_scheme_auth_mon_ids = mmcif_object.raw_string.get(
-        "_pdbx_nonpoly_scheme.auth_mon_id", []
-    )
-    nonpoly_scheme_pdb_strand_ids = mmcif_object.raw_string.get(
-        "_pdbx_nonpoly_scheme.pdb_strand_id", []
-    )
-
     # Filter out specified chains
     chains_to_remove = set()
-    branch_scheme_indices_to_remove = set()
-    nonpoly_scheme_indices_to_remove = set()
 
     for chain in model:
         # Filter out specified residues
@@ -640,38 +633,6 @@ def filter_mmcif(mmcif_object: MmcifObject) -> MmcifObject:
         if len(residues_to_remove) == len(chain):
             chains_to_remove.add(chain)
         for res_index, residue in sorted(residues_to_remove, key=itemgetter(0), reverse=True):
-            for i, (auth_seq_num, auth_mon_id, pdb_asym_id) in enumerate(
-                zip(
-                    branch_scheme_auth_seq_nums,
-                    branch_scheme_auth_mon_ids,
-                    branch_scheme_pdb_asym_ids,
-                )
-            ):
-                # Identify branch scheme indices associated with the removed residue
-                # NOTE: We rely on `pdb_asym_ids` actually referring to the author chain IDs
-                if (
-                    int(auth_seq_num) == residue.id[1]
-                    and auth_mon_id == residue.resname
-                    and pdb_asym_id == chain.id
-                ):
-                    branch_scheme_indices_to_remove.add(i)
-                    break
-            for i, (auth_seq_num, auth_mon_id, pdb_strand_id) in enumerate(
-                zip(
-                    nonpoly_scheme_auth_seq_nums,
-                    nonpoly_scheme_auth_mon_ids,
-                    nonpoly_scheme_pdb_strand_ids,
-                )
-            ):
-                # Identify non-polymer scheme indices associated with the removed residue
-                # NOTE: We rely on `pdb_strand_ids` actually referring to the author chain IDs
-                if (
-                    int(auth_seq_num) == residue.id[1]
-                    and auth_mon_id == residue.resname
-                    and pdb_strand_id == chain.id
-                ):
-                    nonpoly_scheme_indices_to_remove.add(i)
-                    break
             del mmcif_object.chem_comp_details[chain.id][res_index]
             chain.detach_child(residue.id)
         if chain.get_full_id() in mmcif_object.chains_to_remove:
@@ -684,23 +645,7 @@ def filter_mmcif(mmcif_object: MmcifObject) -> MmcifObject:
     struct_assembly_gen_indices_to_remove = set()
     raw_string_keys = list(mmcif_object.raw_string.keys())
     for key in raw_string_keys:
-        if key.startswith("_pdbx_branch_scheme."):
-            mmcif_object.raw_string[key] = [
-                value
-                for i, value in enumerate(mmcif_object.raw_string[key])
-                if i not in branch_scheme_indices_to_remove
-            ]
-            if not len(mmcif_object.raw_string[key]):
-                del mmcif_object.raw_string[key]
-        elif key.startswith("_pdbx_nonpoly_scheme."):
-            mmcif_object.raw_string[key] = [
-                value
-                for i, value in enumerate(mmcif_object.raw_string[key])
-                if i not in nonpoly_scheme_indices_to_remove
-            ]
-            if not len(mmcif_object.raw_string[key]):
-                del mmcif_object.raw_string[key]
-        elif key == "_pdbx_struct_assembly_gen.asym_id_list":
+        if key == "_pdbx_struct_assembly_gen.asym_id_list":
             for struct_assembly_gen_index, chain_ids_str in enumerate(
                 mmcif_object.raw_string[key]
             ):
@@ -755,19 +700,45 @@ def filter_mmcif(mmcif_object: MmcifObject) -> MmcifObject:
 
 
 @typecheck
+def get_unique_res_atom_names(mmcif_object: MmcifObject) -> List[List[List[str]]]:
+    """Get atom names for each (e.g. ligand) "pseudoresidue" of each residue in each chain."""
+    unique_res_atom_names = []
+    for chain in mmcif_object.structure:
+        chain_chem_comp = mmcif_object.chem_comp_details[chain.id]
+        for res, res_chem_comp in zip(chain, chain_chem_comp):
+            is_polymer_residue = is_polymeric(res_chem_comp.type)
+            residue_constants = get_residue_constants(res_chem_type=res_chem_comp.type)
+            if is_polymer_residue:
+                # For polymer residues, append the atom types directly.
+                atoms_to_append = [residue_constants.atom_types]
+            else:
+                # For non-polymer residues, create a nested list of atom names.
+                atoms_to_append = [
+                    [atom.name for _ in range(residue_constants.atom_type_num)] for atom in res
+                ]
+            unique_res_atom_names.append(atoms_to_append)
+    return unique_res_atom_names
+
+
+@typecheck
 def write_mmcif(
     mmcif_object: MmcifObject,
     output_filepath: str,
     gapless_poly_seq: bool = True,
+    insert_orig_atom_names: bool = True,
     insert_alphafold_mmcif_metadata: bool = True,
 ):
     """Write a BioPython `Structure` object to an mmCIF file using an intermediate `Biomolecule` object."""
     biomol = _from_mmcif_object(mmcif_object)
+    unique_res_atom_names = (
+        get_unique_res_atom_names(mmcif_object) if insert_orig_atom_names else None
+    )
     mmcif_string = to_mmcif(
         biomol,
         mmcif_object.file_id,
         gapless_poly_seq=gapless_poly_seq,
         insert_alphafold_mmcif_metadata=insert_alphafold_mmcif_metadata,
+        unique_res_atom_names=unique_res_atom_names,
     )
     with open(output_filepath, "w") as f:
         f.write(mmcif_string)
@@ -816,7 +787,8 @@ def filter_structure_with_timeout(filepath: str, output_dir: str):
         write_mmcif(
             mmcif_object,
             output_filepath,
-            gapless_poly_seq=False,
+            gapless_poly_seq=True,
+            insert_orig_atom_names=True,
             insert_alphafold_mmcif_metadata=False,
         )
         print(f"Finished filtering structure: {mmcif_object.file_id}")

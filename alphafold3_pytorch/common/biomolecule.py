@@ -18,6 +18,7 @@ from alphafold3_pytorch.common import (
 )
 from alphafold3_pytorch.data import mmcif_parsing
 from alphafold3_pytorch.utils.custom_typing import IntType, typecheck
+from alphafold3_pytorch.utils.data_utils import is_polymeric
 from alphafold3_pytorch.utils.utils import exists, np_mode
 
 MMCIF_PREFIXES_TO_DROP_POST_PARSING = [
@@ -26,6 +27,9 @@ MMCIF_PREFIXES_TO_DROP_POST_PARSING = [
     "_chem_comp.",
     "_entity.",
     "_entity_poly.",
+    "_entity_poly_seq.",
+    "_pdbx_nonpoly_scheme.",
+    "_pdbx_poly_seq_scheme.",
     "_struct_asym.",
 ]
 MMCIF_PREFIXES_TO_DROP_POST_AF3 = MMCIF_PREFIXES_TO_DROP_POST_PARSING + [
@@ -39,7 +43,8 @@ class Biomolecule:
     """Biomolecule structure representation."""
 
     # Cartesian coordinates of atoms in angstroms. The atom types correspond to
-    # residue_constants.atom_types, i.e. the first three are N, CA, CB.
+    # residue_constants.atom_types, e.g., the first three are N, CA, CB for
+    # amino acid residues.
     atom_positions: np.ndarray  # [num_res, num_atom_type, 3]
 
     # Amino-acid or nucleotide type for each residue represented as an integer
@@ -114,13 +119,33 @@ def get_residue_constants(
 
 
 @typecheck
+def get_ligand_atom_name(atom_name: str, atom_types_set: Set[str]) -> str:
+    """Gets the in-vocabulary atom name where possible for a ligand atom."""
+    if len(atom_name) == 1:
+        return atom_name
+    elif len(atom_name) == 2:
+        return atom_name if atom_name in atom_types_set else atom_name[0]
+    elif len(atom_name) == 3:
+        return (
+            atom_name
+            if atom_name in atom_types_set
+            else (
+                atom_name[:2] if atom_name[:2] in atom_types_set else atom_name[0] + atom_name[2]
+            )
+        )
+    else:
+        return atom_name
+
+
+@typecheck
 def _from_mmcif_object(
     mmcif_object: mmcif_parsing.MmcifObject, chain_id: Optional[str] = None
 ) -> Biomolecule:
     """Takes a Biopython structure/model mmCIF object and creates a `Biomolecule` instance.
 
-    WARNING: All non-standard residue types will be converted into UNK. All
-      non-standard atoms will be ignored.
+    WARNING: All non-standard residue types will be converted into the corresponding
+      unknown residue type for the residue's chemical type (e.g., RNA).
+      All non-standard atoms will be ignored.
 
     :param mmcif_object: The parsed Biopython structure/model mmCIF object.
     :param chain_id: If chain_id is specified (e.g. A), then only that chain is parsed.
@@ -147,14 +172,14 @@ def _from_mmcif_object(
     restype = []
     chemid = []
     chemtype = []
-    residue_chem_comp_details = []
+    residue_chem_comp_details = set()
     atom_mask = []
     residue_index = []
     chain_ids = []
     b_factors = []
 
     for chain in model:
-        if chain_id is not None and chain.id != chain_id:
+        if exists(chain_id) and chain.id != chain_id:
             continue
         for res_index, res in enumerate(chain):
             if res.id[2] != " ":
@@ -163,32 +188,83 @@ def _from_mmcif_object(
                     f" residue index {res.id[1]}. These are not supported."
                 )
             res_chem_comp_details = mmcif_object.chem_comp_details[chain.id][res_index]
+            assert res.resname == res_chem_comp_details.id, (
+                f"Structural residue name {res.resname} does not match the residue ID"
+                f" {res_chem_comp_details.id} in the mmCIF chemical component dictionary for {mmcif_object.file_id}."
+            )
+            is_polymer_residue = is_polymeric(res_chem_comp_details.type)
             residue_constants = get_residue_constants(res_chem_type=res_chem_comp_details.type)
             res_shortname = residue_constants.restype_3to1.get(res.resname, "X")
             restype_idx = residue_constants.restype_order.get(
                 res_shortname, residue_constants.restype_num
             )
-            pos = np.zeros((residue_constants.atom_type_num, 3))
-            mask = np.zeros((residue_constants.atom_type_num,))
-            res_b_factors = np.zeros((residue_constants.atom_type_num,))
-            for atom in res:
-                if atom.name not in residue_constants.atom_types:
+            if is_polymer_residue:
+                pos = np.zeros((residue_constants.atom_type_num, 3))
+                mask = np.zeros((residue_constants.atom_type_num,))
+                res_b_factors = np.zeros((residue_constants.atom_type_num,))
+                for atom in res:
+                    if is_polymer_residue and atom.name not in residue_constants.atom_types_set:
+                        continue
+                    pos[residue_constants.atom_order[atom.name]] = atom.coord
+                    mask[residue_constants.atom_order[atom.name]] = 1.0
+                    res_b_factors[residue_constants.atom_order[atom.name]] = atom.bfactor
+                if np.sum(mask) < 0.5:
+                    # If no known atom positions are reported for a polymer residue then skip it.
                     continue
-                pos[residue_constants.atom_order[atom.name]] = atom.coord
-                mask[residue_constants.atom_order[atom.name]] = 1.0
-                res_b_factors[residue_constants.atom_order[atom.name]] = atom.bfactor
-            if np.sum(mask) < 0.5:
-                # If no known atom positions are reported for the residue then skip it.
-                continue
-            restype.append(restype_idx)
-            chemid.append(res_chem_comp_details.id)
-            chemtype.append(residue_constants.chemtype_num)
-            residue_chem_comp_details.append(res_chem_comp_details)
-            atom_positions.append(pos)
-            atom_mask.append(mask)
-            residue_index.append(res.id[1])
-            chain_ids.append(chain.id)
-            b_factors.append(res_b_factors)
+                restype.append(restype_idx)
+                chemid.append(res_chem_comp_details.id)
+                chemtype.append(residue_constants.chemtype_num)
+                atom_positions.append(pos)
+                atom_mask.append(mask)
+                residue_index.append(res.id[1])
+                chain_ids.append(chain.id)
+                b_factors.append(res_b_factors)
+                if res_shortname == "X":
+                    # If the polymer residue is unknown, then it is of the corresponding unknown polymer residue type.
+                    residue_chem_comp_details.add(
+                        mmcif_parsing.ChemComp(
+                            id=residue_constants.unk_restype,
+                            type=residue_constants.unk_chemtype,
+                            name=residue_constants.unk_chemname,
+                        )
+                    )
+                else:
+                    residue_chem_comp_details.add(res_chem_comp_details)
+            else:
+                # Represent each ligand atom as a single "pseudoresidue".
+                # NOTE: Ligand "pseudoresidues" can later be grouped back
+                # into a single ligand residue using indexing operations
+                # working jointly on chain_index and residue_index.
+                for atom in res:
+                    pos = np.zeros((residue_constants.atom_type_num, 3))
+                    mask = np.zeros((residue_constants.atom_type_num,))
+                    res_b_factors = np.zeros((residue_constants.atom_type_num,))
+                    atom_name = get_ligand_atom_name(atom.name, residue_constants.atom_types_set)
+                    if atom_name not in residue_constants.atom_types_set:
+                        atom_name = "ATM"
+                    pos[residue_constants.atom_order[atom_name]] = atom.coord
+                    mask[residue_constants.atom_order[atom_name]] = 1.0
+                    res_b_factors[residue_constants.atom_order[atom_name]] = atom.bfactor
+                    restype.append(restype_idx)
+                    chemid.append(res_chem_comp_details.id)
+                    chemtype.append(residue_constants.chemtype_num)
+                    atom_positions.append(pos)
+                    atom_mask.append(mask)
+                    residue_index.append(res.id[1])
+                    chain_ids.append(chain.id)
+                    b_factors.append(res_b_factors)
+
+                if res.resname == residue_constants.unk_restype:
+                    # If the ligand residue is unknown, then it is of the unknown ligand residue type.
+                    residue_chem_comp_details.add(
+                        mmcif_parsing.ChemComp(
+                            id=residue_constants.unk_restype,
+                            type=residue_constants.unk_chemtype,
+                            name=residue_constants.unk_chemname,
+                        )
+                    )
+                else:
+                    residue_chem_comp_details.add(res_chem_comp_details)
 
     # Chain IDs are usually characters so map these to ints.
     unique_chain_ids = np.unique(chain_ids)
@@ -204,7 +280,7 @@ def _from_mmcif_object(
         b_factors=np.array(b_factors),
         chemid=np.array(chemid),
         chemtype=np.array(chemtype),
-        chem_comp_table=set(residue_chem_comp_details),
+        chem_comp_table=residue_chem_comp_details,
         mmcif_metadata=mmcif_object.raw_string,
     )
 
@@ -279,14 +355,15 @@ def to_mmcif(
     file_id: str,
     gapless_poly_seq: bool = True,
     insert_alphafold_mmcif_metadata: bool = True,
+    unique_res_atom_names: Optional[List[List[List[str]]]] = None,
 ) -> str:
     """Converts a `Biomolecule` instance to an mmCIF string.
 
-    WARNING 1: The _entity_poly_seq is filled with unknown residues for any
-      missing residue indices in the range from min(1, min(residue_index)) to
-      max(residue_index).
+    WARNING 1: When gapless_poly_seq is True, the _pdbx_poly_seq_scheme is filled
+      with unknown residues for any missing residue indices in the range
+      from min(1, min(residue_index)) to max(residue_index).
       E.g. for a biomolecule object with positions for (majority) protein residues
-      2 (MET), 3 (LYS), 6 (GLY), this method would set the _entity_poly_seq to:
+      2 (MET), 3 (LYS), 6 (GLY), this method would set the _pdbx_poly_seq_scheme to:
       1 UNK
       2 MET
       3 LYS
@@ -296,12 +373,14 @@ def to_mmcif(
       This is done to preserve the residue numbering.
 
     WARNING 2: Converting ground truth mmCIF file to Biomolecule and then back to
-      mmCIF using this method will convert all non-standard residue types to UNK.
+      mmCIF using this method will convert all non-standard residue types to the
+      corresponding unknown residue type of the residue's chemical type (e.g., RNA).
       If you need this behaviour, you need to store more mmCIF metadata in the
       Biomolecule object (e.g. all fields except for the _atom_site loop).
 
     WARNING 3: Converting ground truth mmCIF file to Biomolecule and then back to
-      mmCIF using this method will not retain the original chain indices.
+      mmCIF using this method will not retain the original chain indices and will
+      instead install author chain IDs.
 
     WARNING 4: In case of multiple identical chains, they are assigned different
       `_atom_site.label_entity_id` values.
@@ -311,6 +390,10 @@ def to_mmcif(
     :param gapless_poly_seq: If True, the polymer output will contain gapless residue indices.
     :param insert_alphafold_mmcif_metadata: If True, insert metadata fields
         referencing AlphaFold in the output mmCIF file.
+    :param unique_res_atom_names: A list of lists of lists of atom names for each "pseudoresidue"
+        of each unique residue. If None, the atom names are assumed to be the same for all
+        residues of the same chemical type (e.g., RNA). This is used to group "pseudoresidues"
+        (e.g., ligand atoms) by parent residue.
 
     :return: A valid mmCIF string.
 
@@ -327,10 +410,23 @@ def to_mmcif(
     chemid = biomol.chemid
     chemtype = biomol.chemtype
 
+    # Via unique chain-residue indexing, ensure that each ligand residue
+    # is represented by only a single atom for all logic except atom site parsing.
+    chain_residue_index = np.array(
+        [f"{chain_index[i]}_{residue_index[i]}" for i in range(residue_index.shape[0])]
+    )
+    _, unique_indices = np.unique(chain_residue_index, return_index=True)
+    unique_indices = sorted(unique_indices)
+
+    unique_restype = restype[unique_indices]
+    unique_residue_index = residue_index[unique_indices]
+    unique_chain_index = chain_index[unique_indices]
+    unique_chemid = chemid[unique_indices]
+    unique_chemtype = chemtype[unique_indices]
+
     # Construct a mapping from chain integer indices to chain ID strings.
     chain_ids = {}
-    # We count unknown residues as protein residues.
-    for entity_id in np.unique(chain_index):  # np.unique gives sorted output.
+    for entity_id in np.unique(unique_chain_index):  # np.unique gives sorted output.
         chain_ids[entity_id] = _int_id_to_str_id(entity_id + 1)
 
     mmcif_dict = collections.defaultdict(list)
@@ -341,9 +437,9 @@ def to_mmcif(
     label_asym_id_to_entity_id = {}
     # Entity and chain information.
     for entity_id, chain_id in chain_ids.items():
-        # Determine the chemical type of the chain.
-        res_chem_index = np_mode(chemtype[chain_index == entity_id])[0].item()
-        residue_constants = get_residue_constants(res_chem_index=res_chem_index)
+        # Determine the (majority) chemical type of the chain.
+        res_chemindex = np_mode(unique_chemtype[unique_chain_index == entity_id])[0].item()
+        residue_constants = get_residue_constants(res_chem_index=res_chemindex)
         # Add all chain information to the _struct_asym table.
         label_asym_id_to_entity_id[str(chain_id)] = str(entity_id)
         mmcif_dict["_struct_asym.id"].append(chain_id)
@@ -356,68 +452,150 @@ def to_mmcif(
         mmcif_dict["_entity.id"].append(str(entity_id))
         mmcif_dict["_entity.type"].append(residue_constants.POLYMER_CHAIN)
 
-    # Add the polymer residues to the _entity_poly_seq table.
-    for entity_id, (res_ids, aa_chemids) in _get_entity_poly_seq(
-        restype,
-        residue_index,
-        chain_index,
-        chemid,
-        chemtype,
-        gapless=gapless_poly_seq,
-    ).items():
-        for res_id, aa_chemid in zip(res_ids, aa_chemids):
-            mmcif_dict["_entity_poly_seq.entity_id"].append(str(entity_id))
-            mmcif_dict["_entity_poly_seq.hetero"].append("n")
-            mmcif_dict["_entity_poly_seq.num"].append(str(res_id))
-            mmcif_dict["_entity_poly_seq.mon_id"].append(aa_chemid)
-
-    # Populate the chem comp table.
+    # Populate the _chem_comp table.
     for chem_comp in biomol.chem_comp_table:
         mmcif_dict["_chem_comp.id"].append(chem_comp.id)
         mmcif_dict["_chem_comp.type"].append(chem_comp.type)
         mmcif_dict["_chem_comp.name"].append(chem_comp.name)
+    chem_comp_ids = set(mmcif_dict["_chem_comp.id"])
+
+    # Add the polymer residues to the _pdbx_poly_seq_scheme table.
+    for entity_id, (res_ids, chemids, chemindices) in _get_entity_seq(
+        unique_restype,
+        unique_residue_index,
+        unique_chain_index,
+        unique_chemid,
+        unique_chemtype,
+        gapless=gapless_poly_seq,
+        non_polymer_only=False,
+    ).items():
+        for res_id, res_chemid, res_chemindex in zip(res_ids, chemids, chemindices):
+            mmcif_dict["_pdbx_poly_seq_scheme.asym_id"].append(chain_ids[entity_id])
+            mmcif_dict["_pdbx_poly_seq_scheme.entity_id"].append(str(entity_id))
+            mmcif_dict["_pdbx_poly_seq_scheme.seq_id"].append(str(res_id))
+            mmcif_dict["_pdbx_poly_seq_scheme.auth_seq_num"].append(str(res_id))
+            mmcif_dict["_pdbx_poly_seq_scheme.pdb_seq_num"].append(str(res_id))
+            mmcif_dict["_pdbx_poly_seq_scheme.mon_id"].append(res_chemid)
+            mmcif_dict["_pdbx_poly_seq_scheme.auth_mon_id"].append(res_chemid)
+            mmcif_dict["_pdbx_poly_seq_scheme.pdb_mon_id"].append(res_chemid)
+            mmcif_dict["_pdbx_poly_seq_scheme.hetero"].append("n")
+
+            # Add relevant missing polymer residue types to the _chem_comp table.
+            residue_constants = get_residue_constants(res_chem_index=res_chemindex)
+            if res_chemid == residue_constants.unk_restype and res_chemid not in chem_comp_ids:
+                chem_comp_ids.add(residue_constants.unk_restype)
+                mmcif_dict["_chem_comp.id"].append(residue_constants.unk_restype)
+                mmcif_dict["_chem_comp.type"].append(residue_constants.unk_chemtype)
+                mmcif_dict["_chem_comp.name"].append(residue_constants.unk_chemname)
+
+    # Add the non-polymer residues to the _pdbx_nonpoly_scheme table.
+    for entity_id, (res_ids, chemids, chemindices) in _get_entity_seq(
+        unique_restype,
+        unique_residue_index,
+        unique_chain_index,
+        unique_chemid,
+        unique_chemtype,
+        gapless=False,
+        non_polymer_only=True,
+    ).items():
+        for res_id, res_chemid, res_chemindex in zip(res_ids, chemids, chemindices):
+            mmcif_dict["_pdbx_nonpoly_scheme.asym_id"].append(chain_ids[entity_id])
+            mmcif_dict["_pdbx_nonpoly_scheme.entity_id"].append(str(entity_id))
+            mmcif_dict["_pdbx_nonpoly_scheme.auth_seq_num"].append(str(res_id))
+            mmcif_dict["_pdbx_nonpoly_scheme.pdb_seq_num"].append(str(res_id))
+            mmcif_dict["_pdbx_nonpoly_scheme.auth_mon_id"].append(res_chemid)
+            mmcif_dict["_pdbx_nonpoly_scheme.pdb_mon_id"].append(res_chemid)
+
+            # Add relevant missing non-polymer residue types to the _chem_comp table.
+            residue_constants = get_residue_constants(res_chem_index=res_chemindex)
+            if res_chemid == residue_constants.unk_restype and res_chemid not in chem_comp_ids:
+                chem_comp_ids.add(residue_constants.unk_restype)
+                mmcif_dict["_chem_comp.id"].append(residue_constants.unk_restype)
+                mmcif_dict["_chem_comp.type"].append(residue_constants.unk_chemtype)
+                mmcif_dict["_chem_comp.name"].append(residue_constants.unk_chemname)
 
     # Add all atom sites.
+    if exists(unique_res_atom_names):
+        assert len(unique_res_atom_names) == len(
+            unique_restype
+        ), f"Unique residue atom names array must have the same length ({len(unique_res_atom_names)}) as the unique residue types array ({len(unique_restype)})."
     atom_index = 1
-    for i in range(restype.shape[0]):
+    for i in range(unique_restype.shape[0]):
         # Determine the chemical type of the residue.
-        residue_constants = get_residue_constants(res_chem_index=chemtype[i])
-        res_name_3 = chemid[i]
-        if (restype[i] - residue_constants.min_restype_num) <= len(residue_constants.restypes):
-            atom_names = residue_constants.atom_types
+        res_chemindex = unique_chemtype[i]
+        is_polymer_residue = (res_chemindex < 3).item()
+        residue_constants = get_residue_constants(res_chem_index=res_chemindex)
+        res_name_3 = unique_chemid[i]
+        # Group "pseudoresidues" (e.g., ligand atoms) by parent residue.
+        unique_atom_indices = collections.defaultdict(int)
+        res_atom_positions = atom_positions[
+            (chain_index == unique_chain_index[i]) & (residue_index == unique_residue_index[i])
+        ]
+        res_atom_mask = atom_mask[
+            (chain_index == unique_chain_index[i]) & (residue_index == unique_residue_index[i])
+        ]
+        res_b_factors = b_factors[
+            (chain_index == unique_chain_index[i]) & (residue_index == unique_residue_index[i])
+        ]
+        if (unique_restype[i] - residue_constants.min_restype_num) <= len(
+            residue_constants.restypes
+        ):
+            res_atom_names = (
+                unique_res_atom_names[i]
+                if exists(unique_res_atom_names)
+                else [residue_constants.atom_types for _ in range(len(res_atom_positions))]
+            )
+            assert len(res_atom_positions) == len(
+                res_atom_names
+            ), "Residue positions array and residue atom names array must have the same length."
         else:
             raise ValueError(
                 "Residue types array contains entries with too many biomolecule types."
             )
-        for atom_name, pos, mask, b_factor in zip(
-            atom_names, atom_positions[i], atom_mask[i], b_factors[i]
+        # Iterate over all "pseudoresidues" associated with a parent residue.
+        for atom_name_, pos_, mask_, b_factor_ in zip(
+            res_atom_names, res_atom_positions, res_atom_mask, res_b_factors
         ):
-            if mask < 0.5:
-                continue
-            type_symbol = atom_id_to_type(atom_name)
+            # Iterate over each atom in a (pseudo)residue.
+            for atom_name, pos, mask, b_factor in zip(atom_name_, pos_, mask_, b_factor_):
+                if mask < 0.5:
+                    continue
+                type_symbol = atom_id_to_type(atom_name)
 
-            mmcif_dict["_atom_site.group_PDB"].append("ATOM")
-            mmcif_dict["_atom_site.id"].append(str(atom_index))
-            mmcif_dict["_atom_site.type_symbol"].append(type_symbol)
-            mmcif_dict["_atom_site.label_atom_id"].append(atom_name)
-            mmcif_dict["_atom_site.label_alt_id"].append(".")
-            mmcif_dict["_atom_site.label_comp_id"].append(res_name_3)
-            mmcif_dict["_atom_site.label_asym_id"].append(chain_ids[chain_index[i]])
-            mmcif_dict["_atom_site.label_entity_id"].append(
-                label_asym_id_to_entity_id[chain_ids[chain_index[i]]]
-            )
-            mmcif_dict["_atom_site.label_seq_id"].append(str(residue_index[i]))
-            mmcif_dict["_atom_site.pdbx_PDB_ins_code"].append(".")
-            mmcif_dict["_atom_site.Cartn_x"].append(f"{pos[0]:.3f}")
-            mmcif_dict["_atom_site.Cartn_y"].append(f"{pos[1]:.3f}")
-            mmcif_dict["_atom_site.Cartn_z"].append(f"{pos[2]:.3f}")
-            mmcif_dict["_atom_site.occupancy"].append("1.00")
-            mmcif_dict["_atom_site.B_iso_or_equiv"].append(f"{b_factor:.2f}")
-            mmcif_dict["_atom_site.auth_seq_id"].append(str(residue_index[i]))
-            mmcif_dict["_atom_site.auth_asym_id"].append(chain_ids[chain_index[i]])
-            mmcif_dict["_atom_site.pdbx_PDB_model_num"].append("1")
+                unique_atom_indices[atom_name] += 1
+                atom_index_postfix = "" if is_polymer_residue else unique_atom_indices[atom_name]
+                unique_atom_name = (
+                    atom_name
+                    if exists(unique_res_atom_names)
+                    else f"{atom_name}{atom_index_postfix}"
+                )
 
-            atom_index += 1
+                mmcif_dict["_atom_site.group_PDB"].append(
+                    "ATOM" if is_polymer_residue else "HETATM"
+                )
+                mmcif_dict["_atom_site.id"].append(str(atom_index))
+                mmcif_dict["_atom_site.type_symbol"].append(type_symbol)
+                mmcif_dict["_atom_site.label_atom_id"].append(unique_atom_name)
+                mmcif_dict["_atom_site.label_alt_id"].append(".")
+                mmcif_dict["_atom_site.label_comp_id"].append(res_name_3)
+                mmcif_dict["_atom_site.label_asym_id"].append(chain_ids[unique_chain_index[i]])
+                mmcif_dict["_atom_site.label_entity_id"].append(
+                    label_asym_id_to_entity_id[chain_ids[unique_chain_index[i]]]
+                )
+                mmcif_dict["_atom_site.label_seq_id"].append(str(unique_residue_index[i]))
+                mmcif_dict["_atom_site.pdbx_PDB_ins_code"].append(".")
+                mmcif_dict["_atom_site.Cartn_x"].append(f"{pos[0]:.3f}")
+                mmcif_dict["_atom_site.Cartn_y"].append(f"{pos[1]:.3f}")
+                mmcif_dict["_atom_site.Cartn_z"].append(f"{pos[2]:.3f}")
+                mmcif_dict["_atom_site.occupancy"].append("1.00")
+                mmcif_dict["_atom_site.B_iso_or_equiv"].append(f"{b_factor:.2f}")
+                mmcif_dict["_atom_site.auth_seq_id"].append(str(unique_residue_index[i]))
+                mmcif_dict["_atom_site.auth_comp_id"].append(res_name_3)
+                mmcif_dict["_atom_site.auth_asym_id"].append(chain_ids[unique_chain_index[i]])
+                mmcif_dict["_atom_site.auth_atom_id"].append(unique_atom_name)
+                mmcif_dict["_atom_site.pdbx_PDB_model_num"].append("1")
+
+                atom_index += 1
 
     init_metadata_dict = (
         remove_metadata_fields_by_prefixes(biomol.mmcif_metadata, MMCIF_PREFIXES_TO_DROP_POST_AF3)
@@ -458,15 +636,17 @@ def _int_id_to_str_id(num: IntType) -> str:
 
 
 @typecheck
-def _get_entity_poly_seq(
+def _get_entity_seq(
     restypes: np.ndarray,
     residue_indices: np.ndarray,
     chain_indices: np.ndarray,
     chemids: np.ndarray,
     chemtypes: np.ndarray,
     gapless: bool = True,
-) -> Dict[IntType, Tuple[List[IntType], List[str]]]:
-    """Constructs (as desired) gapless residue index and chemid lists for each chain.
+    non_polymer_only: bool = False,
+    non_polymer_chemtype: int = 3,
+) -> Dict[IntType, Tuple[List[IntType], List[str], List[IntType]]]:
+    """Constructs (as desired) gapless residue index, chemid, and chemtype lists for each chain.
 
     :param restypes: A numpy array with restypes.
     :param residue_indices: A numpy array with residue indices.
@@ -474,11 +654,14 @@ def _get_entity_poly_seq(
     :param chemids: A numpy array with residue chemical IDs.
     :param chemtypes: A numpy array with residue chemical types.
     :param gapless: If True, the output will contain gapless residue indices.
+    :param non_polymer_only: If True, only non-polymer residues are included in the output.
+    :param non_polymer_chemtype: The chemical type index of non-polymer residues.
 
-    :return: A dictionary mapping chain indices to a tuple with a list of residue indices
-      and a list of chemids. Missing residues are filled with the unknown residue type
-      of the corresponding residue chemical type (e.g., `N`, the unknown RNA type,
-      for a majority-RNA chain). Ligand residues are not present in the output.
+    :return: A dictionary mapping chain indices to a tuple with a list of residue indices,
+      a list of chemids, and a list of chemtypes. Missing residues are filled with the
+      unknown residue type of the corresponding residue chemical type (e.g., `N`, the
+      unknown RNA type, for a majority-RNA chain). Ligand residues are not present in the
+      output unless non_polymer_only is True.
     """
     if (
         restypes.shape[0] != residue_indices.shape[0]
@@ -486,40 +669,63 @@ def _get_entity_poly_seq(
     ):
         raise ValueError("restypes, residue_indices, chain_indices must have the same length.")
 
+    # Mask the inputs.
+    mask = (
+        chemtypes == non_polymer_chemtype
+        if non_polymer_only
+        else chemtypes != non_polymer_chemtype
+    )
+    masked_chain_indices = chain_indices[mask]
+    masked_residue_indices = residue_indices[mask]
+    masked_restypes = restypes[mask]
+    masked_chemtypes = chemtypes[mask]
+    masked_chemids = chemids[mask]
+
     # Group the present residues by chain index.
     present = collections.defaultdict(list)
-    num_ligand_residues_present = collections.defaultdict(int)
-    for chain_id, res_id, aa, aa_chemtype in zip(
-        chain_indices, residue_indices, restypes, chemtypes
+    if not all(
+        x.shape[0] for x in (masked_chain_indices, masked_residue_indices, masked_restypes)
     ):
-        if aa_chemtype == 3:
-            # Skip ligand residues.
-            num_ligand_residues_present[chain_id] += 1
-            continue
-        present[chain_id].append((res_id - num_ligand_residues_present[chain_id], aa))
+        return {}
+    for chain_index, residue_index, restype in zip(
+        masked_chain_indices, masked_residue_indices, masked_restypes
+    ):
+        present[chain_index].append((residue_index, restype))
 
     # Add any missing residues (from 1 to the first residue and for any gaps).
     entity_poly_seq = {}
-    for chain_id, present_residues in present.items():
-        present_residue_indices = set([x[0] for x in present_residues])
+    for chain_index, present_residues in present.items():
+        present_residue_indices = list(
+            dict.fromkeys([x[0] for x in present_residues])
+        )  # Preserve order.
         min_res_id = min(present_residue_indices)  # Could be negative.
         max_res_id = max(present_residue_indices)
 
-        res_chem_index = np_mode(chemtypes[chain_indices == chain_id])[0].item()
-        residue_constants = get_residue_constants(res_chem_index=res_chem_index)
+        res_chemindex = np_mode(masked_chemtypes[masked_chain_indices == chain_index])[0].item()
+        residue_constants = get_residue_constants(res_chem_index=res_chemindex)
 
         new_residue_indices = []
         new_chemids = []
+        new_chemtypes = []
         present_index = 0
-        for i in range(min((1 if gapless else min_res_id), min_res_id), max_res_id + 1):
+        residue_indices = (
+            present_residue_indices if not gapless else range(min(1, min_res_id), max_res_id + 1)
+        )
+        for i in residue_indices:
             new_residue_indices.append(i)
-            if i in present_residue_indices:
-                new_chemids.append(chemids[chain_indices == chain_id][present_index])
+            if not gapless or i in present_residue_indices:
+                new_chemids.append(
+                    masked_chemids[masked_chain_indices == chain_index][present_index]
+                )
+                new_chemtypes.append(
+                    masked_chemtypes[masked_chain_indices == chain_index][present_index]
+                )
                 present_index += 1
             else:
                 # Unknown residue type of the most common residue chemical type in the chain.
                 new_chemids.append(residue_constants.unk_restype)
-        entity_poly_seq[chain_id] = (new_residue_indices, new_chemids)
+                new_chemtypes.append(res_chemindex)
+        entity_poly_seq[chain_index] = (new_residue_indices, new_chemids, new_chemtypes)
     return entity_poly_seq
 
 

@@ -329,8 +329,13 @@ def parse(
             for idx, monomer in enumerate(seq_info):
                 seq_idx = idx + (mmcif_seq_start_num[chain_id] - 1)
                 if seq_idx not in mmcif_current_mapping and is_polymeric(chem_comp_info[idx].type):
+                    position = ResiduePosition(
+                        chain_id=chain_id,
+                        residue_number=seq_idx + 1,
+                        insertion_code=" ",
+                    )
                     mmcif_current_mapping[seq_idx] = ResidueAtPosition(
-                        position=None,
+                        position=position,
                         name=monomer.id,
                         is_missing=True,
                         hetflag=" ",
@@ -388,6 +393,11 @@ def parse(
                 f"{len(all_chem_comp_details[author_chain])} != "
                 f"{len(seq_to_structure_mappings[author_chain])}"
             )
+            # Ensure the `seq_to_structure_mappings` is zero-indexed and does not contain index gaps.
+            seq_to_structure_mappings[author_chain] = {
+                i: value
+                for i, value in enumerate(seq_to_structure_mappings[author_chain].values())
+            }
 
         # Identify only chemical component details that are present in the structure.
         chem_comp_details = {
@@ -523,66 +533,45 @@ def _get_complex_chains(
     :return: A dict mapping mmcif chain id to a tuple of a list of Monomers and a list of ChemComps.
     """
     # Get polymer information for each entity in the structure.
-    entity_poly_seqs = mmcif_loop_to_list("_entity_poly_seq.", parsed_info)
+    poly_scheme = mmcif_loop_to_list("_pdbx_poly_seq_scheme.", parsed_info)
 
     polymers = collections.defaultdict(list)
-    for entity_poly_seq in entity_poly_seqs:
-        polymers[entity_poly_seq["_entity_poly_seq.entity_id"]].append(
+    for scheme in poly_scheme:
+        polymers[scheme["_pdbx_poly_seq_scheme.asym_id"]].append(
             Monomer(
-                id=entity_poly_seq["_entity_poly_seq.mon_id"],
-                num=int(entity_poly_seq["_entity_poly_seq.num"]),
+                id=scheme["_pdbx_poly_seq_scheme.mon_id"],
+                num=int(scheme["_pdbx_poly_seq_scheme.seq_id"]),
             )
         )
 
     # Get non-polymer information for each entity in the structure.
     branch_scheme = mmcif_loop_to_list("_pdbx_branch_scheme.", parsed_info)
     nonpoly_scheme = mmcif_loop_to_list("_pdbx_nonpoly_scheme.", parsed_info)
-    branch_unique_asym_ids = list(
-        # NOTE: Order must be preserved for downstream processing.
-        dict.fromkeys([scheme["_pdbx_branch_scheme.asym_id"] for scheme in branch_scheme])
-    )
-    nonpoly_unique_asym_ids = list(
-        # NOTE: Order must be preserved for downstream processing.
-        dict.fromkeys([scheme["_pdbx_nonpoly_scheme.asym_id"] for scheme in nonpoly_scheme])
-    )
 
-    non_polymers = collections.defaultdict(lambda: collections.defaultdict(list))
-    for asym_id in branch_unique_asym_ids:
-        for scheme in (s for s in branch_scheme if s["_pdbx_branch_scheme.asym_id"] == asym_id):
-            non_polymers[scheme["_pdbx_branch_scheme.entity_id"]][asym_id].append(
-                Monomer(
-                    id=scheme["_pdbx_branch_scheme.pdb_mon_id"],
-                    num=int(scheme["_pdbx_branch_scheme.pdb_seq_num"]),
-                )
+    non_polymers = collections.defaultdict(list)
+    for scheme in branch_scheme:
+        non_polymers[scheme["_pdbx_branch_scheme.asym_id"]].append(
+            Monomer(
+                id=scheme["_pdbx_branch_scheme.pdb_mon_id"],
+                num=int(scheme["_pdbx_branch_scheme.pdb_seq_num"]),
             )
-    for asym_id in nonpoly_unique_asym_ids:
-        for scheme in (s for s in nonpoly_scheme if s["_pdbx_nonpoly_scheme.asym_id"] == asym_id):
-            non_polymers[scheme["_pdbx_nonpoly_scheme.entity_id"]][asym_id].append(
-                Monomer(
-                    id=scheme["_pdbx_nonpoly_scheme.pdb_mon_id"],
-                    num=int(scheme["_pdbx_nonpoly_scheme.pdb_seq_num"]),
-                )
+        )
+    for scheme in nonpoly_scheme:
+        non_polymers[scheme["_pdbx_nonpoly_scheme.asym_id"]].append(
+            Monomer(
+                id=scheme["_pdbx_nonpoly_scheme.pdb_mon_id"],
+                num=int(scheme["_pdbx_nonpoly_scheme.pdb_seq_num"]),
             )
+        )
 
     # Get chemical compositions. Will allow us to identify which of these polymers
     # are protein, DNA, or RNA.
     chem_comps = mmcif_loop_to_dict("_chem_comp.", "_chem_comp.id", parsed_info)
 
-    # Get chains information for each entity. Necessary so that we can return a
-    # dict keyed on chain id rather than entity.
-    struct_asyms = mmcif_loop_to_list("_struct_asym.", parsed_info)
-
-    entity_to_mmcif_chains = collections.defaultdict(list)
-    for struct_asym in struct_asyms:
-        chain_id = struct_asym["_struct_asym.id"]
-        entity_id = struct_asym["_struct_asym.entity_id"]
-        entity_to_mmcif_chains[entity_id].append(chain_id)
-
     # Identify and return all complex chains.
-    valid_chains = {}
-    for entity_id, seq_info in polymers.items():
-        chain_ids = entity_to_mmcif_chains[entity_id]
-        for chain_id in chain_ids:
+    valid_chains = defaultdict(lambda: ([], []))
+    for polys in (polymers, non_polymers):
+        for chain_id, seq_info in polys.items():
             chem_comp_info = [
                 ChemComp(
                     id=chem_comps[monomer.id]["_chem_comp.id"],
@@ -591,20 +580,8 @@ def _get_complex_chains(
                 )
                 for monomer in seq_info
             ]
-            valid_chains[chain_id] = (seq_info, chem_comp_info)
-
-    for entity_id, seq_info in non_polymers.items():
-        chain_ids = entity_to_mmcif_chains[entity_id]
-        for chain_id in chain_ids:
-            chem_comp_info = [
-                ChemComp(
-                    id=chem_comps[monomer.id]["_chem_comp.id"],
-                    type=chem_comps[monomer.id]["_chem_comp.type"],
-                    name=chem_comps[monomer.id]["_chem_comp.name"],
-                )
-                for monomer in seq_info[chain_id]
-            ]
-            valid_chains[chain_id] = (seq_info[chain_id], chem_comp_info)
+            valid_chains[chain_id][0].extend(seq_info)
+            valid_chains[chain_id][1].extend(chem_comp_info)
 
     return valid_chains
 

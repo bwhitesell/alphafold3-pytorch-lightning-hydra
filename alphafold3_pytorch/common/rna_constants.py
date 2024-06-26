@@ -56,6 +56,7 @@ atom_types = [
     "_",
     "_",  # 20 null types.
 ]
+atom_types_set = set(atom_types)
 atom_order = {atom_type: i for i, atom_type in enumerate(atom_types)}
 atom_type_num = len(atom_types)  # := 27 + 20 null types := 47.
 

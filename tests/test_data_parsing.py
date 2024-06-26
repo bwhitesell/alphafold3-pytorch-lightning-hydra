@@ -15,17 +15,11 @@ os.environ["TYPECHECK"] = "True"
 
 @pytest.mark.parametrize("mmcif_dir", [os.path.join("data", "pdb_data", "mmcifs")])
 @pytest.mark.parametrize("complex_id", ["6adq", "100d", "1k7a"])
-@pytest.mark.parametrize("auth_chains", [True])
-@pytest.mark.parametrize("auth_residues", [True])
-def test_mmcif_object_parsing(
-    mmcif_dir: str, complex_id: str, auth_chains: bool, auth_residues: bool
-) -> None:
+def test_mmcif_object_parsing(mmcif_dir: str, complex_id: str) -> None:
     """Tests mmCIF file parsing and `Biomolecule` object creation.
 
     :param mmcif_dir: The directory containing all (filtered) PDB mmCIF files.
     :param complex_id: The PDB ID of the complex to be tested.
-    :param auth_chains: Whether to use the 'auth_asym_id' field as chain ID.
-    :param auth_residues: Whether to use the 'auth_seq_id' field as residue ID.
     """
     complex_filepath = os.path.join(mmcif_dir, complex_id[1:3], f"{complex_id}.cif")
 
@@ -36,8 +30,8 @@ def test_mmcif_object_parsing(
         parsing_result = mmcif_parsing.parse(
             file_id=complex_id,
             mmcif_string=mmcif_string,
-            auth_chains=auth_chains,
-            auth_residues=auth_residues,
+            auth_chains=True,
+            auth_residues=True,
         )
 
         if parsing_result.mmcif_object is None:
@@ -50,22 +44,16 @@ def test_mmcif_object_parsing(
 @pytest.mark.parametrize("mmcif_dir", [os.path.join("data", "pdb_data", "mmcifs")])
 @pytest.mark.parametrize("num_random_complexes_to_parse", [25])
 @pytest.mark.parametrize("random_seed", [1])
-@pytest.mark.parametrize("auth_chains", [True])
-@pytest.mark.parametrize("auth_residues", [True])
 def test_mmcif_objects_parsing(
     mmcif_dir: str,
     num_random_complexes_to_parse: int,
     random_seed: int,
-    auth_chains: bool,
-    auth_residues: bool,
 ) -> None:
     """Tests mmCIF file parsing and `Biomolecule` object creation with (random) batch parsing.
 
     :param mmcif_dir: The directory containing all (filtered) PDB mmCIF files.
     :param num_random_complexes_to_parse: The number of random complexes to parse.
     :param random_seed: The random seed for reproducibility.
-    :param auth_chains: Whether to use the 'auth_asym_id' field as chain ID.
-    :param auth_residues: Whether to use the 'auth_seq_id' field as residue ID.
     """
     random.seed(random_seed)
 
@@ -93,8 +81,8 @@ def test_mmcif_objects_parsing(
             parsing_result = mmcif_parsing.parse(
                 file_id=complex_id,
                 mmcif_string=mmcif_string,
-                auth_chains=auth_chains,
-                auth_residues=auth_residues,
+                auth_chains=True,
+                auth_residues=True,
             )
 
             if parsing_result.mmcif_object is None:
