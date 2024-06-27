@@ -580,13 +580,13 @@ def remove_crystallization_aids(
     if (
         "structure_method" in mmcif_object.header
         and exists(mmcif_object.header["structure_method"])
-        and mmcif_object.header["structure_method"] in crystallography_methods
+        and mmcif_object.header["structure_method"].upper() in crystallography_methods
     ):
         residues_to_remove = set()
         chains_to_remove = set()
 
         structure_method_crystallization_aids = crystallography_methods[
-            mmcif_object.header["structure_method"]
+            mmcif_object.header["structure_method"].upper()
         ]
         for chain in mmcif_object.structure.get_chains():
             res_to_remove = set()
