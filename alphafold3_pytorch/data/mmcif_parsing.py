@@ -13,7 +13,7 @@ from Bio.Data import PDBData
 
 from alphafold3_pytorch.common import amino_acid_constants
 from alphafold3_pytorch.data.errors import MultipleChainsError
-from alphafold3_pytorch.utils.data_utils import is_polymeric
+from alphafold3_pytorch.utils.data_utils import is_water
 
 # Type aliases:
 ChainId = str
@@ -297,7 +297,7 @@ def parse(
                     # Water atoms are assigned a special hetflag of W in Biopython. We
                     # need to do the same, so that this hetflag can be used to fetch
                     # a residue from the Biopython structure by id.
-                    if atom.residue_name in ("HOH", "WAT"):
+                    if is_water(atom.residue_name):
                         hetflag = "W"
                     else:
                         hetflag = "H_" + atom.residue_name
@@ -322,13 +322,15 @@ def parse(
                 )
                 mmcif_seq_to_structure_mappings[atom.mmcif_chain_id] = mmcif_current
 
-        # Add missing polymer residue information to mmcif_seq_to_structure_mappings.
+        # Add missing residue information to mmcif_seq_to_structure_mappings.
         for chain_id, (seq_info, chem_comp_info) in valid_chains.items():
             author_chain = mmcif_to_author_chain_id[chain_id]
             mmcif_current_mapping = mmcif_seq_to_structure_mappings[chain_id]
             for idx, monomer in enumerate(seq_info):
                 seq_idx = idx + (mmcif_seq_start_num[chain_id] - 1)
-                if seq_idx not in mmcif_current_mapping and is_polymeric(chem_comp_info[idx].type):
+                # NOTE: Water residues are often not labeled consecutively by authors (e.g., see PDB 100d),
+                # so we avoid marking them as missing in this scenario.
+                if seq_idx not in mmcif_current_mapping and not is_water(chem_comp_info[idx].id):
                     position = ResiduePosition(
                         chain_id=chain_id,
                         residue_number=seq_idx + 1,

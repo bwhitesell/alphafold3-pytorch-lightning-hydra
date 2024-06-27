@@ -18,6 +18,18 @@ def is_polymeric(
 
 
 @typecheck
+def is_water(res_name: str, water_res_names: Set[str] = {"HOH", "WAT"}) -> bool:
+    """
+    Check if a residue is a water residue using its residue name string.
+
+    :param res_name: The name of the residue as a descriptive string.
+    :param water_res_names: The set of water residue names.
+    :return: Whether the residue is a water residue.
+    """
+    return any(water_res_name in res_name.upper() for water_res_name in water_res_names)
+
+
+@typecheck
 def get_biopython_chain_residue_by_composite_id(
     chain: ChainType, res_name: str, res_id: int
 ) -> ResidueType:

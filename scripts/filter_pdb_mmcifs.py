@@ -66,6 +66,7 @@ from alphafold3_pytorch.utils.custom_typing import AtomType, ResidueType, TokenT
 from alphafold3_pytorch.utils.data_utils import (
     get_biopython_chain_residue_by_composite_id,
     is_polymeric,
+    is_water,
 )
 from alphafold3_pytorch.utils.utils import exists
 
@@ -188,7 +189,7 @@ def remove_hydrogens(mmcif_object: MmcifObject, remove_waters: bool = False) -> 
             res_atoms_to_remove = {
                 atom.get_full_id() for atom in res.get_atoms() if atom.element == "H"
             }
-            if remove_waters and res.resname in {"HOH", "WAT"}:
+            if remove_waters and is_water(res.resname):
                 res_to_remove.add(res.get_full_id())
             if len(res_atoms_to_remove) == len(res):  # If no atoms are left in the residue
                 res_to_remove.add(res.get_full_id())
