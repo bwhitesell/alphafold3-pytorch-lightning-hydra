@@ -4,7 +4,7 @@ from alphafold3_pytorch.utils.custom_typing import ChainType, ResidueType, typec
 
 
 @typecheck
-def is_polymeric(
+def is_polymer(
     res_chem_type: str, polymer_chem_types: Set[str] = {"peptide", "dna", "rna"}
 ) -> bool:
     """

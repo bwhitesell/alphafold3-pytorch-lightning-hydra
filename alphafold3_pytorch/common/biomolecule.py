@@ -18,7 +18,7 @@ from alphafold3_pytorch.common import (
 )
 from alphafold3_pytorch.data import mmcif_parsing
 from alphafold3_pytorch.utils.custom_typing import IntType, typecheck
-from alphafold3_pytorch.utils.data_utils import is_polymeric
+from alphafold3_pytorch.utils.data_utils import is_polymer
 from alphafold3_pytorch.utils.utils import exists, np_mode
 
 MMCIF_PREFIXES_TO_DROP_POST_PARSING = [
@@ -192,7 +192,7 @@ def _from_mmcif_object(
                 f"Structural residue name {res.resname} does not match the residue ID"
                 f" {res_chem_comp_details.id} in the mmCIF chemical component dictionary for {mmcif_object.file_id}."
             )
-            is_polymer_residue = is_polymeric(res_chem_comp_details.type)
+            is_polymer_residue = is_polymer(res_chem_comp_details.type)
             residue_constants = get_residue_constants(res_chem_type=res_chem_comp_details.type)
             res_shortname = residue_constants.restype_3to1.get(res.resname, "X")
             restype_idx = residue_constants.restype_order.get(

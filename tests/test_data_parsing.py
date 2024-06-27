@@ -15,8 +15,36 @@ os.environ["TYPECHECK"] = "True"
 
 @pytest.mark.parametrize("mmcif_dir", [os.path.join("data", "pdb_data", "unfiltered_mmcifs")])
 @pytest.mark.parametrize("complex_id", ["100d", "1k7a", "6adq", "7a4d", "8a3j"])
-def test_mmcif_object_parsing(mmcif_dir: str, complex_id: str) -> None:
-    """Tests mmCIF file parsing and `Biomolecule` object creation.
+def test_unfiltered_mmcif_object_parsing(mmcif_dir: str, complex_id: str) -> None:
+    """Tests mmCIF file parsing and `Biomolecule` object creation for unfiltered mmCIF files.
+
+    :param mmcif_dir: The directory containing all (unfiltered) PDB mmCIF files.
+    :param complex_id: The PDB ID of the complex to be tested.
+    """
+    complex_filepath = os.path.join(mmcif_dir, complex_id[1:3], f"{complex_id}.cif")
+
+    if not os.path.exists(complex_filepath):
+        pytest.skip(f"File '{complex_filepath}' does not exist.")
+
+    with open(complex_filepath, "r") as f:
+        mmcif_string = f.read()
+
+    parsing_result = mmcif_parsing.parse(
+        file_id=complex_id,
+        mmcif_string=mmcif_string,
+        auth_chains=True,
+        auth_residues=True,
+    )
+
+    if parsing_result.mmcif_object is None:
+        print(f"Failed to parse file '{complex_filepath}'.")
+        raise list(parsing_result.errors.values())[0]
+
+
+@pytest.mark.parametrize("mmcif_dir", [os.path.join("data", "pdb_data", "mmcifs")])
+@pytest.mark.parametrize("complex_id", ["100d", "1k7a", "6adq", "7a4d"])
+def test_filtered_mmcif_object_parsing(mmcif_dir: str, complex_id: str) -> None:
+    """Tests mmCIF file parsing and `Biomolecule` object creation for filtered mmCIF files.
 
     :param mmcif_dir: The directory containing all (filtered) PDB mmCIF files.
     :param complex_id: The PDB ID of the complex to be tested.
@@ -44,14 +72,15 @@ def test_mmcif_object_parsing(mmcif_dir: str, complex_id: str) -> None:
 @pytest.mark.parametrize("mmcif_dir", [os.path.join("data", "pdb_data", "unfiltered_mmcifs")])
 @pytest.mark.parametrize("num_random_complexes_to_parse", [100])
 @pytest.mark.parametrize("random_seed", [1])
-def test_random_mmcif_objects_parsing(
+def test_unfiltered_random_mmcif_objects_parsing(
     mmcif_dir: str,
     num_random_complexes_to_parse: int,
     random_seed: int,
 ) -> None:
-    """Tests mmCIF file parsing and `Biomolecule` object creation with (random) batch parsing.
+    """Tests mmCIF file parsing and `Biomolecule` object creation for a random batch
+    of unfiltered mmCIF files.
 
-    :param mmcif_dir: The directory containing all (filtered) PDB mmCIF files.
+    :param mmcif_dir: The directory containing all (unfiltered) PDB mmCIF files.
     :param num_random_complexes_to_parse: The number of random complexes to parse.
     :param random_seed: The random seed for reproducibility.
     """

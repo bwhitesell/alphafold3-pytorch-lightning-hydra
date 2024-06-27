@@ -65,7 +65,7 @@ from alphafold3_pytorch.data.mmcif_parsing import MmcifObject
 from alphafold3_pytorch.utils.custom_typing import AtomType, ResidueType, TokenType, typecheck
 from alphafold3_pytorch.utils.data_utils import (
     get_biopython_chain_residue_by_composite_id,
-    is_polymeric,
+    is_polymer,
     is_water,
 )
 from alphafold3_pytorch.utils.utils import exists
@@ -133,7 +133,7 @@ def filter_polymer_chains(
         chain
         for chain in mmcif_object.structure.get_chains()
         if any(
-            is_polymeric(mmcif_object.all_chem_comp_details[chain.id][res_index].type)
+            is_polymer(mmcif_object.all_chem_comp_details[chain.id][res_index].type)
             for res_index in range(len(mmcif_object.chain_to_seqres[chain.id]))
         )
     ]
@@ -152,7 +152,7 @@ def filter_resolved_chains(
             [
                 res_index
                 for res_index in range(len(mmcif_object.chain_to_seqres[chain.id]))
-                if is_polymeric(mmcif_object.all_chem_comp_details[chain.id][res_index].type)
+                if is_polymer(mmcif_object.all_chem_comp_details[chain.id][res_index].type)
                 and not mmcif_object.seqres_to_structure[chain.id][res_index].is_missing
             ]
         )
@@ -212,7 +212,7 @@ def remove_polymer_chains_with_all_unknown_residues(mmcif_object: MmcifObject) -
         chain.get_full_id()
         for chain in mmcif_object.structure.get_chains()
         if not any(
-            is_polymeric(mmcif_object.all_chem_comp_details[chain.id][res_index].type)
+            is_polymer(mmcif_object.all_chem_comp_details[chain.id][res_index].type)
             and mmcif_object.chain_to_seqres[chain.id][res_index] != "X"
             for res_index in range(len(mmcif_object.chain_to_seqres[chain.id]))
         )
@@ -385,10 +385,10 @@ def remove_leaving_atoms(
             # we need a zero-based index into the residue's chemical component details
             ptnr1_res_index = list(ptnr1_chain).index(ptnr1_res)
             ptnr2_res_index = list(ptnr2_chain).index(ptnr2_res)
-            ptnr1_res_is_ligand = not is_polymeric(
+            ptnr1_res_is_ligand = not is_polymer(
                 mmcif_object.chem_comp_details[ptnr1_chain.id][ptnr1_res_index].type
             )
-            ptnr2_res_is_ligand = not is_polymeric(
+            ptnr2_res_is_ligand = not is_polymer(
                 mmcif_object.chem_comp_details[ptnr2_chain.id][ptnr2_res_index].type
             )
 
@@ -707,7 +707,7 @@ def get_unique_res_atom_names(mmcif_object: MmcifObject) -> List[List[List[str]]
     for chain in mmcif_object.structure:
         chain_chem_comp = mmcif_object.chem_comp_details[chain.id]
         for res, res_chem_comp in zip(chain, chain_chem_comp):
-            is_polymer_residue = is_polymeric(res_chem_comp.type)
+            is_polymer_residue = is_polymer(res_chem_comp.type)
             residue_constants = get_residue_constants(res_chem_type=res_chem_comp.type)
             if is_polymer_residue:
                 # For polymer residues, append the atom types directly.
@@ -766,11 +766,13 @@ def filter_structure_with_timeout(filepath: str, output_dir: str):
         print(f"Skipping target due to prefiltering: {file_id}")
         return
     # Filtering of bioassemblies
-    # NOTE: Here, we remove waters even though the AlphaFold 3 supplement doesn't mention removing them during filtering.
+    # NOTE: Here, we remove waters even though the AlphaFold 3 supplement doesn't mention removing them during filtering
     mmcif_object = remove_hydrogens(mmcif_object, remove_waters=True)
     mmcif_object = remove_polymer_chains_with_all_unknown_residues(mmcif_object)
     mmcif_object = remove_clashing_chains(mmcif_object)
-    mmcif_object = remove_excluded_ligands(mmcif_object, LIGAND_EXCLUSION_SET)
+    # NOTE: We skip this step to stay in line with the AlphaFold 3 supplement,
+    # as it seems ligands are only excluded from the benchmark datasets
+    # mmcif_object = remove_excluded_ligands(mmcif_object, LIGAND_EXCLUSION_SET)
     mmcif_object = remove_non_ccd_atoms(mmcif_object, CCD_READER_RESULTS)
     mmcif_object = remove_leaving_atoms(mmcif_object, CCD_READER_RESULTS)
     mmcif_object = filter_large_ca_distances(mmcif_object)

@@ -328,8 +328,8 @@ def parse(
             mmcif_current_mapping = mmcif_seq_to_structure_mappings[chain_id]
             for idx, monomer in enumerate(seq_info):
                 seq_idx = idx + (mmcif_seq_start_num[chain_id] - 1)
-                # NOTE: Water residues are often not labeled consecutively by authors (e.g., see PDB 100d),
-                # so we avoid marking them as missing in this scenario.
+                # NOTE: Water residues are often not labeled consecutively by authors
+                # (e.g., see PDB 100d), so we avoid marking them as missing in this scenario.
                 if seq_idx not in mmcif_current_mapping and not is_water(chem_comp_info[idx].id):
                     position = ResiduePosition(
                         chain_id=chain_id,
