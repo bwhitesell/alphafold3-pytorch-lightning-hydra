@@ -44,7 +44,7 @@ def test_mmcif_object_parsing(mmcif_dir: str, complex_id: str) -> None:
 @pytest.mark.parametrize("mmcif_dir", [os.path.join("data", "pdb_data", "mmcifs")])
 @pytest.mark.parametrize("num_random_complexes_to_parse", [25])
 @pytest.mark.parametrize("random_seed", [1])
-def test_mmcif_objects_parsing(
+def test_random_mmcif_objects_parsing(
     mmcif_dir: str,
     num_random_complexes_to_parse: int,
     random_seed: int,
@@ -56,6 +56,9 @@ def test_mmcif_objects_parsing(
     :param random_seed: The random seed for reproducibility.
     """
     random.seed(random_seed)
+
+    if not os.path.exists(mmcif_dir):
+        pytest.skip(f"Directory '{mmcif_dir}' does not exist.")
 
     mmcif_subdirs = [
         os.path.join(mmcif_dir, subdir)
