@@ -13,7 +13,7 @@ from Bio.Data import PDBData
 
 from alphafold3_pytorch.common import amino_acid_constants
 from alphafold3_pytorch.data.errors import MultipleChainsError
-from alphafold3_pytorch.utils.data_utils import is_water
+from alphafold3_pytorch.utils.data_utils import is_polymer, is_water
 
 # Type aliases:
 ChainId = str
@@ -331,6 +331,10 @@ def parse(
                 # NOTE: Water residues are often not labeled consecutively by authors
                 # (e.g., see PDB 100d), so we avoid marking them as missing in this scenario.
                 if seq_idx not in mmcif_current_mapping and not is_water(chem_comp_info[idx].id):
+                    if not is_polymer(chem_comp_info[idx].type):
+                        hetflag = "H_" + chem_comp_info[idx].id
+                    else:
+                        hetflag = " "
                     position = ResiduePosition(
                         chain_id=chain_id,
                         residue_number=seq_idx + 1,
@@ -340,7 +344,7 @@ def parse(
                         position=position,
                         name=monomer.id,
                         is_missing=True,
-                        hetflag=" ",
+                        hetflag=hetflag,
                     )
             mmcif_seq_to_structure_mappings[chain_id] = dict(
                 sorted(mmcif_current_mapping.items(), key=lambda x: x[0])
@@ -385,6 +389,11 @@ def parse(
         # NOTE: All three of the following variables need to be perfectly matching
         # in terms of sequence contents to guarantee correctness for downstream code.
         for author_chain in author_chain_to_sequence:
+            # Ensure the `seq_to_structure_mappings` is zero-indexed and does not contain index gaps.
+            seq_to_structure_mappings[author_chain] = {
+                i: value
+                for i, value in enumerate(seq_to_structure_mappings[author_chain].values())
+            }
             assert (
                 len(author_chain_to_sequence[author_chain])
                 == len(all_chem_comp_details[author_chain])
@@ -395,11 +404,6 @@ def parse(
                 f"{len(all_chem_comp_details[author_chain])} != "
                 f"{len(seq_to_structure_mappings[author_chain])}"
             )
-            # Ensure the `seq_to_structure_mappings` is zero-indexed and does not contain index gaps.
-            seq_to_structure_mappings[author_chain] = {
-                i: value
-                for i, value in enumerate(seq_to_structure_mappings[author_chain].values())
-            }
 
         # Identify only chemical component details that are present in the structure.
         chem_comp_details = {

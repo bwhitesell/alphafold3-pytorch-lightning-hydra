@@ -147,6 +147,13 @@ def _from_mmcif_object(
       unknown residue type for the residue's chemical type (e.g., RNA).
       All non-standard atoms will be ignored.
 
+    WARNING: The residues in each chain will be reindexed to start at 1 and to be
+      monotonically increasing, potentially in contrast to the original residue indices
+      in the input mmCIF object. This is to enable successful re-parsing of any mmCIF
+      objects written to a new mmCIF file using the `to_mmcif()` function, as including
+      missing residues (denoted by gaps in residue indices) in an output mmCIF file
+      can cause numerous downstream parsing errors.
+
     :param mmcif_object: The parsed Biopython structure/model mmCIF object.
     :param chain_id: If chain_id is specified (e.g. A), then only that chain is parsed.
         Otherwise all chains are parsed.
@@ -185,7 +192,7 @@ def _from_mmcif_object(
             if res.id[2] != " ":
                 raise ValueError(
                     f"mmCIF contains an insertion code at chain {chain.id} and"
-                    f" residue index {res.id[1]}. These are not supported."
+                    f" original (new) residue index {res.id[1]} ({res_index + 1}). These are not supported."
                 )
             res_chem_comp_details = mmcif_object.chem_comp_details[chain.id][res_index]
             assert res.resname == res_chem_comp_details.id, (
@@ -216,7 +223,7 @@ def _from_mmcif_object(
                 chemtype.append(residue_constants.chemtype_num)
                 atom_positions.append(pos)
                 atom_mask.append(mask)
-                residue_index.append(res.id[1])
+                residue_index.append(res_index + 1)
                 chain_ids.append(chain.id)
                 b_factors.append(res_b_factors)
                 if res_shortname == "X":
@@ -250,7 +257,7 @@ def _from_mmcif_object(
                     chemtype.append(residue_constants.chemtype_num)
                     atom_positions.append(pos)
                     atom_mask.append(mask)
-                    residue_index.append(res.id[1])
+                    residue_index.append(res_index + 1)
                     chain_ids.append(chain.id)
                     b_factors.append(res_b_factors)
 

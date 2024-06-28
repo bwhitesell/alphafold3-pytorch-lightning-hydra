@@ -14,7 +14,7 @@ os.environ["TYPECHECK"] = "True"
 
 
 @pytest.mark.parametrize("mmcif_dir", [os.path.join("data", "pdb_data", "unfiltered_mmcifs")])
-@pytest.mark.parametrize("complex_id", ["100d", "1k7a", "6adq", "7a4d", "8a3j"])
+@pytest.mark.parametrize("complex_id", ["100d", "1k7a", "4xij", "6adq", "7a4d", "8a3j"])
 def test_unfiltered_mmcif_object_parsing(mmcif_dir: str, complex_id: str) -> None:
     """Tests mmCIF file parsing and `Biomolecule` object creation for unfiltered mmCIF files.
 
@@ -42,7 +42,7 @@ def test_unfiltered_mmcif_object_parsing(mmcif_dir: str, complex_id: str) -> Non
 
 
 @pytest.mark.parametrize("mmcif_dir", [os.path.join("data", "pdb_data", "mmcifs")])
-@pytest.mark.parametrize("complex_id", ["100d", "1k7a", "6adq", "7a4d", "8a3j"])
+@pytest.mark.parametrize("complex_id", ["100d", "1k7a", "4xij", "6adq", "7a4d", "8a3j"])
 def test_filtered_mmcif_object_parsing(mmcif_dir: str, complex_id: str) -> None:
     """Tests mmCIF file parsing and `Biomolecule` object creation for filtered mmCIF files.
 
@@ -70,7 +70,7 @@ def test_filtered_mmcif_object_parsing(mmcif_dir: str, complex_id: str) -> None:
 
 
 @pytest.mark.parametrize("mmcif_dir", [os.path.join("data", "pdb_data", "unfiltered_mmcifs")])
-@pytest.mark.parametrize("num_random_complexes_to_parse", [100])
+@pytest.mark.parametrize("num_random_complexes_to_parse", [500])
 @pytest.mark.parametrize("random_seed", [1])
 def test_unfiltered_random_mmcif_objects_parsing(
     mmcif_dir: str,
@@ -89,6 +89,9 @@ def test_unfiltered_random_mmcif_objects_parsing(
     if not os.path.exists(mmcif_dir):
         pytest.skip(f"Directory '{mmcif_dir}' does not exist.")
 
+    parsing_errors = []
+    failed_complex_indices = []
+    failed_random_complex_filepaths = []
     mmcif_subdirs = [
         os.path.join(mmcif_dir, subdir)
         for subdir in os.listdir(mmcif_dir)
@@ -121,8 +124,16 @@ def test_unfiltered_random_mmcif_objects_parsing(
         )
 
         if parsing_result.mmcif_object is None:
-            print(f"Failed to parse file at index {complex_index}: '{random_complex_filepath}'.")
-            raise list(parsing_result.errors.values())[0]
+            parsing_errors.append(list(parsing_result.errors.values())[0])
+            failed_complex_indices.append(complex_index)
+            failed_random_complex_filepaths.append(random_complex_filepath)
+
+    if parsing_result.mmcif_object is None:
+        print(
+            f"Failed to parse {len(parsing_errors)} files at indices {failed_complex_indices}: '{failed_random_complex_filepaths}'."
+        )
+        for error in parsing_errors:
+            raise error
 
 
 if __name__ == "__main__":
