@@ -30,6 +30,8 @@ MMCIF_PREFIXES_TO_DROP_POST_PARSING = [
     "_entity_poly_seq.",
     "_pdbx_nonpoly_scheme.",
     "_pdbx_poly_seq_scheme.",
+    "_pdbx_struct_assembly.",
+    "_pdbx_struct_assembly_gen.",
     "_struct_asym.",
 ]
 MMCIF_PREFIXES_TO_DROP_POST_AF3 = MMCIF_PREFIXES_TO_DROP_POST_PARSING + [
@@ -86,6 +88,12 @@ class Biomolecule:
     # N.b., this is primarily used to record chemical component metadata
     # (e.g., when exporting an mmCIF file from a Biomolecule object).
     chem_comp_table: Set[mmcif_parsing.ChemComp]  # [num_unique_chem_comp]
+
+    # Mapping from entity ID string to chain ID strings.
+    entity_to_chain: Dict[str, List[str]]  # [1]
+
+    # Mapping from (internal) mmCIF chain ID string to integer author chain ID.
+    mmcif_to_author_chain: Dict[str, int]  # [1]
 
     # Raw mmCIF metadata dictionary parsed for the biomolecule using Biopython.
     # N.b., this is primarily used to retain mmCIF assembly metadata
@@ -278,6 +286,20 @@ def _from_mmcif_object(
     chain_id_mapping = {cid: n for n, cid in enumerate(unique_chain_ids)}
     chain_index = np.array([chain_id_mapping[cid] for cid in chain_ids])
 
+    # Construct a mapping from an integer entity ID to integer chain IDs.
+    entity_to_chain = {
+        entity: [chain_id_mapping[chain] for chain in chains if chain in chain_id_mapping]
+        for entity, chains in mmcif_object.entity_to_chain.items()
+        if any(chain in chain_id_mapping for chain in chains)
+    }
+
+    # Construct a mapping from (internal) mmCIF chain ID string to integer author chain ID.
+    mmcif_to_author_chain = {
+        mmcif_chain: chain_id_mapping[author_chain]
+        for mmcif_chain, author_chain in mmcif_object.mmcif_to_author_chain.items()
+        if author_chain in chain_id_mapping
+    }
+
     return Biomolecule(
         atom_positions=np.array(atom_positions),
         restype=np.array(restype),
@@ -288,6 +310,8 @@ def _from_mmcif_object(
         chemid=np.array(chemid),
         chemtype=np.array(chemtype),
         chem_comp_table=residue_chem_comp_details,
+        entity_to_chain=entity_to_chain,
+        mmcif_to_author_chain=mmcif_to_author_chain,
         mmcif_metadata=mmcif_object.raw_string,
     )
 
@@ -416,6 +440,9 @@ def to_mmcif(
     b_factors = biomol.b_factors
     chemid = biomol.chemid
     chemtype = biomol.chemtype
+    entity_id_to_chain_ids = biomol.entity_to_chain
+    mmcif_to_author_chain_ids = biomol.mmcif_to_author_chain
+    orig_mmcif_metadata = biomol.mmcif_metadata
 
     # Via unique chain-residue indexing, ensure that each ligand residue
     # is represented by only a single atom for all logic except atom site parsing.
@@ -431,10 +458,10 @@ def to_mmcif(
     unique_chemid = chemid[unique_indices]
     unique_chemtype = chemtype[unique_indices]
 
-    # Construct a mapping from chain integer indices to chain ID strings.
+    # Construct a mapping from integer chain indices to chain ID strings.
     chain_ids = {}
-    for entity_id in np.unique(unique_chain_index):  # np.unique gives sorted output.
-        chain_ids[entity_id] = _int_id_to_str_id(entity_id + 1)
+    for chain_id in np.unique(unique_chain_index):  # np.unique gives sorted output.
+        chain_ids[chain_id] = _int_id_to_str_id(chain_id + 1)
 
     mmcif_dict = collections.defaultdict(list)
 
@@ -442,22 +469,126 @@ def to_mmcif(
     mmcif_dict["_entry.id"] = file_id.upper()
 
     label_asym_id_to_entity_id = {}
+    unique_polymer_entity_pdbx_strand_ids = set()
     # Entity and chain information.
-    for entity_id, chain_id in chain_ids.items():
-        # Determine the (majority) chemical type of the chain.
-        res_chemindex = np_mode(unique_chemtype[unique_chain_index == entity_id])[0].item()
-        residue_constants = get_residue_constants(res_chem_index=res_chemindex)
-        # Add all chain information to the _struct_asym table.
-        label_asym_id_to_entity_id[str(chain_id)] = str(entity_id)
-        mmcif_dict["_struct_asym.id"].append(chain_id)
-        mmcif_dict["_struct_asym.entity_id"].append(str(entity_id))
-        # Add information about the entity to the _entity_poly table.
-        mmcif_dict["_entity_poly.entity_id"].append(str(entity_id))
-        mmcif_dict["_entity_poly.type"].append(residue_constants.BIOMOLECULE_CHAIN)
-        mmcif_dict["_entity_poly.pdbx_strand_id"].append(chain_id)
-        # Generate the _entity table.
+    for entity_id, entity_chain_ids in entity_id_to_chain_ids.items():
+        assert len(entity_chain_ids) > 0, f"Entity {entity_id} must contain at least one chain."
+        entity_types = []
+        polymer_entity_types = []
+        polymer_entity_pdbx_strand_ids = []
+        for chain_id in entity_chain_ids:
+            # Determine the (majority) chemical type of the chain.
+            res_chemindex = np_mode(unique_chemtype[unique_chain_index == chain_id])[0].item()
+            residue_constants = get_residue_constants(res_chem_index=res_chemindex)
+            # Add all chain information to the _struct_asym table.
+            label_asym_id_to_entity_id[chain_ids[chain_id]] = str(entity_id)
+            mmcif_dict["_struct_asym.id"].append(chain_ids[chain_id])
+            mmcif_dict["_struct_asym.entity_id"].append(str(entity_id))
+            # Collect entity information for each chain.
+            entity_types.append(residue_constants.POLYMER_CHAIN)
+            # Collect only polymer information for each chain.
+            if res_chemindex < 3:
+                polymer_entity_types.append(residue_constants.BIOMOLECULE_CHAIN)
+                polymer_entity_pdbx_strand_ids.append(chain_ids[chain_id])
+                unique_polymer_entity_pdbx_strand_ids.add(chain_ids[chain_id])
+
+        # Generate the _entity table, labeling the entity's (majority) type.
+        entity_type = np_mode(np.array(entity_types))[0].item()
         mmcif_dict["_entity.id"].append(str(entity_id))
-        mmcif_dict["_entity.type"].append(residue_constants.POLYMER_CHAIN)
+        mmcif_dict["_entity.type"].append(entity_type)
+        # Add information about the polymer entities to the _entity_poly table,
+        # labeling each polymer entity's (majority) type.
+        if polymer_entity_types:
+            polymer_entity_type = np_mode(np.array(polymer_entity_types))[0].item()
+            mmcif_dict["_entity_poly.entity_id"].append(str(entity_id))
+            mmcif_dict["_entity_poly.type"].append(polymer_entity_type)
+            mmcif_dict["_entity_poly.pdbx_strand_id"].append(
+                ",".join(polymer_entity_pdbx_strand_ids)
+            )
+
+    # Bioassembly information.
+    # Export latest data for the _pdbx_struct_assembly_gen table.
+    pdbx_struct_assembly_oligomeric_count = collections.defaultdict(int)
+    pdbx_struct_assembly_gen_assembly_ids = orig_mmcif_metadata.get(
+        "_pdbx_struct_assembly_gen.assembly_id", []
+    )
+    pdbx_struct_assembly_gen_oper_expressions = orig_mmcif_metadata.get(
+        "_pdbx_struct_assembly_gen.oper_expression", []
+    )
+    pdbx_struct_assembly_gen_asym_id_lists = orig_mmcif_metadata.get(
+        "_pdbx_struct_assembly_gen.asym_id_list", []
+    )
+    if any(
+        len(item) > 0
+        for item in (
+            pdbx_struct_assembly_gen_assembly_ids,
+            pdbx_struct_assembly_gen_oper_expressions,
+            pdbx_struct_assembly_gen_asym_id_lists,
+        )
+    ):
+        # Sanity-check the lengths of the _pdbx_struct_assembly_gen table entries.
+        assert (
+            len(pdbx_struct_assembly_gen_assembly_ids)
+            == len(pdbx_struct_assembly_gen_oper_expressions)
+            == len(pdbx_struct_assembly_gen_asym_id_lists)
+        ), f"Mismatched lengths ({len(pdbx_struct_assembly_gen_assembly_ids)}, {len(pdbx_struct_assembly_gen_oper_expressions)}, {len(pdbx_struct_assembly_gen_asym_id_lists)}) for _pdbx_struct_assembly_gen table entries."
+    for assembly_id, oper_expression, asym_id_list in zip(
+        pdbx_struct_assembly_gen_assembly_ids,
+        pdbx_struct_assembly_gen_oper_expressions,
+        pdbx_struct_assembly_gen_asym_id_lists,
+    ):
+        author_asym_ids = []
+        for asym_id in asym_id_list.split(","):
+            if asym_id not in mmcif_to_author_chain_ids:
+                continue
+            author_asym_id = chain_ids[mmcif_to_author_chain_ids[asym_id]]
+            if author_asym_id in unique_polymer_entity_pdbx_strand_ids:
+                author_asym_ids.append(author_asym_id)
+        if not author_asym_ids:
+            continue
+        # In original order, remove any duplicate author chains arising from the many-to-one mmCIF-to-author chain mapping.
+        author_asym_ids = list(dict.fromkeys(author_asym_ids))
+        mmcif_dict["_pdbx_struct_assembly_gen.assembly_id"].append(str(assembly_id))
+        mmcif_dict["_pdbx_struct_assembly_gen.oper_expression"].append(str(oper_expression))
+        mmcif_dict["_pdbx_struct_assembly_gen.asym_id_list"].append(",".join(author_asym_ids))
+        pdbx_struct_assembly_oligomeric_count[assembly_id] += sum(
+            # Only count polymer entities in the oligomeric count.
+            asym_id in unique_polymer_entity_pdbx_strand_ids
+            for asym_id in author_asym_ids
+        )
+    # Export latest data for the _pdbx_struct_assembly table.
+    pdbx_struct_assembly_gen_ids = set(mmcif_dict["_pdbx_struct_assembly_gen.assembly_id"])
+    pdbx_struct_assembly_ids = orig_mmcif_metadata.get("_pdbx_struct_assembly.id", [])
+    pdbx_struct_assembly_details = orig_mmcif_metadata.get("_pdbx_struct_assembly.details", [])
+    if any(
+        len(item) > 0
+        for item in (
+            pdbx_struct_assembly_ids,
+            pdbx_struct_assembly_details,
+        )
+    ):
+        # Sanity-check the lengths of the _pdbx_struct_assembly table entries.
+        assert len(pdbx_struct_assembly_ids) == len(
+            pdbx_struct_assembly_details
+        ), f"Mismatched lengths ({len(pdbx_struct_assembly_ids)}, {len(pdbx_struct_assembly_details)}) for _pdbx_struct_assembly table entries."
+    for assembly_id, assembly_details in zip(
+        pdbx_struct_assembly_ids,
+        pdbx_struct_assembly_details,
+    ):
+        if assembly_id not in pdbx_struct_assembly_gen_ids:
+            continue
+        mmcif_dict["_pdbx_struct_assembly.id"].append(str(assembly_id))
+        mmcif_dict["_pdbx_struct_assembly.details"].append(str(assembly_details))
+        mmcif_dict["_pdbx_struct_assembly.oligomeric_details"].append(
+            "?"
+        )  # NOTE: After chain filtering, we cannot assume the oligmeric state.
+        mmcif_dict["_pdbx_struct_assembly.oligomeric_count"].append(
+            str(pdbx_struct_assembly_oligomeric_count[assembly_id])
+        )
+    assert mmcif_dict[
+        "_pdbx_struct_assembly_gen.assembly_id"
+    ], "No _pdbx_struct_assembly_gen.assembly_id entries found."
+    assert mmcif_dict["_pdbx_struct_assembly.id"], "No _pdbx_struct_assembly.id entries found."
 
     # Populate the _chem_comp table.
     for chem_comp in biomol.chem_comp_table:
@@ -467,7 +598,7 @@ def to_mmcif(
     chem_comp_ids = set(mmcif_dict["_chem_comp.id"])
 
     # Add the polymer residues to the _pdbx_poly_seq_scheme table.
-    for entity_id, (res_ids, chemids, chemindices) in _get_entity_seq(
+    for chain_id, (res_ids, chemids, chemindices) in _get_chain_seq(
         unique_restype,
         unique_residue_index,
         unique_chain_index,
@@ -477,8 +608,10 @@ def to_mmcif(
         non_polymer_only=False,
     ).items():
         for res_id, res_chemid, res_chemindex in zip(res_ids, chemids, chemindices):
-            mmcif_dict["_pdbx_poly_seq_scheme.asym_id"].append(chain_ids[entity_id])
-            mmcif_dict["_pdbx_poly_seq_scheme.entity_id"].append(str(entity_id))
+            mmcif_dict["_pdbx_poly_seq_scheme.asym_id"].append(chain_ids[chain_id])
+            mmcif_dict["_pdbx_poly_seq_scheme.entity_id"].append(
+                label_asym_id_to_entity_id[chain_ids[chain_id]]
+            )
             mmcif_dict["_pdbx_poly_seq_scheme.seq_id"].append(str(res_id))
             mmcif_dict["_pdbx_poly_seq_scheme.auth_seq_num"].append(str(res_id))
             mmcif_dict["_pdbx_poly_seq_scheme.pdb_seq_num"].append(str(res_id))
@@ -496,7 +629,7 @@ def to_mmcif(
                 mmcif_dict["_chem_comp.name"].append(residue_constants.unk_chemname)
 
     # Add the non-polymer residues to the _pdbx_nonpoly_scheme table.
-    for entity_id, (res_ids, chemids, chemindices) in _get_entity_seq(
+    for chain_id, (res_ids, chemids, chemindices) in _get_chain_seq(
         unique_restype,
         unique_residue_index,
         unique_chain_index,
@@ -506,8 +639,10 @@ def to_mmcif(
         non_polymer_only=True,
     ).items():
         for res_id, res_chemid, res_chemindex in zip(res_ids, chemids, chemindices):
-            mmcif_dict["_pdbx_nonpoly_scheme.asym_id"].append(chain_ids[entity_id])
-            mmcif_dict["_pdbx_nonpoly_scheme.entity_id"].append(str(entity_id))
+            mmcif_dict["_pdbx_nonpoly_scheme.asym_id"].append(chain_ids[chain_id])
+            mmcif_dict["_pdbx_nonpoly_scheme.entity_id"].append(
+                label_asym_id_to_entity_id[chain_ids[chain_id]]
+            )
             mmcif_dict["_pdbx_nonpoly_scheme.auth_seq_num"].append(str(res_id))
             mmcif_dict["_pdbx_nonpoly_scheme.pdb_seq_num"].append(str(res_id))
             mmcif_dict["_pdbx_nonpoly_scheme.auth_mon_id"].append(res_chemid)
@@ -605,10 +740,10 @@ def to_mmcif(
                 atom_index += 1
 
     init_metadata_dict = (
-        remove_metadata_fields_by_prefixes(biomol.mmcif_metadata, MMCIF_PREFIXES_TO_DROP_POST_AF3)
+        remove_metadata_fields_by_prefixes(orig_mmcif_metadata, MMCIF_PREFIXES_TO_DROP_POST_AF3)
         if insert_alphafold_mmcif_metadata
         else remove_metadata_fields_by_prefixes(
-            biomol.mmcif_metadata, MMCIF_PREFIXES_TO_DROP_POST_PARSING
+            orig_mmcif_metadata, MMCIF_PREFIXES_TO_DROP_POST_PARSING
         )
     )
     metadata_dict = mmcif_metadata.add_metadata_to_mmcif(
@@ -643,7 +778,7 @@ def _int_id_to_str_id(num: IntType) -> str:
 
 
 @typecheck
-def _get_entity_seq(
+def _get_chain_seq(
     restypes: np.ndarray,
     residue_indices: np.ndarray,
     chain_indices: np.ndarray,
@@ -700,10 +835,10 @@ def _get_entity_seq(
         present[chain_index].append((residue_index, restype))
 
     # Add any missing residues (from 1 to the first residue and for any gaps).
-    entity_poly_seq = {}
+    chain_seq = {}
     for chain_index, present_residues in present.items():
         present_residue_indices = list(
-            dict.fromkeys([x[0] for x in present_residues])
+            dict.fromkeys(x[0] for x in present_residues)
         )  # Preserve order.
         min_res_id = min(present_residue_indices)  # Could be negative.
         max_res_id = max(present_residue_indices)
@@ -732,8 +867,8 @@ def _get_entity_seq(
                 # Unknown residue type of the most common residue chemical type in the chain.
                 new_chemids.append(residue_constants.unk_restype)
                 new_chemtypes.append(res_chemindex)
-        entity_poly_seq[chain_index] = (new_residue_indices, new_chemids, new_chemtypes)
-    return entity_poly_seq
+        chain_seq[chain_index] = (new_residue_indices, new_chemids, new_chemtypes)
+    return chain_seq
 
 
 @typecheck

@@ -50,6 +50,7 @@ class ChemComp:
 class AtomSite:
     """Represents an atom site in an mmCIF file."""
 
+    mmcif_entity_num: int
     residue_name: str
     author_chain_id: str
     mmcif_chain_id: str
@@ -119,6 +120,10 @@ class MmcifObject:
             SEQRES index and a ResidueAtPosition. e.g. {'A': {0: ResidueAtPosition,
                                                             1: ResidueAtPosition,
                                                             ...}}
+        entity_to_chain: Dict mapping entity_id to a list of chain_ids. E.g.
+            {1: ['A', 'B']}
+        mmcif_to_author_chain: Dict mapping internal mmCIF chain ids to author chain ids. E.g.
+            {'A': 'B', 'B', 'B'}
         covalent_bonds: List of CovalentBond.
         raw_string: The raw string used to construct the MmcifObject.
         atoms_to_remove: Optional set of atoms to remove.
@@ -133,6 +138,8 @@ class MmcifObject:
     all_chem_comp_details: Mapping[ChainId, Sequence[ChemComp]]
     chain_to_seqres: Mapping[ChainId, SeqRes]
     seqres_to_structure: Mapping[ChainId, Mapping[int, ResidueAtPosition]]
+    entity_to_chain: Mapping[int, Sequence[str]]
+    mmcif_to_author_chain: Mapping[str, str]
     covalent_bonds: Sequence[CovalentBond]
     raw_string: Any
     atoms_to_remove: Set[AtomFullId]
@@ -285,7 +292,9 @@ def parse(
 
         # Loop over the atoms for which we have coordinates. Populate a mapping:
         # -mmcif_seq_to_structure_mappings (maps mmCIF idx into sequence to author ResidueAtPosition).
+        # -author_entity_to_chain_mappings (maps author chain ids to entity ids).
         mmcif_seq_to_structure_mappings = {}
+        mmcif_entity_to_author_chain_mappings = defaultdict(dict)
         for atom in atom_site_list:
             if atom.model_num != "1":
                 # We only process the first model at the moment.
@@ -321,6 +330,9 @@ def parse(
                     hetflag=hetflag,
                 )
                 mmcif_seq_to_structure_mappings[atom.mmcif_chain_id] = mmcif_current
+                mmcif_entity_to_author_chain_mappings[atom.mmcif_entity_num][
+                    atom.author_chain_id
+                ] = True
 
         # Add missing residue information to mmcif_seq_to_structure_mappings.
         for chain_id, (seq_info, chem_comp_info) in valid_chains.items():
@@ -415,6 +427,12 @@ def parse(
             for chain_id in all_chem_comp_details
         }
 
+        # Simplify entity-to-chain mapping.
+        entity_to_chain = {
+            entity_id: list(chains.keys())
+            for entity_id, chains in mmcif_entity_to_author_chain_mappings.items()
+        }
+
         # Identify all covalent bonds.
         covalent_bonds = _get_covalent_bond_list(parsed_info)
 
@@ -426,6 +444,8 @@ def parse(
             all_chem_comp_details=all_chem_comp_details,
             chain_to_seqres=author_chain_to_sequence,
             seqres_to_structure=seq_to_structure_mappings,
+            entity_to_chain=entity_to_chain,
+            mmcif_to_author_chain=mmcif_to_author_chain_id,
             covalent_bonds=covalent_bonds,
             raw_string=parsed_info,
             atoms_to_remove=set(),
@@ -490,6 +510,7 @@ def _get_atom_site_list(parsed_info: MmCIFDict) -> Sequence[AtomSite]:
     return [
         AtomSite(*site)
         for site in zip(  # pylint:disable=g-complex-comprehension
+            parsed_info["_atom_site.label_entity_id"],
             parsed_info["_atom_site.label_comp_id"],
             parsed_info["_atom_site.auth_asym_id"],
             parsed_info["_atom_site.label_asym_id"],
