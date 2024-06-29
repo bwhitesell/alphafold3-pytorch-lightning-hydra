@@ -7,7 +7,7 @@ from beartype.door import is_bearable
 from Bio.PDB.Atom import Atom, DisorderedAtom
 from Bio.PDB.Chain import Chain
 from Bio.PDB.Residue import DisorderedResidue, Residue
-from jaxtyping import Bool, Float, Int, jaxtyped
+from jaxtyping import Bool, Float, Int, Shaped, jaxtyped
 from torch import Tensor
 
 from alphafold3_pytorch.utils.utils import always, identity
@@ -31,6 +31,7 @@ class TorchTyping:
         return self.abstract_dtype[Tensor, shapes]
 
 
+Shaped = TorchTyping(Shaped)
 Float = TorchTyping(Float)
 Int = TorchTyping(Int)
 Bool = TorchTyping(Bool)
@@ -51,4 +52,4 @@ typecheck = jaxtyped(typechecker=beartype) if should_typecheck else identity
 
 beartype_isinstance = is_bearable if should_typecheck else always(True)
 
-__all__ = [Float, Int, Bool, typecheck, beartype_isinstance]
+__all__ = [beartype_isinstance, Bool, Float, Int, Shaped, typecheck]

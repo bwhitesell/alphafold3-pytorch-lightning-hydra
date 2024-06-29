@@ -34,8 +34,8 @@ class AttentionConfig(NamedTuple):
 
 @typecheck
 def full_pairwise_repr_to_windowed(
-    pairwise_repr: Float["... m m dp"] | Int["... m m dp"], window_size: int  # type: ignore
-) -> Float["... n w (w*2) dp"] | Int["... n w (w*2) dp"]:  # type: ignore
+    pairwise_repr: Shaped["... m m dp"], window_size: int  # type: ignore
+) -> Shaped["... n w (w*2) dp"]:  # type: ignore
     """
     Convert a full pairwise representation matrix to a local windowed one.
 
@@ -63,8 +63,8 @@ def full_pairwise_repr_to_windowed(
 
 @typecheck
 def full_attn_bias_to_windowed(
-    attn_bias: Float["... m m"] | Int["... m m"], window_size: int  # type: ignore
-) -> Float["... n w (w*2)"] | Int["... n w (w*2)"]:  # type: ignore
+    attn_bias: Shaped["... m m"], window_size: int  # type: ignore
+) -> Shaped["... n w (w*2)"]:  # type: ignore
     """
     Convert a full attention bias matrix to a local windowed one.
 
