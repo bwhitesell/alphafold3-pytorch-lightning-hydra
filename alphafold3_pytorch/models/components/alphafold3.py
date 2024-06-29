@@ -3420,7 +3420,7 @@ class Alphafold3(Module):
         atom_ids: Int["b m"] | None = None,  # type: ignore
         atompair_ids: Int["b m m"] | Int["b nw w1 w2"] | None = None,  # type: ignore
         atom_mask: Bool["b m"] | None = None,  # type: ignore
-        token_bond: Bool["b n n"] | None = None,  # type: ignore
+        token_bonds: Bool["b n n"] | None = None,  # type: ignore
         msa: Float["b s n d"] | None = None,  # type: ignore
         msa_mask: Bool["b s"] | None = None,  # type: ignore
         templates: Float["b t n n dt"] | None = None,  # type: ignore
@@ -3449,7 +3449,7 @@ class Alphafold3(Module):
         :param additional_molecule_feats: The additional molecule features tensor.
         :param molecule_atom_lens: The molecule atom lengths tensor.
         :param atom_mask: The atom mask tensor.
-        :param token_bond: The token bond tensor.
+        :param token_bonds: The token bonds tensor.
         :param msa: The multiple sequence alignment tensor.
         :param msa_mask: The multiple sequence alignment mask tensor.
         :param templates: The templates tensor.
@@ -3562,21 +3562,21 @@ class Alphafold3(Module):
 
         # token bond features
 
-        if exists(token_bond):
+        if exists(token_bonds):
             # well do some precautionary standardization
             # (1) mask out diagonal - token to itself does not count as a bond
             # (2) symmetrize, in case it is not already symmetrical (could also throw an error)
 
-            token_bond = token_bond | rearrange(token_bond, "b i j -> b j i")
+            token_bonds = token_bonds | rearrange(token_bonds, "b i j -> b j i")
             diagonal = torch.eye(seq_len, device=self.device, dtype=torch.bool)
-            token_bond = token_bond.masked_fill(diagonal, False)
+            token_bonds = token_bonds.masked_fill(diagonal, False)
         else:
             seq_arange = torch.arange(seq_len, device=self.device)
-            token_bond = einx.subtract("i, j -> i j", seq_arange, seq_arange).abs() == 1
+            token_bonds = einx.subtract("i, j -> i j", seq_arange, seq_arange).abs() == 1
 
-        token_bond_feats = self.token_bond_to_pairwise_feat(token_bond.float())
+        token_bonds_feats = self.token_bond_to_pairwise_feat(token_bonds.float())
 
-        pairwise_init = pairwise_init + token_bond_feats
+        pairwise_init = pairwise_init + token_bonds_feats
 
         # molecule mask and pairwise mask
 
