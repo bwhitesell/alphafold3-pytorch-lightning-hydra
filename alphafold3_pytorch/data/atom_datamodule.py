@@ -7,6 +7,10 @@ from lightning import LightningDataModule
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 
+from alphafold3_pytorch.models.components.attention import (
+    full_attn_bias_to_windowed,
+    full_pairwise_repr_to_windowed,
+)
 from alphafold3_pytorch.models.components.inputs import (
     INPUT_TO_ATOM_TRANSFORM,
     AtomInput,
@@ -21,13 +25,17 @@ from alphafold3_pytorch.utils.utils import exists
 
 @typecheck
 def collate_af3_inputs(
-    inputs: List, int_pad_value=-1, map_input_fn: Callable | None = None
+    inputs: List,
+    int_pad_value=-1,
+    atoms_per_window: int | None = None,
+    map_input_fn: Callable | None = None,
 ) -> BatchedAtomInput:
     """
     Collate function for a list of AtomInput objects.
 
     :param inputs: A list of AtomInput objects.
     :param int_pad_value: The padding value for integer tensors.
+    :param atoms_per_window: The number of atoms per window.
     :param map_input_fn: A function to apply to each input before collation.
     :return: A collated BatchedAtomInput object.
     """
@@ -52,6 +60,28 @@ def collate_af3_inputs(
             )
 
         atom_inputs.append(maybe_to_atom_fn(i))
+
+    # take care of windowing the atompair_inputs and atompair_ids if they are not windowed already
+
+    if exists(atoms_per_window):
+        for atom_input in atom_inputs:
+            atompair_inputs = atom_input["atompair_inputs"]
+            atompair_ids = atom_input.get("atompair_ids", None)
+
+            atompair_inputs_is_windowed = atompair_inputs.ndim == 4
+
+            if not atompair_inputs_is_windowed:
+                atom_input["atompair_inputs"] = full_pairwise_repr_to_windowed(
+                    atompair_inputs, window_size=atoms_per_window
+                )
+
+            if exists(atompair_ids):
+                atompair_ids_is_windowed = atompair_ids.ndim == 3
+
+                if not atompair_ids_is_windowed:
+                    atom_input["atompair_ids"] = full_attn_bias_to_windowed(
+                        atompair_ids, window_size=atoms_per_window
+                    )
 
     # separate input dictionary into keys and values
 
@@ -122,18 +152,21 @@ def collate_af3_inputs(
 
 
 @typecheck
-def AF3DataLoader(*args, map_input_fn: Callable | None = None, **kwargs):
+def AF3DataLoader(
+    *args, atoms_per_window: int | None = None, map_input_fn: Callable | None = None, **kwargs
+):
     """
     Create a `torch.utils.data.DataLoader` with the
     `collate_af3_inputs` or `map_input_fn` function
     for data collation.
 
     :param args: The arguments to pass to `torch.utils.data.DataLoader`.
+    :param atoms_per_window: The number of atoms per window.
     :param map_input_fn: A function to apply to each input before collation.
     :param kwargs: The keyword arguments to pass to `torch.utils.data.DataLoader`.
     :return: A `torch.utils.data.DataLoader` with a custom AF3 collate function.
     """
-    collate_fn = collate_af3_inputs
+    collate_fn = partial(collate_af3_inputs, atoms_per_window=atoms_per_window)
 
     if exists(map_input_fn):
         collate_fn = partial(collate_fn, map_input_fn=map_input_fn)
@@ -268,6 +301,7 @@ class AtomDataModule(LightningDataModule):
         train_on_transcription_factor_distillation_sets: bool = False,
         pdb_distillation: Optional[bool] = None,
         max_number_of_chains: int = 20,
+        atoms_per_window: int | None = None,
         map_dataset_input_fn: Optional[Callable] = None,
         batch_size: int = 256,
         num_workers: int = 0,
@@ -286,10 +320,13 @@ class AtomDataModule(LightningDataModule):
         self.batch_size_per_device = batch_size
 
         # if map dataset function given, curry into DataLoader
-        self.dataloader_class = AF3DataLoader
+
+        self.dataloader_class = partial(AF3DataLoader, atoms_per_window=atoms_per_window)
 
         if exists(map_dataset_input_fn):
-            self.dataloader_class = partial(AF3DataLoader, map_input_fn=map_dataset_input_fn)
+            self.dataloader_class = partial(
+                self.dataloader_class, map_input_fn=map_dataset_input_fn
+            )
 
     def prepare_data(self) -> None:
         """Download data if needed. Lightning ensures that `self.prepare_data()` is called only
