@@ -97,6 +97,12 @@ MISC = dict(
     Phospholipid=dict(smile="CCCCCCCCCCCCCCCC(=O)OCC(COP(=O)(O)OCC(CO)O)OC(=O)CCCCCCCC1CC1CCCCCC")
 )
 
+# atoms - for atom embeddings
+
+ATOM_ORDER = ["C", "O", "N", "S", "P", *METALS]
+
+assert len(ATOM_ORDER) == len({*ATOM_ORDER})
+
 # some rdkit helper function
 
 

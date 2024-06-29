@@ -2,6 +2,7 @@ from dataclasses import asdict, dataclass
 from functools import partial
 from typing import Any, Callable, List, Type
 
+import rootutils
 import torch
 from rdkit.Chem.rdchem import Mol
 
@@ -14,13 +15,18 @@ from alphafold3_pytorch.data.life import (
     reverse_complement,
     reverse_complement_tensor,
 )
+from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
 from alphafold3_pytorch.utils.utils import exists, identity
+
+rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
 # constants
 
 IS_MOLECULE_TYPES = 4
 ADDITIONAL_MOLECULE_FEATS = 5
+
+logger = RankedLogger(__name__, rank_zero_only=True)
 
 # functions
 
@@ -126,6 +132,8 @@ class MoleculeInput:
     pae_labels: Int["n n"] | None = None  # type: ignore
     pde_labels: Int[" n"] | None = None  # type: ignore
     resolved_labels: Int[" n"] | None = None  # type: ignore
+    add_atom_ids: bool = False
+    add_atompair_ids: bool = False
 
 
 @typecheck
@@ -134,15 +142,38 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
 
     # molecule_atom_lens
 
+    atoms = []
     atom_lens = []
 
     for mol, is_ligand in zip(mol_input.molecules, mol_input.is_molecule_types[:, -1]):
+        num_atoms = mol.GetNumAtoms()
+
         if is_ligand:
-            atom_lens.extend([1] * mol.GetNumAtoms())
+            atom_lens.extend([1] * num_atoms)
         else:
-            atom_lens.append(mol.GetNumAtoms())
+            atom_lens.append(num_atoms)
+
+        atoms.extend([*mol.GetAtoms()])
 
     total_atoms = sum(atom_lens)
+
+    # handle maybe atom embeds
+
+    atom_ids = None
+    atom_index = {symbol: i for i, symbol in enumerate(ATOM_ORDER)}
+
+    if mol_input.add_atom_ids:
+        atom_ids = []
+
+        for atom in atoms:
+            atom_symbol = atom.GetSymbol()
+            assert (
+                atom_symbol in atom_index
+            ), f"{atom_symbol} not found in the ATOM_ORDERS defined in life.py"
+
+            atom_ids.append(atom_index[atom_symbol])
+
+        atom_ids = torch.tensor(atom_ids, dtype=torch.long)
 
     # atom_inputs
 
@@ -189,6 +220,7 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
         molecule_ids=mol_input.molecule_ids,
         additional_molecule_feats=mol_input.additional_molecule_feats,
         is_molecule_types=mol_input.is_molecule_types,
+        atom_ids=atom_ids,
     )
 
     return atom_input
@@ -217,6 +249,8 @@ class Alphafold3Input:
     pae_labels: Int["n n"] | None = None  # type: ignore
     pde_labels: Int[" n"] | None = None  # type: ignore
     resolved_labels: Int[" n"] | None = None  # type: ignore
+    add_atom_ids: bool = False
+    add_atompair_ids: bool = False
 
 
 @typecheck
@@ -363,6 +397,8 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
         molecule_ids=torch.zeros(num_tokens).long(),
         additional_molecule_feats=torch.zeros(num_tokens, 5).long(),
         is_molecule_types=is_molecule_types,
+        add_atom_ids=alphafold3_input.add_atom_ids,
+        add_atompair_ids=alphafold3_input.add_atompair_ids,
     )
 
     return molecule_input
@@ -401,7 +437,8 @@ INPUT_TO_ATOM_TRANSFORM = {
 @typecheck
 def register_input_transform(input_type: Type, fn: Callable[[Any], AtomInput]):
     """Registers a new input transform function."""
-    assert input_type not in INPUT_TO_ATOM_TRANSFORM, f"{input_type} is already registered"
+    if input_type in INPUT_TO_ATOM_TRANSFORM:
+        logger.info(f"{input_type} is already registered, but overwriting")
     INPUT_TO_ATOM_TRANSFORM[input_type] = fn
 
 
