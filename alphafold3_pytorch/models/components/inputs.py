@@ -36,7 +36,7 @@ class AtomInput:
     molecule_ids: Int[" n"]  # type: ignore
     molecule_atom_lens: Int[" n"]  # type: ignore
     atompair_inputs: Float["m m dapi"] | Float["nw w (w*2) dapi"]  # type: ignore
-    additional_molecule_feats: Float[f"n {ADDITIONAL_MOLECULE_FEATS}"]  # type: ignore
+    additional_molecule_feats: Int[f"n {ADDITIONAL_MOLECULE_FEATS}"]  # type: ignore
     is_molecule_types: Bool[f"n {IS_MOLECULE_TYPES}"]  # type: ignore
     templates: Float["t n n dt"] | None = None  # type: ignore
     msa: Float["s n dm"] | None = None  # type: ignore
@@ -62,7 +62,7 @@ class BatchedAtomInput:
     molecule_ids: Int["b n"]  # type: ignore
     molecule_atom_lens: Int["b n"]  # type: ignore
     atompair_inputs: Float["b m m dapi"] | Float["b nw w (w*2) dapi"]  # type: ignore
-    additional_molecule_feats: Float[f"b n {ADDITIONAL_MOLECULE_FEATS}"]  # type: ignore
+    additional_molecule_feats: Int[f"b n {ADDITIONAL_MOLECULE_FEATS}"]  # type: ignore
     is_molecule_types: Bool[f"b n {IS_MOLECULE_TYPES}"]  # type: ignore
     templates: Float["b t n n dt"] | None = None  # type: ignore
     msa: Float["b s n dm"] | None = None  # type: ignore
@@ -91,7 +91,7 @@ class MoleculeInput:
     molecule_token_pool_lens: List[List[int]]
     molecule_atom_indices: List[List[int] | None]
     molecule_ids: Int[" n"]  # type: ignore
-    additional_molecule_feats: Float[f"n {ADDITIONAL_MOLECULE_FEATS}"]  # type: ignore
+    additional_molecule_feats: Int[f"n {ADDITIONAL_MOLECULE_FEATS}"]  # type: ignore
     is_molecule_types: Bool[f"n {IS_MOLECULE_TYPES}"]  # type: ignore
     templates: Float["t n n dt"] | None = None  # type: ignore
     msa: Float["s n dm"] | None = None  # type: ignore

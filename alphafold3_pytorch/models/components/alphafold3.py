@@ -1060,7 +1060,7 @@ class RelativePositionEncoding(Module):
 
     @typecheck
     def forward(
-        self, *, additional_molecule_feats: Float[f"b n {ADDITIONAL_MOLECULE_FEATS}"]  # type: ignore
+        self, *, additional_molecule_feats: Int[f"b n {ADDITIONAL_MOLECULE_FEATS}"]  # type: ignore
     ) -> Float["b n n dp"]:  # type: ignore
         """
         Perform the forward pass.
@@ -2217,7 +2217,7 @@ class ElucidatedAtomDiffusion(Module):
         atom_parent_ids: Int["b m"] | None = None,  # type: ignore
         return_denoised_pos=False,
         is_molecule_types: Bool[f"b n {IS_MOLECULE_TYPES}"] | None = None,  # type: ignore
-        additional_molecule_feats: Float[f"b n {ADDITIONAL_MOLECULE_FEATS}"] | None = None,  # type: ignore
+        additional_molecule_feats: Int[f"b n {ADDITIONAL_MOLECULE_FEATS}"] | None = None,  # type: ignore
         add_smooth_lddt_loss=False,
         add_bond_loss=False,
         nucleotide_loss_weight=5.0,
@@ -2830,7 +2830,7 @@ class InputFeatureEmbedder(Module):
         atompair_inputs: Float["b m m dapi"] | Float["b nw w1 w2 dapi"],  # type: ignore
         atom_mask: Bool["b m"],  # type: ignore
         is_molecule_types: Bool[f"b n {IS_MOLECULE_TYPES}"],  # type: ignore
-        additional_molecule_feats: Float[f"b n {ADDITIONAL_MOLECULE_FEATS}"],  # type: ignore
+        additional_molecule_feats: Int[f"b n {ADDITIONAL_MOLECULE_FEATS}"],  # type: ignore
         molecule_atom_lens: Int["b n"],  # type: ignore
         molecule_ids: Int["b n"],  # type: ignore
     ) -> EmbeddedInputs:
@@ -2892,7 +2892,7 @@ class InputFeatureEmbedder(Module):
         )
 
         single_inputs = torch.cat(
-            (single_inputs, additional_molecule_feats, is_molecule_types.float()), dim=-1
+            (single_inputs, additional_molecule_feats.float(), is_molecule_types.float()), dim=-1
         )
 
         single_init = self.single_input_to_single_init(single_inputs)
@@ -3438,7 +3438,7 @@ class Alphafold3(Module):
         *,
         atom_inputs: Float["b m dai"],  # type: ignore
         atompair_inputs: Float["b m m dapi"] | Float["b nw w1 w2 dapi"],  # type: ignore
-        additional_molecule_feats: Float[f"b n {ADDITIONAL_MOLECULE_FEATS}"],  # type: ignore
+        additional_molecule_feats: Int[f"b n {ADDITIONAL_MOLECULE_FEATS}"],  # type: ignore
         is_molecule_types: Bool[f"b n {IS_MOLECULE_TYPES}"],  # type: ignore
         molecule_atom_lens: Int["b n"],  # type: ignore
         molecule_ids: Int["b n"],  # type: ignore
