@@ -1,9 +1,9 @@
 import importlib
 from typing import Any
 
-import lightning.pytorch as pl
 from omegaconf import OmegaConf
 
+from alphafold3_pytorch.data.atom_datamodule import collate_af3_inputs
 from alphafold3_pytorch.models.alphafold3_module import Alphafold3LitModule
 from alphafold3_pytorch.models.components.alphafold3 import (
     AdaptiveLayerNorm,
@@ -77,6 +77,7 @@ __all__ = [
     Alphafold3WithHubMixin,
     Alphafold3LitModule,
     AtomInput,
+    collate_af3_inputs,
     full_pairwise_repr_to_windowed,
     register_input_transform,
 ]

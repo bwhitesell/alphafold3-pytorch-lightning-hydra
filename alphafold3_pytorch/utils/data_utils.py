@@ -1,6 +1,6 @@
 from typing import Set
 
-from alphafold3_pytorch.utils.custom_typing import ChainType, ResidueType, typecheck
+from alphafold3_pytorch.utils.tensor_typing import ChainType, ResidueType, typecheck
 
 
 @typecheck

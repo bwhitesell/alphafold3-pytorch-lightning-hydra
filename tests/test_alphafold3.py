@@ -27,6 +27,7 @@ from alphafold3_pytorch import (
     TemplateEmbedder,
     WeightedRigidAlign,
 )
+from alphafold3_pytorch.data.atom_datamodule import MockAtomDataset, collate_af3_inputs
 from alphafold3_pytorch.models.components.alphafold3 import (
     full_pairwise_repr_to_windowed,
     mean_pool_with_lens,
@@ -705,3 +706,29 @@ def test_alphafold3_with_atom_and_bond_embeddings():
     )
 
     assert loss.numel() == 1
+
+
+# test use of collation fn outside of trainer
+
+
+def test_collate_fn():
+    alphafold3 = Alphafold3(
+        dim_atom_inputs=77,
+        dim_template_feats=44,
+        num_dist_bins=38,
+        confidence_head_kwargs=dict(pairformer_depth=1),
+        template_embedder_kwargs=dict(pairformer_stack_depth=1),
+        msa_module_kwargs=dict(depth=1),
+        pairformer_stack=dict(depth=1),
+        diffusion_module_kwargs=dict(
+            atom_encoder_depth=1,
+            token_transformer_depth=1,
+            atom_decoder_depth=1,
+        ),
+    )
+
+    dataset = MockAtomDataset(1)
+
+    batched_atom_inputs = collate_af3_inputs([dataset[0]])
+
+    _, breakdown = alphafold3(**batched_atom_inputs, return_loss_breakdown=True)

@@ -10,12 +10,12 @@ from einops.layers.torch import Rearrange
 from torch import nn
 from torch.nn import Module
 
-from alphafold3_pytorch.utils.custom_typing import Bool, Float, typecheck
 from alphafold3_pytorch.utils.model_utils import (
     concat_previous_window,
     max_neg_value,
     pad_at_dim,
 )
+from alphafold3_pytorch.utils.tensor_typing import Bool, Float, typecheck
 from alphafold3_pytorch.utils.utils import default, exists
 
 # config

@@ -16,8 +16,8 @@ from alphafold3_pytorch.models.components.inputs import (
     AtomInput,
     BatchedAtomInput,
 )
-from alphafold3_pytorch.utils.custom_typing import beartype_isinstance, typecheck
 from alphafold3_pytorch.utils.model_utils import pad_at_dim
+from alphafold3_pytorch.utils.tensor_typing import beartype_isinstance, typecheck
 from alphafold3_pytorch.utils.utils import exists
 
 # dataloader and collation fn
@@ -174,7 +174,7 @@ def AF3DataLoader(
     return DataLoader(*args, collate_fn=collate_fn, **kwargs)
 
 
-class AtomDataset(Dataset):
+class MockAtomDataset(Dataset):
     """
     A dummy dataset for atomic data.
 
@@ -358,9 +358,9 @@ class AtomDataModule(LightningDataModule):
 
         # load dataset splits only if not loaded already
         if not self.data_train and not self.data_val and not self.data_test:
-            self.data_train = AtomDataset(num_examples=self.hparams.train_val_test_split[0])
-            self.data_val = AtomDataset(num_examples=self.hparams.train_val_test_split[1])
-            self.data_test = AtomDataset(num_examples=self.hparams.train_val_test_split[2])
+            self.data_train = MockAtomDataset(num_examples=self.hparams.train_val_test_split[0])
+            self.data_val = MockAtomDataset(num_examples=self.hparams.train_val_test_split[1])
+            self.data_test = MockAtomDataset(num_examples=self.hparams.train_val_test_split[2])
 
     def train_dataloader(self) -> DataLoader[Any]:
         """Create and return the train dataloader.

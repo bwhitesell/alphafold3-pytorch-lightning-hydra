@@ -26,7 +26,6 @@ from alphafold3_pytorch.models.components.attention import (
     full_pairwise_repr_to_windowed,
 )
 from alphafold3_pytorch.utils import RankedLogger
-from alphafold3_pytorch.utils.custom_typing import Bool, Float, Int, typecheck
 from alphafold3_pytorch.utils.model_utils import (
     concat_previous_window,
     exclusive_cumsum,
@@ -41,6 +40,7 @@ from alphafold3_pytorch.utils.model_utils import (
     repeat_consecutive_with_lens,
     unpack_one,
 )
+from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
 from alphafold3_pytorch.utils.utils import default, exists, identity
 
 """
@@ -3906,6 +3906,7 @@ class Alphafold3WithHubMixin(Alphafold3, PyTorchModelHubMixin):
         token: str | bool | None,
         map_location: str = "cpu",
         strict: bool = False,
+        model_filename: str = "alphafold3.bin",
         **model_kwargs,
     ):
         """
@@ -3923,7 +3924,6 @@ class Alphafold3WithHubMixin(Alphafold3, PyTorchModelHubMixin):
         :param strict: Whether to strictly load the model.
         :param model_kwargs: The model keyword arguments.
         """
-        model_filename = "alphafold3.bin"
         model_file = Path(model_id) / model_filename
 
         if not model_file.exists():

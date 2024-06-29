@@ -62,12 +62,12 @@ from alphafold3_pytorch.common.paper_constants import (
 )
 from alphafold3_pytorch.data import mmcif_parsing
 from alphafold3_pytorch.data.mmcif_parsing import MmcifObject
-from alphafold3_pytorch.utils.custom_typing import AtomType, ResidueType, TokenType, typecheck
 from alphafold3_pytorch.utils.data_utils import (
     get_biopython_chain_residue_by_composite_id,
     is_polymer,
     is_water,
 )
+from alphafold3_pytorch.utils.tensor_typing import AtomType, ResidueType, TokenType, typecheck
 from alphafold3_pytorch.utils.utils import exists
 
 # Constants

@@ -17,8 +17,8 @@ from alphafold3_pytorch.common import (
     rna_constants,
 )
 from alphafold3_pytorch.data import mmcif_parsing
-from alphafold3_pytorch.utils.custom_typing import IntType, typecheck
 from alphafold3_pytorch.utils.data_utils import is_polymer
+from alphafold3_pytorch.utils.tensor_typing import IntType, typecheck
 from alphafold3_pytorch.utils.utils import exists, np_mode
 
 MMCIF_PREFIXES_TO_DROP_POST_PARSING = [

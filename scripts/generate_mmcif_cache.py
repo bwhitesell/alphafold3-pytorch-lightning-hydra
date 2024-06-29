@@ -10,7 +10,7 @@ from typing import Dict, Optional
 from tqdm import tqdm
 
 from alphafold3_pytorch.data import mmcif_parsing
-from alphafold3_pytorch.utils.custom_typing import typecheck
+from alphafold3_pytorch.utils.tensor_typing import typecheck
 
 
 @typecheck

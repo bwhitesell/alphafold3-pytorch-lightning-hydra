@@ -9,8 +9,8 @@ from torchmetrics import MeanMetric, MinMetric
 from alphafold3_pytorch.models.components.alphafold3 import LossBreakdown
 from alphafold3_pytorch.models.components.inputs import AtomInput
 from alphafold3_pytorch.utils import RankedLogger
-from alphafold3_pytorch.utils.custom_typing import Float, typecheck
 from alphafold3_pytorch.utils.model_utils import default_lambda_lr_fn
+from alphafold3_pytorch.utils.tensor_typing import Float, typecheck
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
