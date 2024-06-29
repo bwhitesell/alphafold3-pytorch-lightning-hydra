@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import asdict, dataclass
 from functools import partial
 from typing import Any, Callable, List, Type
@@ -127,6 +129,7 @@ class MoleculeInput:
     molecule_ids: Int[" n"]  # type: ignore
     additional_molecule_feats: Int[f"n {ADDITIONAL_MOLECULE_FEATS}"]  # type: ignore
     is_molecule_types: Bool[f"n {IS_MOLECULE_TYPES}"]  # type: ignore
+    token_bonds: Bool["n n"]  # type: ignore
     templates: Float["t n n dt"] | None = None  # type: ignore
     msa: Float["s n dm"] | None = None  # type: ignore
     atom_pos: List[Float["_ 3"]] | Float["m 3"] | None = None  # type: ignore
@@ -223,6 +226,8 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
             row_col_slice = slice(offset, offset + num_atoms)
             atompair_ids[row_col_slice, row_col_slice] = mol_atompair_ids
 
+            offset += num_atoms
+
     # atom_inputs
 
     atom_inputs = []
@@ -232,8 +237,13 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
         atom_feats = []
 
         for atom in atoms:
-            charge = atom.GetFormalCharge()
-            atom_feats.append([charge])
+            atom_feats.append(
+                [
+                    atom.GetFormalCharge(),
+                    atom.GetImplicitValence(),
+                    atom.GetExplicitValence(),
+                ]
+            )
 
         atom_inputs.extend(atom_feats)
 
@@ -268,6 +278,7 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
         molecule_ids=mol_input.molecule_ids,
         additional_molecule_feats=mol_input.additional_molecule_feats,
         is_molecule_types=mol_input.is_molecule_types,
+        token_bonds=mol_input.token_bonds,
         atom_ids=atom_ids,
         atompair_ids=atompair_ids,
     )
@@ -468,6 +479,50 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
         *flatten(ligands_token_pool_lens),
         *metal_ions_pool_lens,
     ]
+
+    # construct the token bonds
+
+    # will be linearly connected for proteins and nucleic acids
+    # but for ligands, will have their atomic bond matrix (as ligands are atom resolution)
+
+    token_bonds = torch.zeros(num_tokens, num_tokens).bool()
+
+    offset = 0
+
+    for biomolecule in (*mol_proteins, *mol_ss_rnas, *mol_ss_dnas):
+        chain_len = len(biomolecule)
+        eye = torch.eye(chain_len)
+
+        row_col_slice = slice(offset, offset + chain_len - 1)
+        token_bonds[row_col_slice, row_col_slice] = (eye[1:, :-1] + eye[:-1, 1:]) > 0
+        offset += chain_len
+
+    for ligand in mol_ligands:
+        coordinates = []
+        updates = []
+
+        num_atoms = ligand.GetNumAtoms()
+        has_bond = torch.zeros(num_atoms, num_atoms).bool()
+
+        for bond in ligand.GetBonds():
+            atom_start_index = bond.GetBeginAtomIdx()
+            atom_end_index = bond.GetEndAtomIdx()
+
+            coordinates.extend(
+                [[atom_start_index, atom_end_index], [atom_end_index, atom_start_index]]
+            )
+
+            updates.extend([True, True])
+
+        coordinates = torch.tensor(coordinates).long()
+        updates = torch.tensor(updates).bool()
+
+        has_bond = einx.set_at("[h w], c [2], c -> [h w]", has_bond, coordinates, updates)
+
+        row_col_slice = slice(offset, offset + num_atoms)
+        token_bonds[row_col_slice, row_col_slice] = has_bond
+
+        offset += num_atoms
 
     # handle molecule ids
 
