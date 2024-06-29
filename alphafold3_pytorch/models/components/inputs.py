@@ -1,4 +1,7 @@
-from typing import Callable, Literal, Type, TypedDict
+from typing import Callable, List, Literal, Type, TypedDict
+
+from rdkit import Chem
+from rdkit.Chem.rdchem import Mol
 
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
 
@@ -16,6 +19,7 @@ class AtomInput(TypedDict):
     msa: Float["s n dm"]  # type: ignore
     token_bonds: Bool["n n"] | None  # type: ignore
     atom_ids: Int["m"] | None  # type: ignore
+    atom_parent_ids: Int["m"] | None  # type: ignore
     atompair_ids: Int["m m"] | Int["nw w (w*2)"] | None  # type: ignore
     template_mask: Bool["t"] | None  # type: ignore
     msa_mask: Bool["s"] | None  # type: ignore
@@ -38,6 +42,7 @@ class BatchedAtomInput(TypedDict):
     msa: Float["b s n dm"]  # type: ignore
     token_bonds: Bool["b n n"] | None  # type: ignore
     atom_ids: Int["b m"] | None  # type: ignore
+    atom_parent_ids: Int["b m"] | None  # type: ignore
     atompair_ids: Int["b m m"] | Int["b nw w (w*2)"] | None  # type: ignore
     template_mask: Bool["b t"] | None  # type: ignore
     msa_mask: Bool["b s"] | None  # type: ignore
@@ -47,6 +52,38 @@ class BatchedAtomInput(TypedDict):
     pae_labels: Int["b n n"] | None  # type: ignore
     pde_labels: Int["b n"] | None  # type: ignore
     resolved_labels: Int["b n"] | None  # type: ignore
+
+
+# molecule input - accepting list of molecules as rdchem.Mol + the atomic lengths for how to pool into tokens
+
+
+@typecheck
+class MoleculeInput(TypedDict):
+    molecules: List[Mol]
+    molecule_token_pool_lens: List[List[int]]
+    molecule_atom_indices: List[List[int] | None]
+    molecule_ids: Int["n"]  # type: ignore
+    additional_molecule_feats: Float["n 9"]  # type: ignore
+    atom_pos: Float["m 3"] | None  # type: ignore
+    templates: Float["t n n dt"]  # type: ignore
+    template_mask: Bool["t"] | None  # type: ignore
+    msa: Float["s n dm"]  # type: ignore
+    msa_mask: Bool["s"] | None  # type: ignore
+    distance_labels: Int["n n"] | None  # type: ignore
+    pae_labels: Int["n n"] | None  # type: ignore
+    pde_labels: Int["n"] | None  # type: ignore
+    resolved_labels: Int["n"] | None  # type: ignore
+
+
+@typecheck
+def molecule_to_atom_input(molecule_input: MoleculeInput) -> AtomInput:
+    """Converts a MoleculeInput to an AtomInput."""
+    raise NotImplementedError
+
+
+def validate_molecule_input(molecule_input: MoleculeInput):
+    """Validates a MoleculeInput."""
+    assert True
 
 
 # residue level - single chain proteins for starters
@@ -69,6 +106,7 @@ class SingleProteinInput(TypedDict):
 
 @typecheck
 def single_protein_input_to_atom_input(input: SingleProteinInput) -> AtomInput:
+    """Converts a SingleProteinInput to an AtomInput."""
     raise NotImplementedError
 
 
@@ -98,6 +136,7 @@ class SingleProteinSingleNucleicAcidInput(TypedDict):
 def single_protein_input_and_single_nucleic_acid_to_atom_input(
     input: SingleProteinSingleNucleicAcidInput,
 ) -> AtomInput:
+    """Converts a SingleProteinSingleNucleicAcidInput to an AtomInput."""
     raise NotImplementedError
 
 
@@ -105,6 +144,7 @@ def single_protein_input_and_single_nucleic_acid_to_atom_input(
 # this can be preprocessed or will be taken care of automatically within the Trainer during data collation
 
 INPUT_TO_ATOM_TRANSFORM = {
+    MoleculeInput: molecule_to_atom_input,
     SingleProteinInput: single_protein_input_to_atom_input,
     SingleProteinSingleNucleicAcidInput: single_protein_input_and_single_nucleic_acid_to_atom_input,
 }
@@ -114,4 +154,5 @@ INPUT_TO_ATOM_TRANSFORM = {
 
 @typecheck
 def register_input_transform(input_type: Type, fn: Callable[[TypedDict], AtomInput]):  # type: ignore
+    """Registers a new input transform."""
     INPUT_TO_ATOM_TRANSFORM[input_type] = fn
