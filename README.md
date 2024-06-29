@@ -221,7 +221,7 @@ sampled_atom_pos.shape # (2, <atom_seqlen>, 3)
 
 ### PDB dataset curation
 
-To acquire the AlphaFold 3 PDB dataset, first download all complexes in the Protein Data Bank (PDB), and then preprocess them with the script referenced below. The PDB can be downloaded from the RCSB: https://www.wwpdb.org/ftp/pdb-ftp-sites#rcsbpdb. The Python script below (i.e., `pdb_mmcif_filtering.py`) assumes you have downloaded the PDB in the **mmCIF file format**, placing it at `data/pdb_data/unfiltered_mmcifs/`. On the RCSB website, navigate down to "Download Protocols", and follow the download instructions depending on your location.
+To acquire the AlphaFold 3 PDB dataset, first download all complexes in the Protein Data Bank (PDB), and then preprocess them with the script referenced below. The PDB can be downloaded from the RCSB: https://www.wwpdb.org/ftp/pdb-ftp-sites#rcsbpdb. The Python script below (i.e., `filter_pdb_mmcifs.py`) assumes you have downloaded the PDB in the **mmCIF file format**, placing it at `data/pdb_data/unfiltered_mmcifs/`. On the RCSB website, navigate down to "Download Protocols", and follow the download instructions depending on your location.
 
 For example, one can use the following command to download the PDB as a collection of mmCIF files:
 ```bash
@@ -267,7 +267,7 @@ See the script for more options. Each mmCIF that successfully passes
 all processing steps will be written to `mmcif_output_dir` within a subdirectory
 named according to the mmCIF's second and third PDB ID characters (e.g. `5c`).
 
-### PDB dataset clustering
+### PDB dataset clustering (WIP)
 
 Next, run the following with `mmcif_dir`, `ccd_dir`, and `clustering_output_dir` replaced, respectively, with your local output directory created using the dataset curation script above; with the location of your local CCD copy; and with your desired clustering output directory (i.e., `./data/pdb_data/mmcifs/`, `./data/ccd_data/`, and `./data/pdb_data/data_caches/clusterings/`):
 ```bash
@@ -276,7 +276,7 @@ python scripts/cluster_pdb_mmcifs.py --mmcif_dir <mmcif_dir> --ccd_dir <ccd_dir>
 
 See the script above for more options.
 
-### PDB dataset caching
+### PDB dataset caching (WIP)
 
 Now, run the following with `pdb_dir` and `cache_output_path` replaced with the location of your local copy of the PDB and your desired dataset cache output filepath (i.e., `./data/pdb_data/mmcifs/` and `./data/pdb_data/data_caches/chain_data_cache.json`).
 ```bash
