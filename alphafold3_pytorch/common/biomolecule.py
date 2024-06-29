@@ -1,3 +1,5 @@
+"""A generic `Biomolecule` data structure for parsing macromolecular structures."""
+
 import collections
 import dataclasses
 import functools

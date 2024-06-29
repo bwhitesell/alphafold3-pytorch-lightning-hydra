@@ -54,6 +54,7 @@ dependencies = [
     "einx>=0.2.2",     # for Einstein-inspired notation
     "einops>=0.8.0",   # for Einstein-inspired operations
     "frame-averaging-pytorch>=0.0.18", # for geometric data augmentation
+    "gemmi>=0.6.6",    # for mmCIF file metadata parsing
     "huggingface_hub>=0.21.4", # for downloading pretrained HuggingFace weights
     "ipykernel",       # for running Jupyter notebooks
     "jaxtyping>=0.2.28",  # tensor type checking
@@ -70,6 +71,7 @@ dependencies = [
     "shortuuid",       # for generating random IDs
     "timeout_decorator>=0.5.0", # for preventing certain functions from executing indefinitely
     "tqdm",            # progress bars
+    "loguru",          # for cleaner logging
 ]
 
 [project.urls]

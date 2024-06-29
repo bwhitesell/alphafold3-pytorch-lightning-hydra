@@ -1,4 +1,5 @@
-"""Parses the mmCIF file format."""
+"""An mmCIF file format parser."""
+
 import collections
 import dataclasses
 import functools

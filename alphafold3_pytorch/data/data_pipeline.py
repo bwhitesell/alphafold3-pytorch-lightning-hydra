@@ -1,3 +1,5 @@
+"""General-purpose data pipeline."""
+
 from typing import MutableMapping
 
 import numpy as np
