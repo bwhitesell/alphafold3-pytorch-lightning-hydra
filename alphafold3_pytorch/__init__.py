@@ -4,7 +4,7 @@ from typing import Any
 import lightning.pytorch as pl
 from omegaconf import OmegaConf
 
-from alphafold3_pytorch.models.alphafold3_module import Alphafold3LitModule, AtomInput
+from alphafold3_pytorch.models.alphafold3_module import Alphafold3LitModule
 from alphafold3_pytorch.models.components.alphafold3 import (
     AdaptiveLayerNorm,
     Alphafold3,
@@ -38,11 +38,17 @@ from alphafold3_pytorch.models.components.attention import (
     Attention,
     full_pairwise_repr_to_windowed,
 )
-from alphafold3_pytorch.models.components.inputs import register_input_transform
+from alphafold3_pytorch.models.components.inputs import (
+    AtomInput,
+    BatchedAtomInput,
+    register_input_transform,
+)
 
 __all__ = [
+    AtomInput,
     Attention,
     Attend,
+    BatchedAtomInput,
     RelativePositionEncoding,
     SmoothLDDTLoss,
     WeightedRigidAlign,
@@ -72,6 +78,7 @@ __all__ = [
     Alphafold3LitModule,
     AtomInput,
     full_pairwise_repr_to_windowed,
+    register_input_transform,
 ]
 
 

@@ -7,8 +7,11 @@ from lightning import LightningDataModule
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 
-from alphafold3_pytorch.models.alphafold3_module import AtomInput
-from alphafold3_pytorch.models.components.inputs import INPUT_TO_ATOM_TRANSFORM
+from alphafold3_pytorch.models.components.inputs import (
+    INPUT_TO_ATOM_TRANSFORM,
+    AtomInput,
+    BatchedAtomInput,
+)
 from alphafold3_pytorch.utils.custom_typing import beartype_isinstance, typecheck
 from alphafold3_pytorch.utils.model_utils import pad_at_dim
 from alphafold3_pytorch.utils.utils import exists
@@ -19,14 +22,14 @@ from alphafold3_pytorch.utils.utils import exists
 @typecheck
 def collate_af3_inputs(
     inputs: List, int_pad_value=-1, map_input_fn: Callable | None = None
-) -> AtomInput:
+) -> BatchedAtomInput:
     """
-    Collate function for AtomInput.
+    Collate function for a list of AtomInput objects.
 
-    :param inputs: A list of AtomInput.
+    :param inputs: A list of AtomInput objects.
     :param int_pad_value: The padding value for integer tensors.
     :param map_input_fn: A function to apply to each input before collation.
-    :return: A collated AtomInput.
+    :return: A collated BatchedAtomInput object.
     """
     if exists(map_input_fn):
         inputs = [map_input_fn(i) for i in inputs]
