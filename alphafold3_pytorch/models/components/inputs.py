@@ -2,11 +2,14 @@ from dataclasses import asdict, dataclass
 from functools import partial
 from typing import Any, Callable, List, Type
 
+import einx
 import rootutils
 import torch
 from rdkit.Chem.rdchem import Mol
 
 from alphafold3_pytorch.data.life import (
+    ATOM_BONDS,
+    ATOMS,
     DNA_NUCLEOTIDES,
     HUMAN_AMINO_ACIDS,
     METALS,
@@ -140,12 +143,14 @@ class MoleculeInput:
 def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
     """Converts a MoleculeInput to an AtomInput."""
 
+    molecules = mol_input.molecules
+
     # molecule_atom_lens
 
     atoms = []
     atom_lens = []
 
-    for mol, is_ligand in zip(mol_input.molecules, mol_input.is_molecule_types[:, -1]):
+    for mol, is_ligand in zip(molecules, mol_input.is_molecule_types[:, -1]):
         num_atoms = mol.GetNumAtoms()
 
         if is_ligand:
@@ -160,26 +165,66 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
     # handle maybe atom embeds
 
     atom_ids = None
-    atom_index = {symbol: i for i, symbol in enumerate(ATOM_ORDER)}
 
     if mol_input.add_atom_ids:
+        atom_index = {symbol: i for i, symbol in enumerate(ATOMS)}
+
         atom_ids = []
 
         for atom in atoms:
             atom_symbol = atom.GetSymbol()
             assert (
                 atom_symbol in atom_index
-            ), f"{atom_symbol} not found in the ATOM_ORDERS defined in life.py"
+            ), f"{atom_symbol} not found in the ATOMS defined in life.py"
 
             atom_ids.append(atom_index[atom_symbol])
 
         atom_ids = torch.tensor(atom_ids, dtype=torch.long)
 
+    # handle maybe atompair embeds
+
+    atompair_ids = None
+
+    if mol_input.add_atompair_ids:
+        atom_bond_index = {symbol: (i + 1) for i, symbol in enumerate(ATOM_BONDS)}
+        other_index = len(ATOM_BONDS) + 1
+
+        atompair_ids = torch.zeros(total_atoms, total_atoms).long()
+        offset = 0
+
+        for mol in molecules:
+            coordinates = []
+            updates = []
+
+            num_atoms = mol.GetNumAtoms()
+            mol_atompair_ids = torch.zeros(num_atoms, num_atoms).long()
+
+            for bond in mol.GetBonds():
+                atom_start_index = bond.GetBeginAtomIdx()
+                atom_end_index = bond.GetEndAtomIdx()
+
+                coordinates.append([atom_start_index, atom_end_index])
+
+                bond_type = bond.GetBondType()
+                bond_id = atom_bond_index.get(bond_type, other_index)
+
+                updates.append(bond_id)
+
+            coordinates = torch.tensor(coordinates).long()
+            updates = torch.tensor(updates).long()
+
+            mol_atompair_ids = einx.set_at(
+                "[h w], c [2], c -> [h w]", mol_atompair_ids, coordinates, updates
+            )
+
+            row_col_slice = slice(offset, offset + num_atoms)
+            atompair_ids[row_col_slice, row_col_slice] = mol_atompair_ids
+
     # atom_inputs
 
     atom_inputs = []
 
-    for mol in mol_input.molecules:
+    for mol in molecules:
         atoms = mol.GetAtoms()
         atom_feats = []
 
@@ -195,7 +240,7 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
 
     offset = 0
 
-    for mol in mol_input.molecules:
+    for mol in molecules:
         all_atom_pos = []
 
         for i, atom in enumerate(mol.GetAtoms()):
@@ -221,6 +266,7 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
         additional_molecule_feats=mol_input.additional_molecule_feats,
         is_molecule_types=mol_input.is_molecule_types,
         atom_ids=atom_ids,
+        atompair_ids=atompair_ids,
     )
 
     return atom_input

@@ -6,6 +6,12 @@ from rdkit.Chem.rdchem import Mol
 
 from alphafold3_pytorch.utils.tensor_typing import Int, typecheck
 
+
+def is_unique(arr):
+    """Check if all elements in an array are unique."""
+    return len(arr) == len({*arr})
+
+
 # human amino acids
 
 HUMAN_AMINO_ACIDS = dict(
@@ -99,9 +105,15 @@ MISC = dict(
 
 # atoms - for atom embeddings
 
-ATOM_ORDER = ["C", "O", "N", "S", "P", *METALS]
+ATOMS = ["C", "O", "N", "S", "P", *METALS]
 
-assert len(ATOM_ORDER) == len({*ATOM_ORDER})
+assert is_unique(ATOMS)
+
+# bonds for atom bond embeddings
+
+ATOM_BONDS = ["SINGLE", "DOUBLE", "TRIPLE", "AROMATIC"]
+
+assert is_unique(ATOM_BONDS)
 
 # some rdkit helper function
 
