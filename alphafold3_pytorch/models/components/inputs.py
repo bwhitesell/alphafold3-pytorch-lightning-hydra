@@ -117,11 +117,13 @@ def molecule_to_atom_input(molecule_input: MoleculeInput) -> AtomInput:
 @dataclass
 class Alphafold3Input:
     proteins: List[Int[" _"] | str]  # type: ignore
-    ds_nucleic_acids: List[Int[" _"] | str]  # type: ignore
-    ss_nucleic_acids: List[Int[" _"] | str]  # type: ignore
+    ss_dna: List[Int[" _"] | str]  # type: ignore
+    ss_rna: List[Int[" _"] | str]  # type: ignore
     metal_ions: Int[" _"] | List[str]  # type: ignore
     misc_molecule_ids: Int[" _"] | List[str]  # type: ignore
     ligands: List[Mol | str]  # can be given as smiles
+    ds_dna: List[Int[" _"] | str]  # type: ignore
+    ds_rna: List[Int[" _"] | str]  # type: ignore
     templates: Float["t n n dt"] | None = None  # type: ignore
     msa: Float["s n dm"] | None = None  # type: ignore
     atom_pos: List[Float["_ 3"]] | Float["m 3"] | None = None  # type: ignore
