@@ -30,6 +30,17 @@
             ]
         },
         {
+            "name": "cluster_pdb_mmcifs.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "scripts/cluster_pdb_mmcifs.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--mmcif_dir", "data/pdb_data/dev_mmcifs",
+            ]
+        },
+        {
             "name": "train.py",
             "type": "debugpy",
             "request": "launch",
