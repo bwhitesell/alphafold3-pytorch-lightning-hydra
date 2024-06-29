@@ -84,7 +84,7 @@ class Biomolecule:
     chemtype: np.ndarray  # [num_res]
 
     # Chemical component details of each residue as a unique `ChemComp` object.
-    # This is used to determine the biomolecule's unique chemical IDs, types, and names.
+    # This is used to determine the biomolecule's unique chemical IDs, names, types, etc.
     # N.b., this is primarily used to record chemical component metadata
     # (e.g., when exporting an mmCIF file from a Biomolecule object).
     chem_comp_table: Set[mmcif_parsing.ChemComp]  # [num_unique_chem_comp]
@@ -239,8 +239,11 @@ def _from_mmcif_object(
                     residue_chem_comp_details.add(
                         mmcif_parsing.ChemComp(
                             id=residue_constants.unk_restype,
-                            type=residue_constants.unk_chemtype,
+                            formula="?",
+                            formula_weight="0.0",
+                            mon_nstd_flag="no",
                             name=residue_constants.unk_chemname,
+                            type=residue_constants.unk_chemtype,
                         )
                     )
                 else:
@@ -274,8 +277,11 @@ def _from_mmcif_object(
                     residue_chem_comp_details.add(
                         mmcif_parsing.ChemComp(
                             id=residue_constants.unk_restype,
-                            type=residue_constants.unk_chemtype,
+                            formula="?",
+                            formula_weight="0.0",
+                            mon_nstd_flag="no",
                             name=residue_constants.unk_chemname,
+                            type=residue_constants.unk_chemtype,
                         )
                     )
                 else:
@@ -593,8 +599,11 @@ def to_mmcif(
     # Populate the _chem_comp table.
     for chem_comp in biomol.chem_comp_table:
         mmcif_dict["_chem_comp.id"].append(chem_comp.id)
-        mmcif_dict["_chem_comp.type"].append(chem_comp.type)
+        mmcif_dict["_chem_comp.formula"].append(chem_comp.formula)
+        mmcif_dict["_chem_comp.formula_weight"].append(chem_comp.formula_weight)
+        mmcif_dict["_chem_comp.mon_nstd_flag"].append(chem_comp.mon_nstd_flag)
         mmcif_dict["_chem_comp.name"].append(chem_comp.name)
+        mmcif_dict["_chem_comp.type"].append(chem_comp.type)
     chem_comp_ids = set(mmcif_dict["_chem_comp.id"])
 
     # Add the polymer residues to the _pdbx_poly_seq_scheme table.
@@ -625,8 +634,11 @@ def to_mmcif(
             if res_chemid == residue_constants.unk_restype and res_chemid not in chem_comp_ids:
                 chem_comp_ids.add(residue_constants.unk_restype)
                 mmcif_dict["_chem_comp.id"].append(residue_constants.unk_restype)
-                mmcif_dict["_chem_comp.type"].append(residue_constants.unk_chemtype)
+                mmcif_dict["_chem_comp.formula"].append("?")
+                mmcif_dict["_chem_comp.formula_weight"].append("0.0")
+                mmcif_dict["_chem_comp.mon_nstd_flag"].append("no")
                 mmcif_dict["_chem_comp.name"].append(residue_constants.unk_chemname)
+                mmcif_dict["_chem_comp.type"].append(residue_constants.unk_chemtype)
 
     # Add the non-polymer residues to the _pdbx_nonpoly_scheme table.
     for chain_id, (res_ids, chemids, chemindices) in _get_chain_seq(
@@ -653,8 +665,11 @@ def to_mmcif(
             if res_chemid == residue_constants.unk_restype and res_chemid not in chem_comp_ids:
                 chem_comp_ids.add(residue_constants.unk_restype)
                 mmcif_dict["_chem_comp.id"].append(residue_constants.unk_restype)
-                mmcif_dict["_chem_comp.type"].append(residue_constants.unk_chemtype)
+                mmcif_dict["_chem_comp.formula"].append("?")
+                mmcif_dict["_chem_comp.formula_weight"].append("0.0")
+                mmcif_dict["_chem_comp.mon_nstd_flag"].append("no")
                 mmcif_dict["_chem_comp.name"].append(residue_constants.unk_chemname)
+                mmcif_dict["_chem_comp.type"].append(residue_constants.unk_chemtype)
 
     # Add all atom sites.
     if exists(unique_res_atom_names):

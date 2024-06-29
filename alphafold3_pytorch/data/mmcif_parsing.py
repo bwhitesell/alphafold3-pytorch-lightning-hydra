@@ -40,8 +40,11 @@ class ChemComp:
     """Represents a chemical composition."""
 
     id: str
-    type: str
+    formula: str
+    formula_weight: str
+    mon_nstd_flag: str
     name: str
+    type: str
 
 
 # Note - mmCIF format provides no guarantees on the type of author-assigned
@@ -602,8 +605,11 @@ def _get_complex_chains(
             chem_comp_info = [
                 ChemComp(
                     id=chem_comps[monomer.id]["_chem_comp.id"],
-                    type=chem_comps[monomer.id]["_chem_comp.type"],
+                    formula=chem_comps[monomer.id]["_chem_comp.formula"],
+                    formula_weight=chem_comps[monomer.id]["_chem_comp.formula_weight"],
+                    mon_nstd_flag=chem_comps[monomer.id]["_chem_comp.mon_nstd_flag"],
                     name=chem_comps[monomer.id]["_chem_comp.name"],
+                    type=chem_comps[monomer.id]["_chem_comp.type"],
                 )
                 for monomer in seq_info
             ]
