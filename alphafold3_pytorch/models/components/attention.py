@@ -152,6 +152,7 @@ class Attention(Module):
         seq: Float["b i d"],  # type: ignore
         mask: Bool["b n"] | None = None,  # type: ignore
         context: Float["b j d"] | None = None,  # type: ignore
+        windowed_mask: Bool["b nw w (w*2)"] | None = None,  # type: ignore
         attn_bias: Float["... i j"] | Float["... nw w (w*2)"] | None = None,  # type: ignore
     ) -> Float["b i d"]:  # type: ignore
         """
@@ -173,7 +174,15 @@ class Attention(Module):
 
         # attention
 
-        out = self.attend(q, k, v, attn_bias=attn_bias, mask=mask, memory_kv=self.memory_kv)
+        out = self.attend(
+            q,
+            k,
+            v,
+            attn_bias=attn_bias,
+            mask=mask,
+            windowed_mask=windowed_mask,
+            memory_kv=self.memory_kv,
+        )
 
         # merge heads
 
@@ -272,6 +281,7 @@ class Attend(Module):
         k: Float["b h n d"],  # type: ignore
         v: Float["b h n d"],  # type: ignore
         mask: Bool["b n"] | None = None,  # type: ignore
+        windowed_mask: Bool["b nw w (w*2)"] | None = None,  # type: ignore
         attn_bias: Float["... n n"] | Float["... nw w (w*2)"] | None = None,  # type: ignore
         memory_kv: Float["2 h m d"] | None = None,  # type: ignore
     ) -> Float["b h n d"]:  # type: ignore
@@ -349,6 +359,9 @@ class Attend(Module):
             if exists(attn_bias):
                 attn_bias = pad_at_dim(attn_bias, (num_mem_kv, 0), value=0.0)
 
+            if exists(windowed_mask):
+                windowed_mask = pad_at_dim(windowed_mask, (num_mem_kv, 0), value=True)
+
             if exists(mask):
                 mask = pad_at_dim(mask, (num_mem_kv, 0), value=True)
 
@@ -363,9 +376,22 @@ class Attend(Module):
             assert attn_bias.ndim == sim.ndim
             sim = sim + attn_bias
 
+        # windowed masking - for masking out atoms not belonging to the same molecule / polypeptide / nucleic acid in sequence-local attention
+
+        if exists(windowed_mask):
+            sim = einx.where(
+                "b n i j, b h n i j, -> b h n i j", windowed_mask, sim, max_neg_value(sim)
+            )
+
+        # mask out buckets of padding
+
         sim = einx.where("b n j, b h n i j, -> b h n i j", mask, sim, max_neg_value(sim))
 
+        # local attention
+
         attn = sim.softmax(dim=-1)
+
+        # aggregate
 
         out = einsum(attn, v, "... i j, ... j d -> ... i d")
 
@@ -386,6 +412,7 @@ class Attend(Module):
         k: Float["b h j d"],  # type: ignore
         v: Float["b h j d"],  # type: ignore
         mask: Bool["b j"] | None = None,  # type: ignore
+        windowed_mask: Bool["b nw w (w*2)"] | None = None,  # type: ignore
         attn_bias: Float["... i j"] | Float["... nw w (w*2)"] | None = None,  # type: ignore
         memory_kv: Float["2 h m d"] | None = None,  # type: ignore
     ) -> Float["b h i d"]:  # type: ignore
@@ -409,7 +436,15 @@ class Attend(Module):
         # todo (handle attn bias efficiently)
 
         if self.is_local_attn:
-            return self.local_attn(q, k, v, mask=mask, attn_bias=attn_bias, memory_kv=memory_kv)
+            return self.local_attn(
+                q,
+                k,
+                v,
+                mask=mask,
+                windowed_mask=windowed_mask,
+                attn_bias=attn_bias,
+                memory_kv=memory_kv,
+            )
 
         assert (
             not exists(is_windowed_attn_bias) or not is_windowed_attn_bias

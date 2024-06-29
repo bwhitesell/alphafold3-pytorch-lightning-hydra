@@ -1475,6 +1475,7 @@ class DiffusionTransformer(Module):
         single_repr: Float["b n ds"],  # type: ignore
         pairwise_repr: Float["b n n dp"] | Float["b nw w (w*2) dp"],  # type: ignore
         mask: Bool["b n"] | None = None,  # type: ignore
+        windowed_mask: Bool["b nw w (w*2)"] | None = None,  # type: ignore
     ):
         """
         Perform the forward pass.
@@ -1483,6 +1484,7 @@ class DiffusionTransformer(Module):
         :param single_repr: The single representation tensor.
         :param pairwise_repr: The pairwise representation tensor.
         :param mask: The mask tensor.
+        :param windowed_mask: The windowed mask tensor.
         :return: The output tensor.
         """
         w = self.attn_window_size
@@ -1528,6 +1530,7 @@ class DiffusionTransformer(Module):
                 cond=single_repr,
                 pairwise_repr=pairwise_repr,
                 mask=mask,
+                windowed_mask=windowed_mask,
             )
 
             if serial:
@@ -1731,6 +1734,7 @@ class DiffusionModule(Module):
         pairwise_trunk: Float["b n n dpt"],  # type: ignore
         pairwise_rel_pos_feats: Float["b n n dpr"],  # type: ignore
         molecule_atom_lens: Int["b n"],  # type: ignore
+        atom_parent_ids: Int["b m"] | None = None,  # type: ignore
     ) -> Float["b m 3"]:  # type: ignore
         """
         Perform the forward pass.
@@ -1840,11 +1844,26 @@ class DiffusionModule(Module):
 
         atompair_feats = self.atompair_feats_mlp(atompair_feats) + atompair_feats
 
+        # take care of restricting atom attention to be intra molecular, if the atom_parent_ids were passed in
+
+        windowed_mask = None
+
+        if exists(atom_parent_ids):
+            atom_parent_ids_rows = pad_and_window(atom_parent_ids, w)
+            atom_parent_ids_columns = concat_previous_window(
+                atom_parent_ids_rows, dim_seq=1, dim_window=2
+            )
+
+            windowed_mask = einx.equal(
+                "b n i, b n j -> b n i j", atom_parent_ids_rows, atom_parent_ids_columns
+            )
+
         # atom encoder
 
         atom_feats = self.atom_encoder(
             atom_feats,
             mask=atom_mask,
+            windowed_mask=windowed_mask,
             single_repr=atom_feats_cond,
             pairwise_repr=atompair_feats,
         )
@@ -1884,6 +1903,7 @@ class DiffusionModule(Module):
         atom_feats = self.atom_decoder(
             atom_decoder_input,
             mask=atom_mask,
+            windowed_mask=windowed_mask,
             single_repr=atom_feats_cond,
             pairwise_repr=atompair_feats,
         )
@@ -2196,6 +2216,7 @@ class ElucidatedAtomDiffusion(Module):
         pairwise_trunk: Float["b n n dpt"],  # type: ignore
         pairwise_rel_pos_feats: Float["b n n dpr"],  # type: ignore
         molecule_atom_lens: Int["b n"],  # type: ignore
+        atom_parent_ids: Int["b m"] | None = None,  # type: ignore
         return_denoised_pos=False,
         additional_molecule_feats: Float[f"b n {ADDITIONAL_MOLECULE_FEATS}"] | None = None,  # type: ignore
         add_smooth_lddt_loss=False,
@@ -2247,6 +2268,7 @@ class ElucidatedAtomDiffusion(Module):
                 atom_feats=atom_feats,
                 atom_mask=atom_mask,
                 atompair_feats=atompair_feats,
+                atom_parent_ids=atom_parent_ids,
                 mask=mask,
                 single_trunk_repr=single_trunk_repr,
                 single_inputs_repr=single_inputs_repr,
@@ -3420,6 +3442,7 @@ class Alphafold3(Module):
         atom_ids: Int["b m"] | None = None,  # type: ignore
         atompair_ids: Int["b m m"] | Int["b nw w1 w2"] | None = None,  # type: ignore
         atom_mask: Bool["b m"] | None = None,  # type: ignore
+        atom_parent_ids: Int["b m"] | None = None,  # type: ignore
         token_bonds: Bool["b n n"] | None = None,  # type: ignore
         msa: Float["b s n d"] | None = None,  # type: ignore
         msa_mask: Bool["b s"] | None = None,  # type: ignore
@@ -3667,6 +3690,7 @@ class Alphafold3(Module):
                 num_sample_steps=num_sample_steps,
                 atom_feats=atom_feats,
                 atompair_feats=atompair_feats,
+                atom_parent_ids=atom_parent_ids,
                 atom_mask=atom_mask,
                 mask=mask,
                 single_trunk_repr=single,
@@ -3731,6 +3755,7 @@ class Alphafold3(Module):
                     atom_pos,
                     atom_mask,
                     atom_feats,
+                    atom_parent_ids,
                     atompair_feats,
                     mask,
                     pairwise_mask,
@@ -3751,6 +3776,7 @@ class Alphafold3(Module):
                         atom_pos,
                         atom_mask,
                         atom_feats,
+                        atom_parent_ids,
                         atompair_feats,
                         mask,
                         pairwise_mask,
@@ -3796,6 +3822,7 @@ class Alphafold3(Module):
                 add_bond_loss=diffusion_add_bond_loss,
                 atom_feats=atom_feats,
                 atompair_feats=atompair_feats,
+                atom_parent_ids=atom_parent_ids,
                 atom_mask=atom_mask,
                 mask=mask,
                 single_trunk_repr=single,
