@@ -24,7 +24,7 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "--output_dir", "data/pdb_data/dev_mmcifs",
+                "--output_dir", "data/pdb_data/filtering_dev_mmcifs",
                 // "--skip_existing",
                 "--no_workers", "1",
             ]
@@ -37,7 +37,8 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "--mmcif_dir", "data/pdb_data/dev_mmcifs",
+                "--mmcif_dir", "data/pdb_data/clustering_dev_mmcifs",
+                "--clustering_filtered_pdb_dataset",
             ]
         },
         {

@@ -156,23 +156,30 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
     """Converts a MoleculeInput to an AtomInput."""
 
     molecules = mol_input.molecules
+    atom_lens = mol_input.molecule_token_pool_lens
+
+    # get total number of atoms
+
+    if not exists(atom_lens):
+        atom_lens = []
+
+        for mol, is_ligand in zip(molecules, mol_input.is_molecule_types[:, -1]):
+            num_atoms = mol.GetNumAtoms()
+
+            if is_ligand:
+                atom_lens.extend([1] * num_atoms)
+            else:
+                atom_lens.append(num_atoms)
+
+    atom_lens = torch.tensor(atom_lens)
+    total_atoms = atom_lens.sum().item()
 
     # molecule_atom_lens
 
     atoms = []
-    atom_lens = []
 
-    for mol, is_ligand in zip(molecules, mol_input.is_molecule_types[:, -1]):
-        num_atoms = mol.GetNumAtoms()
-
-        if is_ligand:
-            atom_lens.extend([1] * num_atoms)
-        else:
-            atom_lens.append(num_atoms)
-
+    for mol in molecules:
         atoms.extend([*mol.GetAtoms()])
-
-    total_atoms = sum(atom_lens)
 
     # handle maybe atom embeds
 

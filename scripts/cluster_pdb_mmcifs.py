@@ -23,12 +23,14 @@ import argparse
 import glob
 import os
 import subprocess
-from collections import Counter, defaultdict
+from collections import defaultdict
 from typing import Dict, List, Literal, Set, Tuple
 
 import numpy as np
 import pandas as pd
 import rootutils
+from Bio.Data import PDBData
+from Bio.PDB.NeighborSearch import NeighborSearch
 from sklearn.cluster import AgglomerativeClustering
 from tqdm import tqdm
 
@@ -43,92 +45,121 @@ log = RankedLogger(__name__, rank_zero_only=True)
 # Constants
 
 CHAIN_SEQUENCES = List[Dict[str, Dict[str, str]]]
+RESIDUE_MOLECULE_TYPE = Literal["protein", "rna", "dna", "ligand"]
 CLUSTERING_MOLECULE_TYPE = Literal["protein", "nucleic_acid", "peptide", "ligand", "unknown"]
+
+PROTEIN_LETTERS_3TO1 = {k.strip(): v.strip() for k, v in PDBData.protein_letters_3to1.items()}
+NUCLEIC_LETTERS_3TO1 = {k.strip(): v.strip() for k, v in PDBData.nucleic_letters_3to1.items()}
+
+PROTEIN_LETTERS_3TO1_EXTENDED = {
+    k.strip(): v.strip() for k, v in PDBData.protein_letters_3to1_extended.items()
+}
+NUCLEIC_LETTERS_3TO1_EXTENDED = {
+    k.strip(): v.strip() for k, v in PDBData.nucleic_letters_3to1_extended.items()
+}
+
+PROTEIN_LETTERS_1TO3 = {k.strip(): v.strip() for k, v in PDBData.protein_letters_1to3.items()}
+RNA_LETTERS_1TO3 = {
+    "A": "A",
+    "C": "C",
+    "G": "G",
+    "U": "U",
+}
+DNA_LETTERS_1TO3 = {
+    "A": "DA",
+    "C": "DC",
+    "G": "DG",
+    "T": "DT",
+}
 
 
 # Helper functions
 
 
 @typecheck
-def convert_residue_three_to_one(
-    residue: str,
-) -> Tuple[str, CLUSTERING_MOLECULE_TYPE]:
-    """
-    Convert a three-letter amino acid, nucleotide, or CCD code to a one-letter code (if applicable).
-
-    NOTE: All unknown residues residues (be they protein, RNA, DNA, or ligands) are converted to 'X'.
-    """
-    raise NotImplementedError(
-        "This function needs to be reimplemented using the `Biomolecule` data structure."
-    )
-    if residue in PROTEIN_CODES_3TO1:
-        return PROTEIN_CODES_3TO1[residue], "protein"
-    elif residue in DNA_CODES_3TO1:
-        return DNA_CODES_3TO1[residue], "nucleic_acid"
-    elif residue in RNA_CODES_3TO1:
-        return RNA_CODES_3TO1[residue], "nucleic_acid"
-    elif residue in ccd_codes:
-        return residue, "ligand"
+def get_residue_molecule_type(res_chem_type: str) -> RESIDUE_MOLECULE_TYPE:
+    """Get the molecule type of a residue."""
+    if "peptide" in res_chem_type.lower():
+        return "protein"
+    elif "rna" in res_chem_type.lower():
+        return "rna"
+    elif "dna" in res_chem_type.lower():
+        return "dna"
     else:
-        return "X", "unknown"
+        return "ligand"
 
 
 @typecheck
-def convert_ambiguous_residue_three_to_one(
-    residue: str,
-    molecule_type: CLUSTERING_MOLECULE_TYPE,
-) -> Tuple[str, CLUSTERING_MOLECULE_TYPE]:
+def convert_modified_residue_three_to_one(
+    residue_id: str, residue_mol_type: RESIDUE_MOLECULE_TYPE
+) -> CLUSTERING_MOLECULE_TYPE:
     """
     Convert a three-letter amino acid, nucleotide, or CCD code to a one-letter code (if applicable).
 
-    NOTE: All unknown residues or unmappable modified residues (be they protein, RNA, DNA, or ligands) are converted to 'X'.
+    NOTE: All unknown residues or unmappable modified residues (be they protein, RNA, or DNA) are
+    converted to the unknown residue type of the residue's chemical type (e.g., `N` for RNA).
     """
-    raise NotImplementedError(
-        "This function needs to be reimplemented using the `Biomolecule` data structure."
-    )
+    # NOTE: If a modified residue cannot be found as a mapping key
+    # or is mapped to a value longer than a single character, then
+    # it will be mapped to the corresponding unknown residue type.
     is_modified_protein_residue = (
-        molecule_type == "protein"
-        and residue in SCOP_CODES_3TO1
-        and len(SCOP_CODES_3TO1[residue]) == 1
-    )
-    is_modified_dna_residue = (
-        molecule_type == "dna"
-        and residue in SCOP_CODES_3TO1
-        and len(SCOP_CODES_3TO1[residue]) == 1
+        residue_mol_type == "protein"
+        and residue_id not in PROTEIN_LETTERS_3TO1
+        and residue_id in PROTEIN_LETTERS_3TO1_EXTENDED
+        and len(PROTEIN_LETTERS_3TO1_EXTENDED[residue_id]) == 1
     )
     is_modified_rna_residue = (
-        molecule_type == "rna"
-        and residue in SCOP_CODES_3TO1
-        and len(SCOP_CODES_3TO1[residue]) == 1
+        residue_mol_type == "rna"
+        and residue_id not in NUCLEIC_LETTERS_3TO1
+        and residue_id in NUCLEIC_LETTERS_3TO1_EXTENDED
+        and len(NUCLEIC_LETTERS_3TO1_EXTENDED[residue_id]) == 1
+    )
+    is_modified_dna_residue = (
+        residue_mol_type == "dna"
+        and residue_id not in NUCLEIC_LETTERS_3TO1
+        and residue_id in NUCLEIC_LETTERS_3TO1_EXTENDED
+        and len(NUCLEIC_LETTERS_3TO1_EXTENDED[residue_id]) == 1
     )
 
     # Map modified residues to their one-letter codes, if applicable
-    if is_modified_protein_residue or is_modified_dna_residue or is_modified_rna_residue:
-        one_letter_mapped_residue = SCOP_CODES_3TO1[residue]
+    if any(is_modified_protein_residue, is_modified_rna_residue, is_modified_dna_residue):
+        one_letter_mapped_residue = (
+            PROTEIN_LETTERS_3TO1_EXTENDED[residue_id]
+            if is_modified_protein_residue
+            else NUCLEIC_LETTERS_3TO1_EXTENDED[residue_id]
+        )
         if is_modified_protein_residue:
-            mapped_residue = PROTEIN_CODES_1TO3[one_letter_mapped_residue]
-        elif is_modified_dna_residue:
-            mapped_residue = DNA_CODES_1TO3[one_letter_mapped_residue]
+            mapped_residue = PROTEIN_LETTERS_1TO3[one_letter_mapped_residue]
         elif is_modified_rna_residue:
-            mapped_residue = RNA_CODES_1TO3[one_letter_mapped_residue]
+            mapped_residue = RNA_LETTERS_1TO3[one_letter_mapped_residue]
+        elif is_modified_dna_residue:
+            mapped_residue = DNA_LETTERS_1TO3[one_letter_mapped_residue]
     else:
-        mapped_residue = residue
+        mapped_residue = residue_id
 
-    if mapped_residue in PROTEIN_CODES_3TO1:
-        return PROTEIN_CODES_3TO1[mapped_residue], "protein"
-    elif mapped_residue in DNA_CODES_3TO1:
-        return DNA_CODES_3TO1[mapped_residue], "nucleic_acid"
-    elif mapped_residue in RNA_CODES_3TO1:
-        return RNA_CODES_3TO1[mapped_residue], "nucleic_acid"
-    elif mapped_residue in ccd_codes:
-        return mapped_residue, "ligand"
+    if residue_mol_type == "protein":
+        return (
+            PROTEIN_LETTERS_3TO1[mapped_residue]
+            if mapped_residue in PROTEIN_LETTERS_3TO1
+            else "X",
+            "protein",
+        )
+    elif residue_mol_type in {"rna", "dna"}:
+        return (
+            NUCLEIC_LETTERS_3TO1[mapped_residue]
+            if mapped_residue in NUCLEIC_LETTERS_3TO1
+            else "X",
+            "nucleic_acid",
+        )
     else:
-        return "X", "unknown"
+        return mapped_residue, "ligand"
 
 
 @typecheck
 def parse_chain_sequences_and_interfaces_from_mmcif_file(
-    filepath: str, min_num_residues_for_protein_classification: int = 10
+    filepath: str,
+    assume_one_based_residue_ids: bool = False,
+    min_num_residues_for_protein_classification: int = 10,
 ) -> Tuple[Dict[str, str], Set[str]]:
     """
     Parse an mmCIF file and return a dictionary mapping chain IDs
@@ -136,12 +167,13 @@ def parse_chain_sequences_and_interfaces_from_mmcif_file(
     as well as a set of chain ID pairs denoting structural interfaces.
     """
     assert filepath.endswith(".cif"), "The input file must be an mmCIF file."
-    mmcif_object = parse_mmcif_object(filepath)
+    file_id = os.path.splitext(os.path.basename(filepath))[0]
+    mmcif_object = parse_mmcif_object(filepath, file_id)
     model = mmcif_object.structure
 
-    # NOTE: After filtering, only heavy (non-hydrogen) atoms remain in the structure
-    # all_atoms = [atom for atom in structure.get_atoms()]
-    # neighbor_search = NeighborSearch(all_atoms)
+    # NOTE: After dataset filtering, only heavy (non-hydrogen) atoms remain in the structure
+    all_atoms = [atom for atom in model.get_atoms()]
+    neighbor_search = NeighborSearch(all_atoms)
 
     sequences = {}
     interface_chain_ids = set()
@@ -150,66 +182,78 @@ def parse_chain_sequences_and_interfaces_from_mmcif_file(
         one_letter_seq_tokens = []
         token_molecule_types = set()
 
-        # First find the most common molecule type in the chain
-        molecule_type_counter = Counter(
-            [convert_residue_three_to_one(res.resname)[-1] for res in chain]
-        )
-        chain_most_common_molecule_types = molecule_type_counter.most_common(2)
-        chain_most_common_molecule_type = chain_most_common_molecule_types[0][0]
-        if (
-            chain_most_common_molecule_type == "ligand"
-            and len(chain_most_common_molecule_types) > 1
-        ):
-            # NOTE: Ligands may be the most common molecule type in a chain, in which case
-            # the second most common molecule type is required for sequence mapping
-            chain_most_common_molecule_type = chain_most_common_molecule_types[1][0]
-
-        for res in chain:
-            # Then convert each residue to a one-letter code using the most common molecule type in the chain
-            one_letter_residue, molecule_type = convert_ambiguous_residue_three_to_one(
-                res.resname, molecule_type=chain_most_common_molecule_type
+        chain_chem_comps = mmcif_object.chem_comp_details[chain.id]
+        for res_index, res in enumerate(chain):
+            # Convert each residue to a one-letter code if applicable
+            res_chem_comp = chain_chem_comps[res_index]
+            res_mol_type = get_residue_molecule_type(res_chem_comp.type)
+            one_letter_residue, clustering_molecule_type = convert_modified_residue_three_to_one(
+                res_chem_comp.id, res_mol_type
             )
-            if molecule_type == "ligand":
+
+            if clustering_molecule_type == "ligand":
                 num_ligands_in_chain += 1
                 sequences[
-                    f"{chain.id}:{molecule_type}-{res.resname}-{num_ligands_in_chain}"
+                    f"{chain.id}:{clustering_molecule_type}-{res_chem_comp.id}-{num_ligands_in_chain}"
                 ] = one_letter_residue
             else:
-                assert (
-                    molecule_type == chain_most_common_molecule_type
-                ), f"Residue {res.resname} in chain {chain.id} has an unexpected molecule type of `{molecule_type}` (vs. the expected molecule type of `{chain_most_common_molecule_type}`)."
                 one_letter_seq_tokens.append(one_letter_residue)
-                token_molecule_types.add(molecule_type)
+                token_molecule_types.add(clustering_molecule_type)
 
-            # TODO: Efficiently compute structural interfaces by precomputing each chain's most common molecule type
             # Find all interfaces defined as pairs of chains with minimum heavy atom (i.e. non-hydrogen) separation less than 5 Å
-            # for atom in res:
-            #     for neighbor in neighbor_search.search(atom.coord, 5.0, "R"):
-            #         neighbor_one_letter_residue, neighbor_molecule_type = convert_ambiguous_residue_three_to_one(
-            #             neighbor.resname, molecule_type=chain_most_common_molecule_type
-            #         )
-            #         molecule_index_postfix = f"-{res.resname}-{num_ligands_in_chain}" if molecule_type == "ligand" else ""
-            #         interface_chain_ids.add(f"{chain.id}:{molecule_type}{molecule_index_postfix}+{neighbor.get_parent().get_id()}:{neighbor_molecule_type}-{neighbor.resname}-{neighbor_num_ligands_in_chain}")
+            for atom in res:
+                neighbor_num_ligands_in_chain_mapping = defaultdict(int)
+                for neighbor in neighbor_search.search(atom.coord, 5.0, "R"):
+                    neighbor_chain_id = neighbor.get_parent().get_id()
+                    # NOTE: We can only make this `ID - 1` assumption because each chain's residue IDs
+                    # are 1-indexed after performing PDB dataset filtering. If clustering is being performed
+                    # on another (i.e., non-PDB) dataset of mmCIF files, then these zero-based residue indices
+                    # need to be identified alternatively (e.g., by performing list indexing on the neighboring
+                    # chain's Residue objects).
+                    if assume_one_based_residue_ids:
+                        neighbor_res_index = neighbor.get_id()[1] - 1
+                    else:
+                        neighbor_res_index = list(model[neighbor_chain_id]).index(
+                            neighbor
+                        )  # E.g., for non-PDB datasets
+                    neighbor_res_chem_comp = mmcif_object.chem_comp_details[neighbor_chain_id][
+                        neighbor_res_index
+                    ]
+                    neighbor_res_mol_type = get_residue_molecule_type(neighbor_res_chem_comp.type)
+
+                    _, neighbor_clustering_molecule_type = convert_modified_residue_three_to_one(
+                        neighbor_res_chem_comp.id, neighbor_res_mol_type
+                    )
+
+                    if neighbor_clustering_molecule_type == "ligand":
+                        neighbor_num_ligands_in_chain_mapping[neighbor_chain_id] += 1
+                    molecule_index_postfix = (
+                        f"-{res_chem_comp.id}-{num_ligands_in_chain}"
+                        if clustering_molecule_type == "ligand"
+                        else ""
+                    )
+                    neighbor_molecule_index_postfix = (
+                        f"-{neighbor_res_chem_comp.id}-{neighbor_num_ligands_in_chain_mapping[neighbor_chain_id]}"
+                        if neighbor_clustering_molecule_type == "ligand"
+                        else ""
+                    )
+
+                    atom_interface_key = (
+                        f"{chain.id}:{clustering_molecule_type}{molecule_index_postfix}"
+                    )
+                    neighbor_interface_key = f"{neighbor_chain_id}:{neighbor_clustering_molecule_type}{neighbor_molecule_index_postfix}"
+                    interface_chain_ids.add(f"{atom_interface_key}+{neighbor_interface_key}")
 
         assert (
             len(one_letter_seq_tokens) > 0
         ), f"No residues found in chain {chain.id} within the mmCIF file {filepath}."
 
         token_molecule_types = list(token_molecule_types)
-        if len(token_molecule_types) > 1:
-            assert (
-                len(token_molecule_types) == 2
-            ), f"More than two molecule types found ({token_molecule_types}) in chain {chain.id} within the mmCIF file {filepath}."
-            molecule_type = [
-                molecule_type
-                for molecule_type in token_molecule_types
-                if molecule_type != "unknown"
-            ][0]
-        elif len(token_molecule_types) == 1 and token_molecule_types[0] == "unknown":
-            molecule_type = "protein"
-        else:
-            molecule_type = token_molecule_types[0]
+        assert (
+            len(token_molecule_types) == 1
+        ), f"More than one molecule type found (i.e., {token_molecule_types}) in chain {chain.id} within the mmCIF file {filepath}."
 
+        molecule_type = token_molecule_types[0]
         if (
             molecule_type == "protein"
             and len(one_letter_seq_tokens) < min_num_residues_for_protein_classification
@@ -223,7 +267,9 @@ def parse_chain_sequences_and_interfaces_from_mmcif_file(
 
 
 @typecheck
-def parse_chain_sequences_and_interfaces_from_mmcif_directory(mmcif_dir: str) -> CHAIN_SEQUENCES:
+def parse_chain_sequences_and_interfaces_from_mmcif_directory(
+    mmcif_dir: str, assume_one_based_residue_ids: bool = False
+) -> CHAIN_SEQUENCES:
     """
     Parse all mmCIF files in a directory and return a dictionary for each complex mapping chain IDs to sequences
     as well as a set of chain ID pairs denoting structural interfaces for each complex."""
@@ -236,7 +282,9 @@ def parse_chain_sequences_and_interfaces_from_mmcif_directory(mmcif_dir: str) ->
         (
             chain_sequences,
             interface_chain_ids,
-        ) = parse_chain_sequences_and_interfaces_from_mmcif_file(cif_filepath)
+        ) = parse_chain_sequences_and_interfaces_from_mmcif_file(
+            cif_filepath, assume_one_based_residue_ids=assume_one_based_residue_ids
+        )
         all_chain_sequences.append({structure_id: chain_sequences})
         all_interface_chain_ids.append({structure_id: interface_chain_ids})
 
@@ -403,6 +451,11 @@ if __name__ == "__main__":
         default=os.path.join("data", "pdb_data", "data_caches", "clusterings"),
         help="Path to the output FASTA file.",
     )
+    parser.add_argument(
+        "--clustering_filtered_pdb_dataset",
+        action="store_true",
+        help="Whether the clustering is being performed on the filtered PDB dataset.",
+    )
     args = parser.parse_args()
 
     # Validate input arguments
@@ -420,7 +473,9 @@ if __name__ == "__main__":
     (
         all_chain_sequences,
         interface_chain_ids,
-    ) = parse_chain_sequences_and_interfaces_from_mmcif_directory(args.mmcif_dir)
+    ) = parse_chain_sequences_and_interfaces_from_mmcif_directory(
+        args.mmcif_dir, assume_one_based_residue_ids=args.clustering_filtered_pdb_dataset
+    )
 
     # Align sequences separately for each molecule type and compute each respective distance matrix
 
