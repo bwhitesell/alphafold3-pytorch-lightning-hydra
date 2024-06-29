@@ -1,8 +1,20 @@
 from dataclasses import dataclass
+from functools import partial
 from typing import Any, Callable, List, Type
 
+import einx
+import torch
+from rdkit import Chem
 from rdkit.Chem.rdchem import Mol
 
+from alphafold3_pytorch.data.life import (
+    DNA_NUCLEOTIDES,
+    HUMAN_AMINO_ACIDS,
+    METALS,
+    RNA_NUCLEOTIDES,
+    reverse_complement,
+    reverse_complement_tensor,
+)
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
 from alphafold3_pytorch.utils.utils import exists, identity
 
@@ -12,6 +24,11 @@ IS_MOLECULE_TYPES = 4
 ADDITIONAL_MOLECULE_FEATS = 5
 
 # functions
+
+
+def flatten(arr):
+    """Flattens a list of lists."""
+    return [el for sub_arr in arr for el in sub_arr]
 
 
 def compose(*fns: Callable):
@@ -88,8 +105,8 @@ class BatchedAtomInput:
 @dataclass
 class MoleculeInput:
     molecules: List[Mol]
-    molecule_token_pool_lens: List[List[int]]
-    molecule_atom_indices: List[List[int] | None]
+    molecule_token_pool_lens: List[int]  # type: ignore
+    molecule_atom_indices: List[int | None]  # type: ignore
     molecule_ids: Int[" n"]  # type: ignore
     additional_molecule_feats: Int[f"n {ADDITIONAL_MOLECULE_FEATS}"]  # type: ignore
     is_molecule_types: Bool[f"n {IS_MOLECULE_TYPES}"]  # type: ignore
@@ -136,9 +153,157 @@ class Alphafold3Input:
 
 
 @typecheck
+def map_int_or_string_indices_to_mol(
+    entries: dict, indices: Int[" _"] | List[str] | str, mol_keyname="rdchem_mol"  # type: ignore
+) -> List[Mol]:
+    """Maps indices or strings to molecules."""
+    if isinstance(indices, str):
+        indices = list(indices)
+
+    entries_list = list(entries.values())
+
+    if torch.is_tensor(indices):
+        indices = indices.tolist()
+        mols = [entries_list[i][mol_keyname] for i in indices]
+    else:
+        mols = [entries[s][mol_keyname] for s in indices]
+
+    return mols
+
+
+@typecheck
+@typecheck
 def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> MoleculeInput:
     """Converts an Alphafold3Input to a MoleculeInput."""
-    raise NotImplementedError
+    ss_dnas = list(alphafold3_input.ss_dna)
+    ss_rnas = list(alphafold3_input.ss_rna)
+
+    # any double stranded nucleic acids is added to single stranded lists with its reverse complement
+    # rc stands for reverse complement
+
+    for seq in alphafold3_input.ds_dna:
+        rc_fn = (
+            partial(reverse_complement, nucleic_acid_type="dna")
+            if isinstance(seq, str)
+            else reverse_complement_tensor
+        )
+        rc_seq = rc_fn(seq)
+        ss_dnas.extend([seq, rc_seq])
+
+    for seq in alphafold3_input.ds_rna:
+        rc_fn = (
+            partial(reverse_complement, nucleic_acid_type="rna")
+            if isinstance(seq, str)
+            else reverse_complement_tensor
+        )
+        rc_seq = rc_fn(seq)
+        ss_rnas.extend([seq, rc_seq])
+
+    # convert all proteins to a List[Mol] of each peptide
+
+    proteins = alphafold3_input.proteins
+    mol_proteins = []
+
+    for protein in proteins:
+        mol_peptides = map_int_or_string_indices_to_mol(HUMAN_AMINO_ACIDS, list(protein))
+        mol_proteins.append(mol_peptides)
+
+    # convert all single stranded nucleic acids to mol
+
+    mol_ss_dnas = []
+    mol_ss_rnas = []
+
+    for seq in ss_dnas:
+        mol_seq = map_int_or_string_indices_to_mol(DNA_NUCLEOTIDES, seq)
+        mol_ss_dnas.append(mol_seq)
+
+    for seq in ss_rnas:
+        mol_seq = map_int_or_string_indices_to_mol(RNA_NUCLEOTIDES, seq)
+        mol_ss_rnas.append(mol_seq)
+
+    # convert metal ions to rdchem.Mol
+
+    metal_ions = alphafold3_input.metal_ions
+    mol_metal_ions = map_int_or_string_indices_to_mol(METALS, metal_ions)
+
+    # convert ligands to rdchem.Mol
+
+    ligands = list(alphafold3_input.ligands)
+    mol_ligands = [(Chem.MolFromSmiles(lig) if isinstance(lig, str) else lig) for lig in ligands]
+
+    # create the molecule input
+
+    all_protein_mols = flatten(mol_proteins)
+    all_rna_mols = flatten(mol_ss_rnas)
+    all_dna_mols = flatten(mol_ss_dnas)
+
+    molecules_without_ligands = [
+        *all_protein_mols,
+        *all_rna_mols,
+        *all_dna_mols,
+    ]
+
+    molecule_token_pool_lens_without_ligands = [
+        mol.GetNumAtoms() for mol in molecules_without_ligands
+    ]
+
+    # metal ions pool lens
+
+    num_metal_ions = len(mol_metal_ions)
+    metal_ions_pool_lens = [1] * num_metal_ions
+
+    # in the paper, they treat each atom of the ligands as a token
+
+    ligands_token_pool_lens = [[1] * mol.GetNumAtoms() for mol in mol_ligands]
+
+    total_ligand_tokens = sum([mol.GetNumAtoms() for mol in mol_ligands])
+
+    # correctly generate the is_molecule_types, which is a boolean tensor of shape [*, 4]
+    # is_protein | is_rna | is_dna | is_ligand
+    # this is needed for their special diffusion loss
+
+    molecule_type_token_lens = [
+        len(all_protein_mols),
+        len(all_rna_mols),
+        len(all_dna_mols),
+        total_ligand_tokens,
+    ]
+
+    num_tokens = sum(molecule_type_token_lens) + num_metal_ions
+
+    arange = torch.arange(num_tokens)
+
+    is_molecule_types_lens_cumsum = torch.tensor([0, *molecule_type_token_lens]).cumsum(dim=-1)
+
+    gt_equal_mask = einx.greater_equal(
+        "n, is_type -> n is_type", arange, is_molecule_types_lens_cumsum[:-1]
+    )
+
+    lt_mask = einx.less("n, is_type -> n is_type", arange, is_molecule_types_lens_cumsum[1:])
+
+    is_molecule_types = gt_equal_mask & lt_mask
+
+    # all molecules, layout is
+    # proteins | ss rna | ss dna | ligands | metal ions
+
+    molecules = [*molecules_without_ligands, *mol_ligands, *mol_metal_ions]
+
+    token_pool_lens = [
+        *molecule_token_pool_lens_without_ligands,
+        *flatten(ligands_token_pool_lens),
+        *metal_ions_pool_lens,
+    ]
+
+    molecule_input = MoleculeInput(
+        molecules=molecules,
+        molecule_token_pool_lens=token_pool_lens,
+        molecule_atom_indices=[0] * num_tokens,
+        molecule_ids=torch.zeros(num_tokens).long(),
+        additional_molecule_feats=torch.zeros(num_tokens, 5).long(),
+        is_molecule_types=is_molecule_types,
+    )
+
+    return molecule_input
 
 
 # pdb input

@@ -28,7 +28,10 @@ from alphafold3_pytorch import (
     TemplateEmbedder,
     WeightedRigidAlign,
 )
-from alphafold3_pytorch.data.atom_datamodule import MockAtomDataset, collate_af3_inputs
+from alphafold3_pytorch.data.atom_datamodule import (
+    MockAtomDataset,
+    collate_inputs_to_batched_atom_input,
+)
 from alphafold3_pytorch.models.components.alphafold3 import (
     full_pairwise_repr_to_windowed,
     mean_pool_with_lens,
@@ -753,6 +756,6 @@ def test_collate_fn():
 
     dataset = MockAtomDataset(1)
 
-    batched_atom_inputs = collate_af3_inputs([dataset[0]])
+    batched_atom_inputs = collate_inputs_to_batched_atom_input([dataset[0]])
 
     _, breakdown = alphafold3(**asdict(batched_atom_inputs), return_loss_breakdown=True)

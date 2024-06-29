@@ -3,7 +3,7 @@ from typing import Any
 
 from omegaconf import OmegaConf
 
-from alphafold3_pytorch.data.atom_datamodule import collate_af3_inputs
+from alphafold3_pytorch.data.atom_datamodule import collate_inputs_to_batched_atom_input
 from alphafold3_pytorch.models.alphafold3_module import Alphafold3LitModule
 from alphafold3_pytorch.models.components.alphafold3 import (
     AdaptiveLayerNorm,
@@ -82,7 +82,7 @@ __all__ = [
     BatchedAtomInput,
     MoleculeInput,
     Alphafold3Input,
-    collate_af3_inputs,
+    collate_inputs_to_batched_atom_input,
     full_pairwise_repr_to_windowed,
     maybe_transform_to_atom_input,
     maybe_transform_to_atom_inputs,

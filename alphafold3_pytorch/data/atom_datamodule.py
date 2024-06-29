@@ -25,7 +25,7 @@ from alphafold3_pytorch.utils.utils import exists
 
 
 @typecheck
-def collate_af3_inputs(
+def collate_inputs_to_batched_atom_input(
     inputs: List,
     int_pad_value=-1,
     atoms_per_window: int | None = None,
@@ -144,7 +144,7 @@ def AF3DataLoader(
 ):
     """
     Create a `torch.utils.data.DataLoader` with the
-    `collate_af3_inputs` or `map_input_fn` function
+    `collate_inputs_to_batched_atom_input` or `map_input_fn` function
     for data collation.
 
     :param args: The arguments to pass to `torch.utils.data.DataLoader`.
@@ -153,7 +153,7 @@ def AF3DataLoader(
     :param kwargs: The keyword arguments to pass to `torch.utils.data.DataLoader`.
     :return: A `torch.utils.data.DataLoader` with a custom AF3 collate function.
     """
-    collate_fn = partial(collate_af3_inputs, atoms_per_window=atoms_per_window)
+    collate_fn = partial(collate_inputs_to_batched_atom_input, atoms_per_window=atoms_per_window)
 
     if exists(map_input_fn):
         collate_fn = partial(collate_fn, map_input_fn=map_input_fn)

@@ -1,8 +1,9 @@
 from typing import Literal
 
+import torch
 from rdkit import Chem
 
-from alphafold3_pytorch.utils.tensor_typing import typecheck
+from alphafold3_pytorch.utils.tensor_typing import Int, typecheck
 
 # human amino acids
 
@@ -45,10 +46,16 @@ RNA_NUCLEOTIDES = dict(
     U=dict(smile="C1=CN(C(=O)NC1=O)C2C(C(C(O2)COP(=O)(O)O)O)O", complement="A"),
 )
 
+# complements in tensor form, following the ordering ACG(T|U)N
+
+NUCLEIC_ACID_COMPLEMENT_TENSOR = torch.tensor([3, 2, 1, 0, 4], dtype=torch.long)
+
+# some functions for nucleic acids
+
 
 @typecheck
 def reverse_complement(seq: str, nucleic_acid_type: Literal["dna", "rna"] = "dna"):
-    """Returns the reverse complement of a nucleic acid sequence."""
+    """Get the reverse complement of a nucleic acid sequence."""
     if nucleic_acid_type == "dna":
         nucleic_acid_entries = DNA_NUCLEOTIDES
     elif nucleic_acid_type == "rna":
@@ -56,10 +63,17 @@ def reverse_complement(seq: str, nucleic_acid_type: Literal["dna", "rna"] = "dna
 
     assert all(
         [nuc in nucleic_acid_entries for nuc in seq]
-    ), "Unknown nucleotide for given nucleic acid type"
+    ), "unknown nucleotide for given nucleic acid type"
 
     complement = [nucleic_acid_entries[nuc]["complement"] for nuc in seq]
     return "".join(complement[::-1])
+
+
+@typecheck
+def reverse_complement_tensor(t: Int["n"]):  # type: ignore
+    """Get the reverse complement of a nucleic acid sequence tensor."""
+    reverse_complement = t.flip(dims=(-1,))
+    return reverse_complement
 
 
 # metal ions

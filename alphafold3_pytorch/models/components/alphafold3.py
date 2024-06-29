@@ -1392,6 +1392,7 @@ class DiffusionTransformer(Module):
         trans_expansion_factor=2,
         num_register_tokens=0,
         serial=False,
+        add_residual=True,
         use_linear_attn=False,
         linear_attn_kwargs=dict(heads=8, dim_head=16),
         use_colt5_attn=False,
@@ -1455,6 +1456,7 @@ class DiffusionTransformer(Module):
         self.layers = layers
 
         self.serial = serial
+        self.add_residual = add_residual
 
         self.has_registers = num_register_tokens > 0
         self.num_registers = num_register_tokens
@@ -1536,10 +1538,17 @@ class DiffusionTransformer(Module):
 
             ff_out = transition(noised_repr, cond=single_repr)
 
-            if not serial:
-                ff_out = ff_out + attn_out
+            if serial:
+                noised_repr = ff_out + noised_repr
 
-            noised_repr = noised_repr + ff_out
+            # in the algorithm, they omitted the residual, but it could be an error
+            # attn + ff + residual was used in GPT-J and PaLM, but later found to be unstable configuration, so it seems unlikely attn + ff would work
+            # but in the case they figured out something we have not, you can use their exact formulation by setting `serial = False` and `add_residual = False`
+
+            residual = noised_repr if self.add_residual else 0.0
+
+            if not serial:
+                ff_out = ff_out + attn_out + residual
 
         # splice out registers
 
