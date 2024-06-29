@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from typing import Any, Dict, Tuple
 
 import rootutils
@@ -7,7 +8,7 @@ from torch import Tensor
 from torchmetrics import MeanMetric, MinMetric
 
 from alphafold3_pytorch.models.components.alphafold3 import LossBreakdown
-from alphafold3_pytorch.models.components.inputs import AtomInput
+from alphafold3_pytorch.models.components.inputs import BatchedAtomInput
 from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.model_utils import default_lambda_lr_fn
 from alphafold3_pytorch.utils.tensor_typing import Float, typecheck
@@ -85,13 +86,13 @@ class Alphafold3LitModule(LightningModule):
         return self.trainer.global_rank == 0
 
     @typecheck
-    def forward(self, batch: AtomInput) -> Tuple[Float[""], LossBreakdown]:  # type: ignore
+    def forward(self, batch: BatchedAtomInput) -> Tuple[Float[""], LossBreakdown]:  # type: ignore
         """Perform a forward pass through the model `self.net`.
 
-        :param x: A batch of `AtomInput` data.
+        :param x: A batch of `BatchedAtomInput` data.
         :return: A tensor of losses as well as a breakdown of the component losses.
         """
-        return self.net(**batch, return_loss_breakdown=True)
+        return self.net(**asdict(batch), return_loss_breakdown=True)
 
     def on_train_start(self) -> None:
         """Lightning hook that is called when training begins."""
@@ -101,20 +102,20 @@ class Alphafold3LitModule(LightningModule):
         self.val_loss_best.reset()
 
     @typecheck
-    def model_step(self, batch: AtomInput) -> Tuple[Float[""], LossBreakdown]:  # type: ignore
+    def model_step(self, batch: BatchedAtomInput) -> Tuple[Float[""], LossBreakdown]:  # type: ignore
         """Perform a single model step on a batch of data.
 
-        :param batch: A batch of `AtomInput` data.
+        :param batch: A batch of `BatchedAtomInput` data.
         :return: A tensor of losses as well as a breakdown of the component losses.
         """
         loss, loss_breakdown = self.forward(batch)
         return loss, loss_breakdown
 
     @typecheck
-    def training_step(self, batch: AtomInput, batch_idx: int) -> Tensor:
+    def training_step(self, batch: BatchedAtomInput, batch_idx: int) -> Tensor:
         """Perform a single training step on a batch of data from the training set.
 
-        :param batch: A batch of `AtomInput` data.
+        :param batch: A batch of `BatchedAtomInput` data.
         :param batch_idx: The index of the current batch.
         :return: A tensor of losses.
         """
@@ -146,10 +147,10 @@ class Alphafold3LitModule(LightningModule):
         pass
 
     @typecheck
-    def validation_step(self, batch: AtomInput, batch_idx: int) -> None:
+    def validation_step(self, batch: BatchedAtomInput, batch_idx: int) -> None:
         """Perform a single validation step on a batch of data from the validation set.
 
-        :param batch: A batch of `AtomInput` data.
+        :param batch: A batch of `BatchedAtomInput` data.
         :param batch_idx: The index of the current batch.
         """
         loss, loss_breakdown = self.model_step(batch)
@@ -186,10 +187,10 @@ class Alphafold3LitModule(LightningModule):
         )
 
     @typecheck
-    def test_step(self, batch: AtomInput, batch_idx: int) -> None:
+    def test_step(self, batch: BatchedAtomInput, batch_idx: int) -> None:
         """Perform a single test step on a batch of data from the test set.
 
-        :param batch: A batch of `AtomInput` data.
+        :param batch: A batch of `BatchedAtomInput` data.
         :param batch_idx: The index of the current batch.
         """
         loss, loss_breakdown = self.model_step(batch)

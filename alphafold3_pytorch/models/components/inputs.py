@@ -1,49 +1,63 @@
-from typing import Callable, List, Literal, Type, TypedDict
+from dataclasses import dataclass
+from typing import Any, Callable, List, Type
 
 from rdkit.Chem.rdchem import Mol
 
-from alphafold3_pytorch.data.life import (
-    HUMAN_AMINO_ACIDS,
-    METALS,
-    MISC,
-    NUCLEOTIDES,
-)
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
+from alphafold3_pytorch.utils.utils import exists, identity
 
 # constants
 
 IS_MOLECULE_TYPES = 4
 ADDITIONAL_MOLECULE_FEATS = 5
 
-# atom level, what AlphaFold3 accepts
+# functions
+
+
+def compose(*fns: Callable):
+    """A function for chaining from Alphafold3Input -> MoleculeInput -> AtomInput."""
+
+    def inner(x, *args, **kwargs):
+        """Inner function for chaining the functions together."""
+        for fn in fns:
+            x = fn(x, *args, **kwargs)
+        return x
+
+    return inner
+
+
+# atom level, what Alphafold3 accepts
 
 
 @typecheck
-class AtomInput(TypedDict):
+@dataclass
+class AtomInput:
     atom_inputs: Float["m dai"]  # type: ignore
-    molecule_ids: Int["n"]  # type: ignore
-    molecule_atom_lens: Int["n"]  # type: ignore
+    molecule_ids: Int[" n"]  # type: ignore
+    molecule_atom_lens: Int[" n"]  # type: ignore
     atompair_inputs: Float["m m dapi"] | Float["nw w (w*2) dapi"]  # type: ignore
     additional_molecule_feats: Float[f"n {ADDITIONAL_MOLECULE_FEATS}"]  # type: ignore
     is_molecule_types: Bool[f"n {IS_MOLECULE_TYPES}"]  # type: ignore
     templates: Float["t n n dt"]  # type: ignore
     msa: Float["s n dm"]  # type: ignore
-    token_bonds: Bool["n n"] | None  # type: ignore
-    atom_ids: Int["m"] | None  # type: ignore
-    atom_parent_ids: Int["m"] | None  # type: ignore
-    atompair_ids: Int["m m"] | Int["nw w (w*2)"] | None  # type: ignore
-    template_mask: Bool["t"] | None  # type: ignore
-    msa_mask: Bool["s"] | None  # type: ignore
-    atom_pos: Float["m 3"] | None  # type: ignore
-    molecule_atom_indices: Int["n"] | None  # type: ignore
-    distance_labels: Int["n n"] | None  # type: ignore
-    pae_labels: Int["n n"] | None  # type: ignore
-    pde_labels: Int["n"] | None  # type: ignore
-    resolved_labels: Int["n"] | None  # type: ignore
+    token_bonds: Bool["n n"] | None = None  # type: ignore
+    atom_ids: Int[" m"] | None = None  # type: ignore
+    atom_parent_ids: Int[" m"] | None = None  # type: ignore
+    atompair_ids: Int["m m"] | Int["nw w (w*2)"] | None = None  # type: ignore
+    template_mask: Bool[" t"] | None = None  # type: ignore
+    msa_mask: Bool[" s"] | None = None  # type: ignore
+    atom_pos: Float["m 3"] | None = None  # type: ignore
+    molecule_atom_indices: Int[" n"] | None = None  # type: ignore
+    distance_labels: Int["n n"] | None = None  # type: ignore
+    pae_labels: Int["n n"] | None = None  # type: ignore
+    pde_labels: Int["n n"] | None = None  # type: ignore
+    plddt_labels: Int[" n"] | None = None  # type: ignore
+    resolved_labels: Int[" n"] | None = None  # type: ignore
 
 
 @typecheck
-class BatchedAtomInput(TypedDict):
+@dataclass
+class BatchedAtomInput:
     atom_inputs: Float["b m dai"]  # type: ignore
     molecule_ids: Int["b n"]  # type: ignore
     molecule_atom_lens: Int["b n"]  # type: ignore
@@ -52,40 +66,42 @@ class BatchedAtomInput(TypedDict):
     is_molecule_types: Bool[f"b n {IS_MOLECULE_TYPES}"]  # type: ignore
     templates: Float["b t n n dt"]  # type: ignore
     msa: Float["b s n dm"]  # type: ignore
-    token_bonds: Bool["b n n"] | None  # type: ignore
-    atom_ids: Int["b m"] | None  # type: ignore
-    atom_parent_ids: Int["b m"] | None  # type: ignore
-    atompair_ids: Int["b m m"] | Int["b nw w (w*2)"] | None  # type: ignore
-    template_mask: Bool["b t"] | None  # type: ignore
-    msa_mask: Bool["b s"] | None  # type: ignore
-    atom_pos: Float["b m 3"] | None  # type: ignore
-    molecule_atom_indices: Int["b n"] | None  # type: ignore
-    distance_labels: Int["b n n"] | None  # type: ignore
-    pae_labels: Int["b n n"] | None  # type: ignore
-    pde_labels: Int["b n"] | None  # type: ignore
-    resolved_labels: Int["b n"] | None  # type: ignore
+    token_bonds: Bool["b n n"] | None = None  # type: ignore
+    atom_ids: Int["b m"] | None = None  # type: ignore
+    atom_parent_ids: Int["b m"] | None = None  # type: ignore
+    atompair_ids: Int["b m m"] | Int["b nw w (w*2)"] | None = None  # type: ignore
+    template_mask: Bool["b t"] | None = None  # type: ignore
+    msa_mask: Bool["b s"] | None = None  # type: ignore
+    atom_pos: Float["b m 3"] | None = None  # type: ignore
+    molecule_atom_indices: Int["b n"] | None = None  # type: ignore
+    distance_labels: Int["b n n"] | None = None  # type: ignore
+    pae_labels: Int["b n n"] | None = None  # type: ignore
+    pde_labels: Int["b n n"] | None = None  # type: ignore
+    plddt_labels: Int["b n"] | None = None  # type: ignore
+    resolved_labels: Int["b n"] | None = None  # type: ignore
 
 
 # molecule input - accepting list of molecules as rdchem.Mol + the atomic lengths for how to pool into tokens
 
 
 @typecheck
-class MoleculeInput(TypedDict):
+@dataclass
+class MoleculeInput:
     molecules: List[Mol]
     molecule_token_pool_lens: List[List[int]]
     molecule_atom_indices: List[List[int] | None]
-    molecule_ids: Int["n"]  # type: ignore
-    additional_molecule_feats: Float["n 5"]  # type: ignore
-    is_molecule_types: Bool["n 4"]  # type: ignore
-    atom_pos: List[Float["_ 3"]] | Float["m 3"] | None  # type: ignore
+    molecule_ids: Int[" n"]  # type: ignore
+    additional_molecule_feats: Float[f"n {ADDITIONAL_MOLECULE_FEATS}"]  # type: ignore
+    is_molecule_types: Bool[f"n {IS_MOLECULE_TYPES}"]  # type: ignore
     templates: Float["t n n dt"]  # type: ignore
-    template_mask: Bool["t"] | None  # type: ignore
     msa: Float["s n dm"]  # type: ignore
-    msa_mask: Bool["s"] | None  # type: ignore
-    distance_labels: Int["n n"] | None  # type: ignore
-    pae_labels: Int["n n"] | None  # type: ignore
-    pde_labels: Int["n"] | None  # type: ignore
-    resolved_labels: Int["n"] | None  # type: ignore
+    atom_pos: List[Float["_ 3"]] | Float["m 3"] | None = None  # type: ignore
+    template_mask: Bool[" t"] | None = None  # type: ignore
+    msa_mask: Bool[" s"] | None = None  # type: ignore
+    distance_labels: Int["n n"] | None = None  # type: ignore
+    pae_labels: Int["n n"] | None = None  # type: ignore
+    pde_labels: Int[" n"] | None = None  # type: ignore
+    resolved_labels: Int[" n"] | None = None  # type: ignore
 
 
 @typecheck
@@ -94,62 +110,48 @@ def molecule_to_atom_input(molecule_input: MoleculeInput) -> AtomInput:
     raise NotImplementedError
 
 
-def validate_molecule_input(molecule_input: MoleculeInput):
-    """Validates a MoleculeInput."""
-    assert True
-
-
-# residue level - single chain proteins for starters
+# alphafold3 input - support polypeptides, nucleic acids, metal ions + any number of ligands + misc biomolecules
 
 
 @typecheck
-class SingleProteinInput(TypedDict):
-    residue_ids: Int["n"]  # type: ignore
-    residue_atom_lens: Int["n"]  # type: ignore
+@dataclass
+class Alphafold3Input:
+    proteins: List[Int[" _"]]  # type: ignore
+    protein_atom_lens: List[Int[" _"]]  # type: ignore
+    nucleic_acids: List[Int[" _"]]  # type: ignore
+    nucleic_acid_atom_lens: List[Int[" _"]]  # type: ignore
+    metal_ions: Int[" _"]  # type: ignore
+    misc_molecule_ids: Int[" _"]  # type: ignore
+    ligands: List[Mol | str]  # can be given as smiles
     templates: Float["t n n dt"]  # type: ignore
     msa: Float["s n dm"]  # type: ignore
-    template_mask: Bool["t"] | None  # type: ignore
-    msa_mask: Bool["s"] | None  # type: ignore
-    atom_pos: Float["m 3"] | None  # type: ignore
-    distance_labels: Int["n n"] | None  # type: ignore
-    pae_labels: Int["n n"] | None  # type: ignore
-    pde_labels: Int["n"] | None  # type: ignore
-    resolved_labels: Int["n"] | None  # type: ignore
+    atom_pos: List[Float["_ 3"]] | Float["m 3"] | None = None  # type: ignore
+    template_mask: Bool[" t"] | None = None  # type: ignore
+    msa_mask: Bool[" s"] | None = None  # type: ignore
+    distance_labels: Int["n n"] | None = None  # type: ignore
+    pae_labels: Int["n n"] | None = None  # type: ignore
+    pde_labels: Int[" n"] | None = None  # type: ignore
+    resolved_labels: Int[" n"] | None = None  # type: ignore
 
 
 @typecheck
-def single_protein_input_to_atom_input(input: SingleProteinInput) -> AtomInput:
-    """Converts a SingleProteinInput to an AtomInput."""
+def alphafold3_input_to_molecule_input(af3_input: Alphafold3Input) -> AtomInput:
+    """Converts an Alphafold3Input to a MoleculeInput."""
     raise NotImplementedError
 
 
-# single chain protein with single ds nucleic acid
-
-# o - for nucleOtide seq
+# pdb input
 
 
 @typecheck
-class SingleProteinSingleNucleicAcidInput(TypedDict):
-    residue_ids: Int["n"]  # type: ignore
-    residue_atom_lens: Int["n"]  # type: ignore
-    nucleotide_ids: Int["o"]  # type: ignore
-    nucleic_acid_type: Literal["dna", "rna"]  # type: ignore
-    templates: Float["t n n dt"]  # type: ignore
-    msa: Float["s n dm"]  # type: ignore
-    template_mask: Bool["t"] | None  # type: ignore
-    msa_mask: Bool["s"] | None  # type: ignore
-    atom_pos: Float["m 3"] | None  # type: ignore
-    distance_labels: Int["n n"] | None  # type: ignore
-    pae_labels: Int["n n"] | None  # type: ignore
-    pde_labels: Int["n"] | None  # type: ignore
-    resolved_labels: Int["n"] | None  # type: ignore
+@dataclass
+class PDBInput:
+    filepath: str
 
 
 @typecheck
-def single_protein_input_and_single_nucleic_acid_to_atom_input(
-    input: SingleProteinSingleNucleicAcidInput,
-) -> AtomInput:
-    """Converts a SingleProteinSingleNucleicAcidInput to an AtomInput."""
+def pdb_input_to_alphafold3_input(pdb_input: PDBInput) -> Alphafold3Input:
+    """Converts a PDBInput to an Alphafold3Input."""
     raise NotImplementedError
 
 
@@ -157,15 +159,39 @@ def single_protein_input_and_single_nucleic_acid_to_atom_input(
 # this can be preprocessed or will be taken care of automatically within the Trainer during data collation
 
 INPUT_TO_ATOM_TRANSFORM = {
+    AtomInput: identity,
     MoleculeInput: molecule_to_atom_input,
-    SingleProteinInput: single_protein_input_to_atom_input,
-    SingleProteinSingleNucleicAcidInput: single_protein_input_and_single_nucleic_acid_to_atom_input,
+    Alphafold3Input: compose(alphafold3_input_to_molecule_input, molecule_to_atom_input),
+    PDBInput: compose(
+        pdb_input_to_alphafold3_input, alphafold3_input_to_molecule_input, molecule_to_atom_input
+    ),
 }
 
 # function for extending the config
 
 
 @typecheck
-def register_input_transform(input_type: Type, fn: Callable[[TypedDict], AtomInput]):  # type: ignore
-    """Registers a new input transform."""
+def register_input_transform(input_type: Type, fn: Callable[[Any], AtomInput]):
+    """Registers a new input transform function."""
+    assert input_type not in INPUT_TO_ATOM_TRANSFORM, f"{input_type} is already registered"
     INPUT_TO_ATOM_TRANSFORM[input_type] = fn
+
+
+# functions for transforming to atom inputs
+
+
+def maybe_transform_to_atom_inputs(inputs: List[Any]) -> List[AtomInput]:
+    """Transforms a list of inputs to AtomInputs."""
+    atom_inputs = []
+
+    for i in inputs:
+        maybe_to_atom_fn = INPUT_TO_ATOM_TRANSFORM.get(type(i), None)
+
+        if not exists(maybe_to_atom_fn):
+            raise TypeError(
+                f"Invalid input type {type(i)} being passed into Trainer that is not converted to AtomInput correctly"
+            )
+
+        atom_inputs.append(maybe_to_atom_fn(i))
+
+    return atom_inputs

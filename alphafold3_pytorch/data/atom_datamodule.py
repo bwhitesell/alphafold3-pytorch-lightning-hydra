@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from functools import partial
 from random import random, randrange
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -12,12 +13,12 @@ from alphafold3_pytorch.models.components.attention import (
     full_pairwise_repr_to_windowed,
 )
 from alphafold3_pytorch.models.components.inputs import (
-    INPUT_TO_ATOM_TRANSFORM,
     AtomInput,
     BatchedAtomInput,
+    maybe_transform_to_atom_inputs,
 )
 from alphafold3_pytorch.utils.model_utils import pad_at_dim
-from alphafold3_pytorch.utils.tensor_typing import beartype_isinstance, typecheck
+from alphafold3_pytorch.utils.tensor_typing import typecheck
 from alphafold3_pytorch.utils.utils import exists
 
 # dataloader and collation fn
@@ -45,33 +46,19 @@ def collate_af3_inputs(
     # go through all the inputs
     # and for any that is not AtomInput, try to transform it with the registered input type to corresponding registered function
 
-    atom_inputs = []
-
-    for i in inputs:
-        if beartype_isinstance(i, AtomInput):
-            atom_inputs.append(i)
-            continue
-
-        maybe_to_atom_fn = INPUT_TO_ATOM_TRANSFORM.get(type(i), None)
-
-        if not exists(maybe_to_atom_fn):
-            raise TypeError(
-                f"invalid input type {type(i)} being passed into Trainer that is not converted to AtomInput correctly"
-            )
-
-        atom_inputs.append(maybe_to_atom_fn(i))
+    atom_inputs = maybe_transform_to_atom_inputs(inputs)
 
     # take care of windowing the atompair_inputs and atompair_ids if they are not windowed already
 
     if exists(atoms_per_window):
         for atom_input in atom_inputs:
-            atompair_inputs = atom_input["atompair_inputs"]
-            atompair_ids = atom_input.get("atompair_ids", None)
+            atompair_inputs = atom_input.atompair_inputs
+            atompair_ids = atom_input.atompair_ids
 
             atompair_inputs_is_windowed = atompair_inputs.ndim == 4
 
             if not atompair_inputs_is_windowed:
-                atom_input["atompair_inputs"] = full_pairwise_repr_to_windowed(
+                atom_input.atompair_inputs = full_pairwise_repr_to_windowed(
                     atompair_inputs, window_size=atoms_per_window
                 )
 
@@ -79,14 +66,14 @@ def collate_af3_inputs(
                 atompair_ids_is_windowed = atompair_ids.ndim == 3
 
                 if not atompair_ids_is_windowed:
-                    atom_input["atompair_ids"] = full_attn_bias_to_windowed(
+                    atom_input.atompair_ids = full_attn_bias_to_windowed(
                         atompair_ids, window_size=atoms_per_window
                     )
 
     # separate input dictionary into keys and values
 
-    keys = atom_inputs[0].keys()
-    atom_inputs = [i.values() for i in atom_inputs]
+    keys = asdict(atom_inputs[0]).keys()
+    atom_inputs = [asdict(i).values() for i in atom_inputs]
 
     outputs = []
 
@@ -147,7 +134,7 @@ def collate_af3_inputs(
 
     # reconstitute dictionary
 
-    batched_atom_inputs = BatchedAtomInput(tuple(zip(keys, outputs)))
+    batched_atom_inputs = BatchedAtomInput(**dict(tuple(zip(keys, outputs))))
     return batched_atom_inputs
 
 

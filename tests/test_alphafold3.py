@@ -1,6 +1,7 @@
 """This file prepares unit tests for AlphaFold 3 modules."""
 
 import os
+from dataclasses import asdict
 
 import pytest
 import rootutils
@@ -754,4 +755,4 @@ def test_collate_fn():
 
     batched_atom_inputs = collate_af3_inputs([dataset[0]])
 
-    _, breakdown = alphafold3(**batched_atom_inputs, return_loss_breakdown=True)
+    _, breakdown = alphafold3(**asdict(batched_atom_inputs), return_loss_breakdown=True)
