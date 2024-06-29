@@ -414,9 +414,9 @@ def read_distance_matrix(
     """Read a distance matrix from a file and return it as a NumPy array."""
     assert distmat_filepath.endswith(".txt"), "The distance matrix file must be a text file."
     distmat_filepath = distmat_filepath.replace(".txt", f"_{molecule_type}.txt")
-    assert os.path.isfile(
-        distmat_filepath
-    ), f"Distance matrix file '{distmat_filepath}' does not exist."
+    if not os.path.isfile(distmat_filepath):
+        log.warning(f"Distance matrix file '{distmat_filepath}' does not exist.")
+        return None
 
     # Convert sequence matching percentages to distances through complementation
     df = pd.read_csv(distmat_filepath, sep="\s+", header=None, skiprows=1)
