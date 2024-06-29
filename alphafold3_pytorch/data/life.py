@@ -1,4 +1,3 @@
-import rdkit
 from rdkit import Chem
 
 # human amino acids
@@ -36,11 +35,37 @@ NUCLEOTIDES = dict(
     U=dict(smile="C1=CNC(=O)NC1=O"),
 )
 
+# metal ions
+
+METALS = dict(
+    Mg=dict(smile="[Mg]"),
+    Mn=dict(smile="[Mn]"),
+    Fe=dict(smile="[Fe]"),
+    Co=dict(smile="[Co]"),
+    Ni=dict(smile="[Ni]"),
+    Cu=dict(smile="[Cu]"),
+    Zn=dict(smile="[Zn]"),
+    Na=dict(smile="[Na]"),
+    Cl=dict(smile="[Cl]"),
+)
+
+# miscellaneous
+
+MISC = dict(
+    Phospholipid=dict(smile="CCCCCCCCCCCCCCCC(=O)OCC(COP(=O)(O)OCC(CO)O)OC(=O)CCCCCCCC1CC1CCCCCC")
+)
+
 # initialize rdkit.Chem with canonical SMILES
 
-for aa_dict in HUMAN_AMINO_ACIDS.values():
-    aa_dict["rdkit_chem"] = Chem.MolFromSmiles(aa_dict["smile"])
+ALL_ENTRIES = [
+    *HUMAN_AMINO_ACIDS.values(),
+    *NUCLEOTIDES.values(),
+    *METALS.values(),
+    *MISC.values(),
+]
 
+for entry in ALL_ENTRIES:
+    mol = Chem.MolFromSmiles(entry["smile"])
 
-for nuc_dict in NUCLEOTIDES.values():
-    nuc_dict["rdkit_chem"] = Chem.MolFromSmiles(nuc_dict["smile"])
+    entry["num_atoms"] = mol.GetNumAtoms()
+    entry["rdchem_mol"] = mol

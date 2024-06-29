@@ -2,6 +2,12 @@ from typing import Callable, List, Literal, Type, TypedDict
 
 from rdkit.Chem.rdchem import Mol
 
+from alphafold3_pytorch.data.life import (
+    HUMAN_AMINO_ACIDS,
+    METALS,
+    MISC,
+    NUCLEOTIDES,
+)
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
 
 # constants
@@ -69,8 +75,9 @@ class MoleculeInput(TypedDict):
     molecule_token_pool_lens: List[List[int]]
     molecule_atom_indices: List[List[int] | None]
     molecule_ids: Int["n"]  # type: ignore
-    additional_molecule_feats: Float["n 9"]  # type: ignore
-    atom_pos: Float["m 3"] | None  # type: ignore
+    additional_molecule_feats: Float["n 5"]  # type: ignore
+    is_molecule_types: Bool["n 4"]  # type: ignore
+    atom_pos: List[Float["_ 3"]] | Float["m 3"] | None  # type: ignore
     templates: Float["t n n dt"]  # type: ignore
     template_mask: Bool["t"] | None  # type: ignore
     msa: Float["s n dm"]  # type: ignore
