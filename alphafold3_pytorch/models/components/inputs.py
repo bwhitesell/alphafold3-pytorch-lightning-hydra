@@ -23,7 +23,7 @@ from alphafold3_pytorch.data.life import (
 )
 from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
-from alphafold3_pytorch.utils.utils import exists, identity
+from alphafold3_pytorch.utils.utils import default, exists, identity
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
@@ -40,6 +40,11 @@ logger = RankedLogger(__name__, rank_zero_only=True)
 def flatten(arr):
     """Flattens a list of lists."""
     return [el for sub_arr in arr for el in sub_arr]
+
+
+def pad_to_len(t, length, value=0):
+    """Pads a tensor to a certain length."""
+    return F.pad(t, (0, max(0, length - t.shape[-1])), value=value)
 
 
 def compose(*fns: Callable):
@@ -66,6 +71,7 @@ class AtomInput:
     atompair_inputs: Float["m m dapi"] | Float["nw w (w*2) dapi"]  # type: ignore
     additional_molecule_feats: Int[f"n {ADDITIONAL_MOLECULE_FEATS}"]  # type: ignore
     is_molecule_types: Bool[f"n {IS_MOLECULE_TYPES}"]  # type: ignore
+    additional_token_feats: Float["n dtf"] | None = None  # type: ignore
     templates: Float["t n n dt"] | None = None  # type: ignore
     msa: Float["s n dm"] | None = None  # type: ignore
     token_bonds: Bool["n n"] | None = None  # type: ignore
@@ -96,6 +102,7 @@ class BatchedAtomInput:
     atompair_inputs: Float["b m m dapi"] | Float["b nw w (w*2) dapi"]  # type: ignore
     additional_molecule_feats: Int[f"b n {ADDITIONAL_MOLECULE_FEATS}"]  # type: ignore
     is_molecule_types: Bool[f"b n {IS_MOLECULE_TYPES}"]  # type: ignore
+    additional_token_feats: Float["b n dtf"] | None = None  # type: ignore
     templates: Float["b t n n dt"] | None = None  # type: ignore
     msa: Float["b s n dm"] | None = None  # type: ignore
     token_bonds: Bool["b n n"] | None = None  # type: ignore
@@ -130,6 +137,7 @@ class MoleculeInput:
     additional_molecule_feats: Int[f"n {ADDITIONAL_MOLECULE_FEATS}"]  # type: ignore
     is_molecule_types: Bool[f"n {IS_MOLECULE_TYPES}"]  # type: ignore
     token_bonds: Bool["n n"]  # type: ignore
+    additional_token_feats: Float["n dtf"] | None = None  # type: ignore
     templates: Float["t n n dt"] | None = None  # type: ignore
     msa: Float["s n dm"] | None = None  # type: ignore
     atom_pos: List[Float["_ 3"]] | Float["m 3"] | None = None  # type: ignore
@@ -276,6 +284,7 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
         atompair_inputs=atompair_inputs,
         molecule_atom_lens=torch.tensor(atom_lens, dtype=torch.long),
         molecule_ids=mol_input.molecule_ids,
+        additional_token_feats=mol_input.additional_token_feats,
         additional_molecule_feats=mol_input.additional_molecule_feats,
         is_molecule_types=mol_input.is_molecule_types,
         token_bonds=mol_input.token_bonds,
@@ -300,6 +309,7 @@ class Alphafold3Input:
     ligands: List[Mol | str]  # can be given as smiles
     ds_dna: List[Int[" _"] | str]  # type: ignore
     ds_rna: List[Int[" _"] | str]  # type: ignore
+    additional_token_feats: Float["n dtf"] | None = None  # type: ignore
     templates: Float["t n n dt"] | None = None  # type: ignore
     msa: Float["s n dm"] | None = None  # type: ignore
     atom_pos: List[Float["_ 3"]] | Float["m 3"] | None = None  # type: ignore
@@ -352,20 +362,11 @@ def maybe_string_to_int(
 @typecheck
 def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> MoleculeInput:
     """Converts an Alphafold3Input to a MoleculeInput."""
-    ss_dnas = list(alphafold3_input.ss_dna)
     ss_rnas = list(alphafold3_input.ss_rna)
+    ss_dnas = list(alphafold3_input.ss_dna)
 
     # any double stranded nucleic acids is added to single stranded lists with its reverse complement
     # rc stands for reverse complement
-
-    for seq in alphafold3_input.ds_dna:
-        rc_fn = (
-            partial(reverse_complement, nucleic_acid_type="dna")
-            if isinstance(seq, str)
-            else reverse_complement_tensor
-        )
-        rc_seq = rc_fn(seq)
-        ss_dnas.extend([seq, rc_seq])
 
     for seq in alphafold3_input.ds_rna:
         rc_fn = (
@@ -375,6 +376,15 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
         )
         rc_seq = rc_fn(seq)
         ss_rnas.extend([seq, rc_seq])
+
+    for seq in alphafold3_input.ds_dna:
+        rc_fn = (
+            partial(reverse_complement, nucleic_acid_type="dna")
+            if isinstance(seq, str)
+            else reverse_complement_tensor
+        )
+        rc_seq = rc_fn(seq)
+        ss_dnas.extend([seq, rc_seq])
 
     # keep track of molecule_ids - for now it is
     # other(1) | proteins (20) | rna (4) | dna (4)
@@ -527,9 +537,46 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
     # handle molecule ids
 
     molecule_ids = torch.cat(molecule_ids)
-    molecule_ids = F.pad(molecule_ids, (0, num_tokens - molecule_ids.shape[-1]), value=0)
+    molecule_ids = pad_to_len(molecule_ids, num_tokens)
+
+    # constructing the additional_molecule_feats
+    # which is in turn used to derive relative positions
+    # (todo) offer a way to precompute relative positions at data prep
+
+    # residue_index - reuse molecular_ids here
+    # token_index   - just an arange
+    # asym_id       - unique id for each chain of a biomolecule type
+    # entity_id     - unique id for each biomolecule - multimeric protein, ds dna
+    # sym_id        - unique id for each chain within each biomolecule
+
+    num_protein_tokens = [len(protein) for protein in mol_proteins]
+    num_ss_rna_tokens = [len(rna) for rna in ss_rnas]
+    num_ss_dna_tokens = [len(dna) for dna in ss_dnas]
+
+    unflattened_asym_ids = [
+        ([asym_id] * num_tokens)
+        for asym_id, num_tokens in enumerate(
+            [*num_protein_tokens, *num_ss_rna_tokens, *num_ss_dna_tokens]
+        )
+    ]
+
+    asym_ids = torch.tensor(flatten(unflattened_asym_ids))
+    asym_ids = pad_to_len(asym_ids, num_tokens)
+
+    additional_molecule_feats = torch.stack(
+        (
+            molecule_ids,
+            torch.arange(num_tokens),
+            asym_ids,
+            torch.zeros(num_tokens).long(),
+            torch.zeros(num_tokens).long(),
+        ),
+        dim=-1,
+    )
 
     # create molecule input
+
+    af3_input = alphafold3_input
 
     molecule_input = MoleculeInput(
         molecules=molecules,
@@ -537,8 +584,16 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
         molecule_atom_indices=[0] * num_tokens,
         molecule_ids=molecule_ids,
         token_bonds=token_bonds,
-        additional_molecule_feats=torch.zeros(num_tokens, 5).long(),
+        additional_molecule_feats=additional_molecule_feats,
+        additional_token_feats=default(
+            af3_input.additional_token_feats, torch.zeros(num_tokens, 2)
+        ),
         is_molecule_types=is_molecule_types,
+        atom_pos=af3_input.atom_pos,
+        templates=af3_input.templates,
+        msa=af3_input.msa,
+        template_mask=af3_input.template_mask,
+        msa_mask=af3_input.msa_mask,
         add_atom_ids=alphafold3_input.add_atom_ids,
         add_atompair_ids=alphafold3_input.add_atompair_ids,
     )
