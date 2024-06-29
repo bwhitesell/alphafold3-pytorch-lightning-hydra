@@ -72,8 +72,8 @@ def collate_inputs_to_batched_atom_input(
 
     # separate input dictionary into keys and values
 
-    keys = asdict(atom_inputs[0]).keys()
-    atom_inputs = [asdict(i).values() for i in atom_inputs]
+    keys = atom_inputs[0].dict().keys()
+    atom_inputs = [i.dict().values() for i in atom_inputs]
 
     outputs = []
 

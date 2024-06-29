@@ -1,4 +1,3 @@
-from dataclasses import asdict
 from typing import Any, Dict, Tuple
 
 import rootutils
@@ -92,7 +91,7 @@ class Alphafold3LitModule(LightningModule):
         :param x: A batch of `BatchedAtomInput` data.
         :return: A tensor of losses as well as a breakdown of the component losses.
         """
-        return self.net(**asdict(batch), return_loss_breakdown=True)
+        return self.net(**batch.dict(), return_loss_breakdown=True)
 
     def on_train_start(self) -> None:
         """Lightning hook that is called when training begins."""

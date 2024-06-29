@@ -758,4 +758,4 @@ def test_collate_fn():
 
     batched_atom_inputs = collate_inputs_to_batched_atom_input([dataset[0]])
 
-    _, breakdown = alphafold3(**asdict(batched_atom_inputs), return_loss_breakdown=True)
+    _, breakdown = alphafold3(**batched_atom_inputs.dict(), return_loss_breakdown=True)

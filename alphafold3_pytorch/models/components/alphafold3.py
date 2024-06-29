@@ -3202,6 +3202,11 @@ class Alphafold3(Module):
     ):
         super().__init__()
 
+        # store atom and atompair input dimensions for shape validation
+
+        self.dim_atom_inputs = dim_atom_inputs
+        self.dim_atompair_inputs = dim_atompair_inputs
+
         # optional atom and atom bond embeddings
 
         has_atom_embeds = exists(num_atom_embeds)
@@ -3507,6 +3512,15 @@ class Alphafold3(Module):
         :return: The atomic coordinates or the loss.
         """
         atom_seq_len = atom_inputs.shape[-2]
+
+        # validate atom and atompair input dimensions
+
+        assert (
+            atom_inputs.shape[-1] == self.dim_atom_inputs
+        ), f"Expected {self.dim_atom_inputs} for atom_inputs feature dimension, but received {atom_inputs.shape[-1]}"
+        assert (
+            atompair_inputs.shape[-1] == self.dim_atompair_inputs
+        ), f"Expected {self.dim_atompair_inputs} for atompair_inputs feature dimension, but received {atompair_inputs.shape[-1]}"
 
         # soft validate
 
