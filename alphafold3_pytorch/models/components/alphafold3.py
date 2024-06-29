@@ -84,7 +84,7 @@ ADDITIONAL_MOLECULE_FEATS = 9
 
 LinearNoBias = partial(Linear, bias=False)
 
-logger = RankedLogger(__name__, rank_zero_only=True)
+logger = RankedLogger(__name__, rank_zero_only=False)
 
 # linear and outer sum
 # for single repr -> pairwise pattern throughout this architecture
@@ -3376,8 +3376,8 @@ class Alphafold3(Module):
         current_version = version("alphafold3_pytorch")
 
         if model_package["version"] != current_version:
-            print(
-                f'loading a saved model from version {model_package["version"]} but you are on version {current_version}'
+            logger.info(
+                f'Loading a saved model from version {model_package["version"]} but you are on version {current_version}'
             )
 
         self.load_state_dict(model_package["state_dict"], strict=strict)
