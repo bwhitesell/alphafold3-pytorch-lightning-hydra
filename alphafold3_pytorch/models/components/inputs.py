@@ -536,6 +536,7 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
         molecule_token_pool_lens=token_pool_lens,
         molecule_atom_indices=[0] * num_tokens,
         molecule_ids=molecule_ids,
+        token_bonds=token_bonds,
         additional_molecule_feats=torch.zeros(num_tokens, 5).long(),
         is_molecule_types=is_molecule_types,
         add_atom_ids=alphafold3_input.add_atom_ids,
