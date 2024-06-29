@@ -38,8 +38,8 @@ class AtomInput:
     atompair_inputs: Float["m m dapi"] | Float["nw w (w*2) dapi"]  # type: ignore
     additional_molecule_feats: Float[f"n {ADDITIONAL_MOLECULE_FEATS}"]  # type: ignore
     is_molecule_types: Bool[f"n {IS_MOLECULE_TYPES}"]  # type: ignore
-    templates: Float["t n n dt"]  # type: ignore
-    msa: Float["s n dm"]  # type: ignore
+    templates: Float["t n n dt"] | None = None  # type: ignore
+    msa: Float["s n dm"] | None = None  # type: ignore
     token_bonds: Bool["n n"] | None = None  # type: ignore
     atom_ids: Int[" m"] | None = None  # type: ignore
     atom_parent_ids: Int[" m"] | None = None  # type: ignore
@@ -64,8 +64,8 @@ class BatchedAtomInput:
     atompair_inputs: Float["b m m dapi"] | Float["b nw w (w*2) dapi"]  # type: ignore
     additional_molecule_feats: Float[f"b n {ADDITIONAL_MOLECULE_FEATS}"]  # type: ignore
     is_molecule_types: Bool[f"b n {IS_MOLECULE_TYPES}"]  # type: ignore
-    templates: Float["b t n n dt"]  # type: ignore
-    msa: Float["b s n dm"]  # type: ignore
+    templates: Float["b t n n dt"] | None = None  # type: ignore
+    msa: Float["b s n dm"] | None = None  # type: ignore
     token_bonds: Bool["b n n"] | None = None  # type: ignore
     atom_ids: Int["b m"] | None = None  # type: ignore
     atom_parent_ids: Int["b m"] | None = None  # type: ignore
@@ -93,8 +93,8 @@ class MoleculeInput:
     molecule_ids: Int[" n"]  # type: ignore
     additional_molecule_feats: Float[f"n {ADDITIONAL_MOLECULE_FEATS}"]  # type: ignore
     is_molecule_types: Bool[f"n {IS_MOLECULE_TYPES}"]  # type: ignore
-    templates: Float["t n n dt"]  # type: ignore
-    msa: Float["s n dm"]  # type: ignore
+    templates: Float["t n n dt"] | None = None  # type: ignore
+    msa: Float["s n dm"] | None = None  # type: ignore
     atom_pos: List[Float["_ 3"]] | Float["m 3"] | None = None  # type: ignore
     template_mask: Bool[" t"] | None = None  # type: ignore
     msa_mask: Bool[" s"] | None = None  # type: ignore
@@ -116,15 +116,14 @@ def molecule_to_atom_input(molecule_input: MoleculeInput) -> AtomInput:
 @typecheck
 @dataclass
 class Alphafold3Input:
-    proteins: List[Int[" _"]]  # type: ignore
-    protein_atom_lens: List[Int[" _"]]  # type: ignore
-    nucleic_acids: List[Int[" _"]]  # type: ignore
-    nucleic_acid_atom_lens: List[Int[" _"]]  # type: ignore
-    metal_ions: Int[" _"]  # type: ignore
-    misc_molecule_ids: Int[" _"]  # type: ignore
+    proteins: List[Int[" _"] | str]  # type: ignore
+    ds_nucleic_acids: List[Int[" _"] | str]  # type: ignore
+    ss_nucleic_acids: List[Int[" _"] | str]  # type: ignore
+    metal_ions: Int[" _"] | List[str]  # type: ignore
+    misc_molecule_ids: Int[" _"] | List[str]  # type: ignore
     ligands: List[Mol | str]  # can be given as smiles
-    templates: Float["t n n dt"]  # type: ignore
-    msa: Float["s n dm"]  # type: ignore
+    templates: Float["t n n dt"] | None = None  # type: ignore
+    msa: Float["s n dm"] | None = None  # type: ignore
     atom_pos: List[Float["_ 3"]] | Float["m 3"] | None = None  # type: ignore
     template_mask: Bool[" t"] | None = None  # type: ignore
     msa_mask: Bool[" s"] | None = None  # type: ignore
@@ -135,7 +134,7 @@ class Alphafold3Input:
 
 
 @typecheck
-def alphafold3_input_to_molecule_input(af3_input: Alphafold3Input) -> AtomInput:
+def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> MoleculeInput:
     """Converts an Alphafold3Input to a MoleculeInput."""
     raise NotImplementedError
 
@@ -180,18 +179,20 @@ def register_input_transform(input_type: Type, fn: Callable[[Any], AtomInput]):
 # functions for transforming to atom inputs
 
 
+@typecheck
+def maybe_transform_to_atom_input(i: Any) -> AtomInput:
+    """Transforms a list of inputs to AtomInputs."""
+    maybe_to_atom_fn = INPUT_TO_ATOM_TRANSFORM.get(type(i), None)
+
+    if not exists(maybe_to_atom_fn):
+        raise TypeError(
+            f"Invalid input type {type(i)} being passed into Trainer that is not converted to AtomInput correctly"
+        )
+
+    return maybe_to_atom_fn(i)
+
+
+@typecheck
 def maybe_transform_to_atom_inputs(inputs: List[Any]) -> List[AtomInput]:
     """Transforms a list of inputs to AtomInputs."""
-    atom_inputs = []
-
-    for i in inputs:
-        maybe_to_atom_fn = INPUT_TO_ATOM_TRANSFORM.get(type(i), None)
-
-        if not exists(maybe_to_atom_fn):
-            raise TypeError(
-                f"Invalid input type {type(i)} being passed into Trainer that is not converted to AtomInput correctly"
-            )
-
-        atom_inputs.append(maybe_to_atom_fn(i))
-
-    return atom_inputs
+    return [maybe_transform_to_atom_input(i) for i in inputs]

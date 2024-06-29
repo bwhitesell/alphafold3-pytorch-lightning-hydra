@@ -39,16 +39,18 @@ from alphafold3_pytorch.models.components.attention import (
     full_pairwise_repr_to_windowed,
 )
 from alphafold3_pytorch.models.components.inputs import (
+    Alphafold3Input,
     AtomInput,
     BatchedAtomInput,
+    MoleculeInput,
+    maybe_transform_to_atom_input,
+    maybe_transform_to_atom_inputs,
     register_input_transform,
 )
 
 __all__ = [
-    AtomInput,
     Attention,
     Attend,
-    BatchedAtomInput,
     RelativePositionEncoding,
     SmoothLDDTLoss,
     WeightedRigidAlign,
@@ -77,8 +79,13 @@ __all__ = [
     Alphafold3WithHubMixin,
     Alphafold3LitModule,
     AtomInput,
+    BatchedAtomInput,
+    MoleculeInput,
+    Alphafold3Input,
     collate_af3_inputs,
     full_pairwise_repr_to_windowed,
+    maybe_transform_to_atom_input,
+    maybe_transform_to_atom_inputs,
     register_input_transform,
 ]
 
