@@ -811,7 +811,7 @@ if __name__ == "__main__":
         "-n",
         "--no_workers",
         type=int,
-        default=4,
+        default=2,
         help="Number of workers to use for filtering.",
     )
     parser.add_argument(
