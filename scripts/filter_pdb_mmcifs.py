@@ -73,7 +73,7 @@ from alphafold3_pytorch.utils.utils import exists
 # Constants
 
 FILTER_STRUCTURE_MAX_SECONDS_PER_INPUT = (
-    60  # Maximum time allocated to filter a single structure (in seconds)
+    120  # Maximum time allocated to filter a single structure (in seconds)
 )
 
 # Helper functions
