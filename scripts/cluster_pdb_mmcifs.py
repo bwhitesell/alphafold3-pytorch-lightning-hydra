@@ -468,18 +468,19 @@ def cluster_interfaces(
                     chain_clusters.append(
                         f"{molecule_id}-cluster-{ligand_chain_cluster_mapping[pdb_chain_id]}"
                     )
-            # Ensure that each interface cluster is unique
-            if (
+            if not (
                 len(chain_clusters) == 2
                 and (chain_clusters[0], chain_clusters[1]) not in interface_chains_cluster_mapping
                 and (chain_clusters[1], chain_clusters[0]) not in interface_chains_cluster_mapping
             ):
-                # Assign a unique interface cluster ID as a join on the constituent chain cluster IDs,
-                # such that two interfaces I and J are in the same interface cluster C^interface only if
-                # their constituent chain pairs {I_1,I_2},{J_1,J_2} have the same chain cluster pairs {C_1^chain ,C_2^chain}.
-                interface_chains_cluster_mapping[(chain_clusters[0], chain_clusters[1])] = len(
-                    interface_chains_cluster_mapping
-                )
+                # Ensure that each interface cluster is unique
+                continue
+            # Assign a unique interface cluster ID as a join on the constituent chain cluster IDs,
+            # such that two interfaces I and J are in the same interface cluster C^interface only if
+            # their constituent chain pairs {I_1,I_2},{J_1,J_2} have the same chain cluster pairs {C_1^chain ,C_2^chain}.
+            interface_chains_cluster_mapping[(chain_clusters[0], chain_clusters[1])] = len(
+                interface_chains_cluster_mapping
+            )
             chain_cluster_0 = chain_clusters[0].split("-")[-1]
             chain_cluster_1 = chain_clusters[1].split("-")[-1]
             interface_cluster_mapping = (
