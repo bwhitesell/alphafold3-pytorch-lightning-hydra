@@ -11,6 +11,7 @@ from tqdm import tqdm
 
 from alphafold3_pytorch.data import mmcif_parsing
 from alphafold3_pytorch.utils.tensor_typing import typecheck
+from alphafold3_pytorch.utils.utils import exists
 
 
 @typecheck
@@ -40,7 +41,7 @@ def parse_file(
 
     chain_ids, seqs = list(zip(*parsing_result.chain_to_seqres.items()))
 
-    if chain_cluster_size_dict is not None:
+    if exists(chain_cluster_size_dict):
         cluster_sizes = []
         for chain_id in chain_ids:
             full_name = "_".join([file_id, chain_id])
@@ -61,7 +62,7 @@ def parse_file(
 @typecheck
 def main(args: Namespace):
     chain_cluster_size_dict = None
-    if args.cluster_file is not None:
+    if exists(args.cluster_file):
         chain_cluster_size_dict = {}
         with open(args.cluster_file, "r") as fp:
             clusters = [line.strip() for line in fp.readlines()]

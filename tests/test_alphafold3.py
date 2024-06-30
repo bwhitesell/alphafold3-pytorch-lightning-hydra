@@ -1,7 +1,6 @@
 """This file prepares unit tests for AlphaFold 3 modules."""
 
 import os
-from dataclasses import asdict
 
 import pytest
 import rootutils
@@ -38,6 +37,7 @@ from alphafold3_pytorch.models.components.alphafold3 import (
     repeat_consecutive_with_lens,
 )
 from alphafold3_pytorch.utils.model_utils import atom_ref_pos_to_atompair_inputs
+from alphafold3_pytorch.utils.utils import exists
 
 os.environ["TYPECHECK"] = "True"
 
@@ -347,7 +347,7 @@ def test_relative_position_encoding():
     embedder = RelativePositionEncoding()
 
     rpe_embed = embedder(additional_molecule_feats=additional_molecule_feats)
-    assert rpe_embed is not None
+    assert exists(rpe_embed)
 
 
 def test_template_embed():
@@ -367,7 +367,7 @@ def test_template_embed():
         mask=mask,
     )
 
-    assert template_embed is not None
+    assert exists(template_embed)
 
 
 def test_confidence_head():
@@ -426,7 +426,7 @@ def test_distogram_head():
 
     logits = distogram_head(pairwise_repr)
 
-    assert logits is not None
+    assert exists(logits)
 
 
 @pytest.mark.parametrize("window_atompair_inputs", (True, False))
