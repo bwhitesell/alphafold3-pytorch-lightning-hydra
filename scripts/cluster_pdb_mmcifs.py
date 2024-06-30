@@ -482,9 +482,14 @@ def cluster_interfaces(
                 )
             chain_cluster_0 = chain_clusters[0].split("-")[-1]
             chain_cluster_1 = chain_clusters[1].split("-")[-1]
+            interface_cluster_mapping = (
+                interface_chains_cluster_mapping[(chain_clusters[1], chain_clusters[0])]
+                if (chain_clusters[1], chain_clusters[0]) in interface_chains_cluster_mapping
+                else interface_chains_cluster_mapping[(chain_clusters[0], chain_clusters[1])]
+            )
             interface_clusters[
                 f"{pdb_id}~{chain_id_pair}"
-            ] = f"{chain_cluster_0},{chain_cluster_1}:{interface_chains_cluster_mapping[(chain_clusters[0], chain_clusters[1])]}"
+            ] = f"{chain_cluster_0},{chain_cluster_1}:{interface_cluster_mapping}"
 
     return interface_clusters
 
