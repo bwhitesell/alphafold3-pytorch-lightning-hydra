@@ -8,6 +8,7 @@ import rootutils
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
+from alphafold3_pytorch.common.biomolecule import _from_mmcif_object
 from alphafold3_pytorch.data import mmcif_parsing
 
 os.environ["TYPECHECK"] = "True"
@@ -39,6 +40,17 @@ def test_unfiltered_mmcif_object_parsing(mmcif_dir: str, complex_id: str) -> Non
     if parsing_result.mmcif_object is None:
         print(f"Failed to parse file '{complex_filepath}'.")
         raise list(parsing_result.errors.values())[0]
+    else:
+        try:
+            biomol = _from_mmcif_object(parsing_result.mmcif_object)
+        except Exception as e:
+            if "mmCIF contains an insertion code" in str(e):
+                pytest.skip(f"File '{complex_filepath}' contains an insertion code.")
+            else:
+                raise e
+        assert (
+            len(biomol.atom_positions) > 0
+        ), f"Failed to parse file '{complex_filepath}' into a `Biomolecule` object."
 
 
 @pytest.mark.parametrize("mmcif_dir", [os.path.join("data", "pdb_data", "mmcifs")])
@@ -67,6 +79,17 @@ def test_filtered_mmcif_object_parsing(mmcif_dir: str, complex_id: str) -> None:
     if parsing_result.mmcif_object is None:
         print(f"Failed to parse file '{complex_filepath}'.")
         raise list(parsing_result.errors.values())[0]
+    else:
+        try:
+            biomol = _from_mmcif_object(parsing_result.mmcif_object)
+        except Exception as e:
+            if "mmCIF contains an insertion code" in str(e):
+                pytest.skip(f"File '{complex_filepath}' contains an insertion code.")
+            else:
+                raise e
+        assert (
+            len(biomol.atom_positions) > 0
+        ), f"Failed to parse file '{complex_filepath}' into a `Biomolecule` object."
 
 
 @pytest.mark.parametrize("mmcif_dir", [os.path.join("data", "pdb_data", "unfiltered_mmcifs")])
@@ -128,13 +151,33 @@ def test_unfiltered_random_mmcif_objects_parsing(
             parsing_errors.append(list(parsing_result.errors.values())[0])
             failed_complex_indices.append(complex_index)
             failed_random_complex_filepaths.append(random_complex_filepath)
+        else:
+            try:
+                biomol = _from_mmcif_object(parsing_result.mmcif_object)
+            except Exception as e:
+                if "mmCIF contains an insertion code" in str(e):
+                    continue
+                else:
+                    parsing_errors.append(e)
+                    failed_complex_indices.append(complex_index)
+                    failed_random_complex_filepaths.append(random_complex_filepath)
+                    continue
+            if len(biomol.atom_positions) == 0:
+                parsing_errors.append(
+                    AssertionError(
+                        f"Failed to parse file '{random_complex_filepath}' into a `Biomolecule` object."
+                    )
+                )
+                failed_complex_indices.append(complex_index)
+                failed_random_complex_filepaths.append(random_complex_filepath)
 
-    if parsing_result.mmcif_object is None:
+    if parsing_errors:
         print(
             f"Failed to parse {len(parsing_errors)} files at indices {failed_complex_indices}: '{failed_random_complex_filepaths}'."
         )
         for error in parsing_errors:
-            raise error
+            print(error)
+        raise error
 
 
 @pytest.mark.parametrize("mmcif_dir", [os.path.join("data", "pdb_data", "mmcifs")])
@@ -196,10 +239,30 @@ def test_filtered_random_mmcif_objects_parsing(
             parsing_errors.append(list(parsing_result.errors.values())[0])
             failed_complex_indices.append(complex_index)
             failed_random_complex_filepaths.append(random_complex_filepath)
+        else:
+            try:
+                biomol = _from_mmcif_object(parsing_result.mmcif_object)
+            except Exception as e:
+                if "mmCIF contains an insertion code" in str(e):
+                    continue
+                else:
+                    parsing_errors.append(e)
+                    failed_complex_indices.append(complex_index)
+                    failed_random_complex_filepaths.append(random_complex_filepath)
+                    continue
+            if len(biomol.atom_positions) == 0:
+                parsing_errors.append(
+                    AssertionError(
+                        f"Failed to parse file '{random_complex_filepath}' into a `Biomolecule` object."
+                    )
+                )
+                failed_complex_indices.append(complex_index)
+                failed_random_complex_filepaths.append(random_complex_filepath)
 
-    if parsing_result.mmcif_object is None:
+    if parsing_errors:
         print(
             f"Failed to parse {len(parsing_errors)} files at indices {failed_complex_indices}: '{failed_random_complex_filepaths}'."
         )
         for error in parsing_errors:
-            raise error
+            print(error)
+        raise error

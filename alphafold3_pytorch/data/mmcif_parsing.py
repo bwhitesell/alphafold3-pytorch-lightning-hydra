@@ -8,12 +8,9 @@ import logging
 from collections import defaultdict
 from typing import Any, Mapping, Optional, Sequence, Set, Tuple
 
-import numpy as np
 from Bio import PDB
 from Bio.Data import PDBData
 
-from alphafold3_pytorch.common import amino_acid_constants
-from alphafold3_pytorch.data.errors import MultipleChainsError
 from alphafold3_pytorch.utils.data_utils import is_polymer, is_water
 
 # Type aliases:
@@ -623,71 +620,3 @@ def _get_complex_chains(
 def _is_set(data: str) -> bool:
     """Returns False if data is a special mmCIF character indicating 'unset'."""
     return data not in (".", "?")
-
-
-def get_atom_coords(
-    mmcif_object: MmcifObject, chain_id: str, _zero_center_positions: bool = False
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Gets atom positions and mask from a list of Biopython `Residue` or `DisorderedResidue` objects."""
-    # Locate the right chain
-    chains = list(mmcif_object.structure.get_chains())
-    relevant_chains = [c for c in chains if c.id == chain_id]
-    if len(relevant_chains) != 1:
-        raise MultipleChainsError(f"Expected exactly one chain in structure with id {chain_id}.")
-    chain = relevant_chains[0]
-
-    # Extract the coordinates
-    num_res = len(mmcif_object.chain_to_seqres[chain_id])
-    all_atom_positions = np.zeros(
-        [num_res, amino_acid_constants.atom_type_num, 3], dtype=np.float32
-    )
-    all_atom_mask = np.zeros([num_res, amino_acid_constants.atom_type_num], dtype=np.float32)
-    for res_index in range(num_res):
-        pos = np.zeros([amino_acid_constants.atom_type_num, 3], dtype=np.float32)
-        mask = np.zeros([amino_acid_constants.atom_type_num], dtype=np.float32)
-        res_at_position = mmcif_object.seqres_to_structure[chain_id][res_index]
-        if not res_at_position.is_missing:
-            res = chain[
-                (
-                    res_at_position.hetflag,
-                    res_at_position.position.residue_number,
-                    res_at_position.position.insertion_code,
-                )
-            ]
-            for atom in res.get_atoms():
-                atom_name = atom.get_name()
-                x, y, z = atom.get_coord()
-                if atom_name in amino_acid_constants.atom_order.keys():
-                    # Remove waters.
-                    pos[amino_acid_constants.atom_order[atom_name]] = [x, y, z]
-                    mask[amino_acid_constants.atom_order[atom_name]] = 1.0
-                # Resolve alternative locations for atoms/residues by taking the one with the largest occupancy.
-                # NOTE: For `DisorderedAtom` objects, selecting the highest-occupancy atom is already the default behavior in Biopython.
-                # Reference: https://biopython-tutorial.readthedocs.io/en/latest/notebooks/11%20-%20Going%203D%20-%20The%20PDB%20module.html#Disordered-atoms[disordered-atoms]
-                elif atom_name.upper() == "SE" and res.get_resname() == "MSE":
-                    # Put the coords of the selenium atom in the sulphur column
-                    pos[amino_acid_constants.atom_order["SD"]] = [x, y, z]
-                    mask[amino_acid_constants.atom_order["SD"]] = 1.0
-
-            # Fix naming errors in arginine residues where NH2 is incorrectly
-            # assigned to be closer to CD than NH1
-            cd = amino_acid_constants.atom_order["CD"]
-            nh1 = amino_acid_constants.atom_order["NH1"]
-            nh2 = amino_acid_constants.atom_order["NH2"]
-            if (
-                res.get_resname() == "ARG"
-                and all(mask[atom_index] for atom_index in (cd, nh1, nh2))
-                and (np.linalg.norm(pos[nh1] - pos[cd]) > np.linalg.norm(pos[nh2] - pos[cd]))
-            ):
-                pos[nh1], pos[nh2] = pos[nh2].copy(), pos[nh1].copy()
-                mask[nh1], mask[nh2] = mask[nh2].copy(), mask[nh1].copy()
-
-        all_atom_positions[res_index] = pos
-        all_atom_mask[res_index] = mask
-
-    if _zero_center_positions:
-        binary_mask = all_atom_mask.astype(bool)
-        translation_vec = all_atom_positions[binary_mask].mean(axis=0)
-        all_atom_positions[binary_mask] -= translation_vec
-
-    return all_atom_positions, all_atom_mask

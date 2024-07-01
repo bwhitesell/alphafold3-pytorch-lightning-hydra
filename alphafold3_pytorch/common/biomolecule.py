@@ -348,7 +348,7 @@ def from_mmcif_string(mmcif_str: str, file_id: str, chain_id: Optional[str] = No
     if parsing_result.mmcif_object is None:
         raise list(parsing_result.errors.values())[0]
 
-    return _from_mmcif_object(parsing_result.mmcif_object, chain_id)
+    return _from_mmcif_object(parsing_result.mmcif_object, chain_id=chain_id)
 
 
 @typecheck
