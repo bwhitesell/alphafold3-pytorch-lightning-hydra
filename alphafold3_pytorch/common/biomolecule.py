@@ -30,6 +30,7 @@ MMCIF_PREFIXES_TO_DROP_POST_PARSING = [
     "_entity.",
     "_entity_poly.",
     "_entity_poly_seq.",
+    "_pdbx_branch_scheme.",
     "_pdbx_nonpoly_scheme.",
     "_pdbx_poly_seq_scheme.",
     "_pdbx_struct_assembly.",
@@ -236,7 +237,7 @@ def _from_mmcif_object(
                 residue_index.append(res_index + 1)
                 chain_ids.append(chain.id)
                 b_factors.append(res_b_factors)
-                if res_shortname == "X":
+                if res.resname == residue_constants.unk_restype:
                     # If the polymer residue is unknown, then it is of the corresponding unknown polymer residue type.
                     residue_chem_comp_details.add(
                         mmcif_parsing.ChemComp(

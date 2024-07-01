@@ -24,6 +24,7 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
+                // "--mmcif_dir", "data/pdb_data/dev_unfiltered_mmcifs",
                 "--output_dir", "data/pdb_data/filtering_dev_mmcifs",
                 // "--skip_existing",
                 "--no_workers", "1",

@@ -15,7 +15,9 @@ os.environ["TYPECHECK"] = "True"
 
 
 @pytest.mark.parametrize("mmcif_dir", [os.path.join("data", "pdb_data", "unfiltered_mmcifs")])
-@pytest.mark.parametrize("complex_id", ["100d", "1k7a", "4xij", "6adq", "7a4d", "8a3j"])
+@pytest.mark.parametrize(
+    "complex_id", ["100d", "1k7a", "384d", "4xij", "6adq", "7a4d", "7akd", "8a3j"]
+)
 def test_unfiltered_mmcif_object_parsing(mmcif_dir: str, complex_id: str) -> None:
     """Tests mmCIF file parsing and `Biomolecule` object creation for unfiltered mmCIF files.
 
@@ -54,7 +56,9 @@ def test_unfiltered_mmcif_object_parsing(mmcif_dir: str, complex_id: str) -> Non
 
 
 @pytest.mark.parametrize("mmcif_dir", [os.path.join("data", "pdb_data", "mmcifs")])
-@pytest.mark.parametrize("complex_id", ["100d", "1k7a", "4xij", "6adq", "7a4d", "8a3j"])
+@pytest.mark.parametrize(
+    "complex_id", ["100d", "1k7a", "384d", "4xij", "6adq", "7a4d", "7akd", "8a3j"]
+)
 def test_filtered_mmcif_object_parsing(mmcif_dir: str, complex_id: str) -> None:
     """Tests mmCIF file parsing and `Biomolecule` object creation for filtered mmCIF files.
 

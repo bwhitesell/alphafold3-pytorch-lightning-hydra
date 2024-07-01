@@ -1,6 +1,5 @@
 """An mmCIF file format parser."""
 
-import collections
 import dataclasses
 import functools
 import io
@@ -560,10 +559,15 @@ def _get_complex_chains(
 
     :return: A dict mapping mmcif chain id to a tuple of a list of Monomers and a list of ChemComps.
     """
-    # Get polymer information for each entity in the structure.
+    # Get (non-)polymer information for each entity in the structure.
     poly_scheme = mmcif_loop_to_list("_pdbx_poly_seq_scheme.", parsed_info)
+    branch_scheme = mmcif_loop_to_list("_pdbx_branch_scheme.", parsed_info)
+    nonpoly_scheme = mmcif_loop_to_list("_pdbx_nonpoly_scheme.", parsed_info)
+    # Get chemical compositions. Will allow us to identify which of these polymers
+    # are protein, DNA, RNA, or ligand molecules.
+    chem_comps = mmcif_loop_to_dict("_chem_comp.", "_chem_comp.id", parsed_info)
 
-    polymers = collections.defaultdict(list)
+    polymers = defaultdict(list)
     for scheme in poly_scheme:
         polymers[scheme["_pdbx_poly_seq_scheme.asym_id"]].append(
             Monomer(
@@ -572,11 +576,7 @@ def _get_complex_chains(
             )
         )
 
-    # Get non-polymer information for each entity in the structure.
-    branch_scheme = mmcif_loop_to_list("_pdbx_branch_scheme.", parsed_info)
-    nonpoly_scheme = mmcif_loop_to_list("_pdbx_nonpoly_scheme.", parsed_info)
-
-    non_polymers = collections.defaultdict(list)
+    non_polymers = defaultdict(list)
     for scheme in branch_scheme:
         non_polymers[scheme["_pdbx_branch_scheme.asym_id"]].append(
             Monomer(
@@ -592,15 +592,12 @@ def _get_complex_chains(
             )
         )
 
-    # Get chemical compositions. Will allow us to identify which of these polymers
-    # are protein, DNA, or RNA.
-    chem_comps = mmcif_loop_to_dict("_chem_comp.", "_chem_comp.id", parsed_info)
-
     # Identify and return all complex chains.
     valid_chains = defaultdict(lambda: ([], []))
-    for polys in (polymers, non_polymers):
-        for chain_id, seq_info in polys.items():
-            chem_comp_info = [
+    for chain_id, seq_info in polymers.items():
+        valid_chains[chain_id][0].extend(seq_info)
+        valid_chains[chain_id][1].extend(
+            [
                 ChemComp(
                     id=chem_comps[monomer.id]["_chem_comp.id"],
                     formula=chem_comps[monomer.id]["_chem_comp.formula"],
@@ -611,8 +608,36 @@ def _get_complex_chains(
                 )
                 for monomer in seq_info
             ]
-            valid_chains[chain_id][0].extend(seq_info)
-            valid_chains[chain_id][1].extend(chem_comp_info)
+        )
+
+    # Insert non-polymer chains in-place into the valid_chains dict.
+    for chain_id, seq_info in non_polymers.items():
+        valid_chain = {
+            monomer.num: (monomer, chem_comp)
+            for monomer, chem_comp in zip(valid_chains[chain_id][0], valid_chains[chain_id][1])
+        }
+        new_valid_chain = {
+            monomer.num: (monomer, chem_comp)
+            for monomer, chem_comp in zip(
+                seq_info,
+                [
+                    ChemComp(
+                        id=chem_comps[monomer.id]["_chem_comp.id"],
+                        formula=chem_comps[monomer.id]["_chem_comp.formula"],
+                        formula_weight=chem_comps[monomer.id]["_chem_comp.formula_weight"],
+                        mon_nstd_flag=chem_comps[monomer.id]["_chem_comp.mon_nstd_flag"],
+                        name=chem_comps[monomer.id]["_chem_comp.name"],
+                        type=chem_comps[monomer.id]["_chem_comp.type"],
+                    )
+                    for monomer in seq_info
+                ],
+            )
+        }
+        merged_valid_chain = {**valid_chain, **new_valid_chain}
+        valid_chains[chain_id] = (
+            [chain[0] for chain in merged_valid_chain.values()],
+            [chain[1] for chain in merged_valid_chain.values()],
+        )
 
     return valid_chains
 
