@@ -267,7 +267,7 @@ See the script for more options. Each mmCIF that successfully passes
 all processing steps will be written to `mmcif_output_dir` within a subdirectory
 named according to the mmCIF's second and third PDB ID characters (e.g. `5c`).
 
-### PDB dataset clustering (WIP)
+### PDB dataset clustering
 
 Next, run the following with `mmcif_dir` and `clustering_output_dir` replaced, respectively, with your local output directory created using the dataset filtering script above and with your desired clustering output directory (i.e., `./data/pdb_data/mmcifs/` and `./data/pdb_data/data_caches/clusterings/`):
 ```bash
