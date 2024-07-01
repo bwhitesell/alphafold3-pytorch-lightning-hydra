@@ -88,6 +88,17 @@ def unpack_one(t: Tensor, ps: List[Shape], pattern: str) -> List[Tensor]:
     return unpack(t, ps, pattern)[0]
 
 
+def softclamp_value(t: Tensor, value: float) -> Tensor:
+    """
+    Perform a soft clamp on a Tensor.
+
+    :param t: The Tensor.
+    :param value: The value to clamp to.
+    :return: The soft clamped Tensor
+    """
+    return (t / value).tanh() * value
+
+
 def exclusive_cumsum(t: Tensor, dim: int = -1) -> Tensor:
     """
     Perform an exclusive cumulative summation on a Tensor.

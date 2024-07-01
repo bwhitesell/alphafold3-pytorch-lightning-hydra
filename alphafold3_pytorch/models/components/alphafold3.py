@@ -938,6 +938,7 @@ class PairformerStack(Module):
         dropout_row_prob=0.25,
         num_register_tokens=0,
         pairwise_block_kwargs: dict = dict(),
+        pair_bias_attn_kwargs: dict = dict(),
     ):
         super().__init__()
         layers = ModuleList([])
@@ -948,6 +949,7 @@ class PairformerStack(Module):
             heads=pair_bias_attn_heads,
             dim_head=pair_bias_attn_dim_head,
             dropout=dropout_row_prob,
+            **pair_bias_attn_kwargs,
         )
 
         for _ in range(depth):

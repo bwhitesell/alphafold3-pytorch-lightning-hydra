@@ -195,7 +195,8 @@ def test_centre_random_augmentation():
 
 
 @pytest.mark.parametrize("recurrent_depth", (1, 2))
-def test_pairformer(recurrent_depth):
+@pytest.mark.parametrize("enable_attn_softclamp", (True, False))
+def test_pairformer(recurrent_depth, enable_attn_softclamp):
     """Test the Pairformer stack."""
     single = torch.randn(2, 16, 384)
     pairwise = torch.randn(2, 16, 16, 128)
@@ -205,6 +206,7 @@ def test_pairformer(recurrent_depth):
         depth=4,
         num_register_tokens=4,
         recurrent_depth=recurrent_depth,
+        pair_bias_attn_kwargs=dict(enable_attn_softclamp=enable_attn_softclamp),
     )
 
     single_out, pairwise_out = pairformer(single_repr=single, pairwise_repr=pairwise, mask=mask)
