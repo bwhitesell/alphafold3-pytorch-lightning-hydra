@@ -137,6 +137,7 @@ class MoleculeInput:
     additional_molecule_feats: Int[f"n {ADDITIONAL_MOLECULE_FEATS}"]  # type: ignore
     is_molecule_types: Bool[f"n {IS_MOLECULE_TYPES}"]  # type: ignore
     token_bonds: Bool["n n"]  # type: ignore
+    atom_parent_ids: Int[" m"] | None = None  # type: ignore
     additional_token_feats: Float["n dtf"] | None = None  # type: ignore
     templates: Float["t n n dt"] | None = None  # type: ignore
     msa: Float["s n dm"] | None = None  # type: ignore
@@ -295,6 +296,7 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
         additional_molecule_feats=mol_input.additional_molecule_feats,
         is_molecule_types=mol_input.is_molecule_types,
         token_bonds=mol_input.token_bonds,
+        atom_parent_ids=mol_input.atom_parent_ids,
         atom_ids=atom_ids,
         atompair_ids=atompair_ids,
     )
@@ -316,6 +318,7 @@ class Alphafold3Input:
     ligands: List[Mol | str]  # can be given as smiles
     ds_dna: List[Int[" _"] | str]  # type: ignore
     ds_rna: List[Int[" _"] | str]  # type: ignore
+    atom_parent_ids: Int["m"] | None = None  # type: ignore
     additional_token_feats: Float["n dtf"] | None = None  # type: ignore
     templates: Float["t n n dt"] | None = None  # type: ignore
     msa: Float["s n dm"] | None = None  # type: ignore
@@ -546,6 +549,42 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
     molecule_ids = torch.cat(molecule_ids)
     molecule_ids = pad_to_len(molecule_ids, num_tokens)
 
+    # handle atom_parent_ids
+    # this governs in the atom encoder / decoder, which atom attends to which
+    # a design choice is taken so metal ions attend to each other, in case there are more than one
+
+    @typecheck
+    def get_num_atoms_per_chain(chains: List[List[Mol]]) -> List[int]:
+        atoms_per_chain = []
+
+        for chain in chains:
+            num_atoms = 0
+            for mol in chain:
+                num_atoms += mol.GetNumAtoms()
+            atoms_per_chain.append(num_atoms)
+
+        return atoms_per_chain
+
+    num_protein_atoms = get_num_atoms_per_chain(mol_proteins)
+    num_ss_rna_atoms = get_num_atoms_per_chain(mol_ss_rnas)
+    num_ss_dna_atoms = get_num_atoms_per_chain(mol_ss_dnas)
+    num_ligand_atoms = [lig.GetNumAtoms() for lig in mol_ligands]
+
+    unflattened_atom_parent_ids = [
+        ([asym_id] * num_tokens)
+        for asym_id, num_tokens in enumerate(
+            [
+                *num_protein_atoms,
+                *num_ss_rna_atoms,
+                *num_ss_dna_atoms,
+                *num_ligand_atoms,
+                num_metal_ions,
+            ]
+        )
+    ]
+
+    atom_parent_ids = torch.tensor(flatten(unflattened_atom_parent_ids))
+
     # constructing the additional_molecule_feats
     # which is in turn used to derive relative positions
     # (todo) offer a way to precompute relative positions at data prep
@@ -556,14 +595,21 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
     # entity_id     - unique id for each biomolecule - multimeric protein, ds dna
     # sym_id        - unique id for each chain within each biomolecule
 
-    num_protein_tokens = [len(protein) for protein in mol_proteins]
+    num_protein_tokens = [len(protein) for protein in proteins]
     num_ss_rna_tokens = [len(rna) for rna in ss_rnas]
     num_ss_dna_tokens = [len(dna) for dna in ss_dnas]
+    num_ligand_tokens = [lig.GetNumAtoms() for lig in mol_ligands]
 
     unflattened_asym_ids = [
         ([asym_id] * num_tokens)
         for asym_id, num_tokens in enumerate(
-            [*num_protein_tokens, *num_ss_rna_tokens, *num_ss_dna_tokens]
+            [
+                *num_protein_tokens,
+                *num_ss_rna_tokens,
+                *num_ss_dna_tokens,
+                *num_ligand_tokens,
+                num_metal_ions,
+            ]
         )
     ]
 
@@ -601,6 +647,7 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
         msa=af3_input.msa,
         template_mask=af3_input.template_mask,
         msa_mask=af3_input.msa_mask,
+        atom_parent_ids=atom_parent_ids,
         add_atom_ids=alphafold3_input.add_atom_ids,
         add_atompair_ids=alphafold3_input.add_atompair_ids,
     )
