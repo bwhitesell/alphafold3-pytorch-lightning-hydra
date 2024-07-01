@@ -8,59 +8,215 @@ from alphafold3_pytorch.utils.tensor_typing import Int, typecheck
 
 
 def is_unique(arr):
-    """Check if all elements in an array are unique."""
+    """Check if all elements in a list are unique."""
     return len(arr) == len({*arr})
 
 
 # human amino acids
+# reordered so [N][...][C][OH] - [OH] is removed for all peptides except last
 
 HUMAN_AMINO_ACIDS = dict(
-    A=dict(smile="CC(C(=O)O)N", hydroxyl_idx=4),
-    R=dict(smile="C(CC(C(=O)O)N)CN=C(N)N", hydroxyl_idx=5),
-    N=dict(smile="C(C(C(=O)O)N)C(=O)N", hydroxyl_idx=4),
-    D=dict(smile="C(C(C(=O)O)N)C(=O)O", hydroxyl_idx=8),
-    C=dict(smile="C(C(C(=O)O)N)S", hydroxyl_idx=4),
-    Q=dict(smile="C(CC(=O)N)C(C(=O)O)N", hydroxyl_idx=8),
-    E=dict(smile="C(CC(=O)O)C(C(=O)O)N", hydroxyl_idx=8),
-    G=dict(smile="C(C(=O)O)N", hydroxyl_idx=3),
-    H=dict(smile="NC(C(=O)O)Cc1c[nH]cn1", hydroxyl_idx=4),
-    I=dict(smile="CCC(C)C(C(=O)O)N", hydroxyl_idx=7),
-    L=dict(smile="CC(C)CC(C(=O)O)N", hydroxyl_idx=7),
-    K=dict(smile="C(CCN)CC(C(=O)O)N", hydroxyl_idx=8),
-    M=dict(smile="CSCCC(C(=O)O)N", hydroxyl_idx=7),
-    F=dict(smile="C1=CC=C(C=C1)CC(C(=O)O)N", hydroxyl_idx=10),
-    P=dict(smile="C1CC(NC1)C(=O)O", hydroxyl_idx=7),
-    S=dict(smile="C(C(C(=O)O)N)O", hydroxyl_idx=4),
-    T=dict(smile="CC(C(C(=O)O)N)O", hydroxyl_idx=5),
-    W=dict(smile="C1=CC=C2C(=C1)C(=CN2)CC(C(=O)O)N", hydroxyl_idx=13),
-    Y=dict(smile="C1=CC(=CC=C1CC(C(=O)O)N)O", hydroxyl_idx=10),
-    V=dict(smile="CC(C)C(C(=O)O)N", hydroxyl_idx=6),
+    A=dict(
+        smile="CC(C(=O)O)N",
+        first_atom_idx=5,
+        last_atom_idx=2,
+        hydroxyl_idx=4,
+        distogram_atom_idx=0,
+    ),
+    R=dict(
+        smile="C(CC(C(=O)O)N)CN=C(N)N",
+        first_atom_idx=6,
+        last_atom_idx=3,
+        hydroxyl_idx=5,
+        distogram_atom_idx=0,
+    ),
+    N=dict(
+        smile="C(C(C(=O)O)N)C(=O)N",
+        first_atom_idx=5,
+        last_atom_idx=2,
+        hydroxyl_idx=4,
+        distogram_atom_idx=0,
+    ),
+    D=dict(
+        smile="C(C(C(=O)O)N)C(=O)O",
+        first_atom_idx=5,
+        last_atom_idx=2,
+        hydroxyl_idx=8,
+        distogram_atom_idx=0,
+    ),
+    C=dict(
+        smile="C(C(C(=O)O)N)S",
+        first_atom_idx=5,
+        last_atom_idx=2,
+        hydroxyl_idx=4,
+        distogram_atom_idx=0,
+    ),
+    Q=dict(
+        smile="C(CC(=O)N)C(C(=O)O)N",
+        first_atom_idx=9,
+        last_atom_idx=6,
+        hydroxyl_idx=8,
+        distogram_atom_idx=0,
+    ),
+    E=dict(
+        smile="C(CC(=O)O)C(C(=O)O)N",
+        first_atom_idx=9,
+        last_atom_idx=6,
+        hydroxyl_idx=8,
+        distogram_atom_idx=0,
+    ),
+    G=dict(
+        smile="C(C(=O)O)N", first_atom_idx=4, last_atom_idx=1, hydroxyl_idx=3, distogram_atom_idx=0
+    ),
+    H=dict(
+        smile="C1=C(NC=N1)CC(C(=O)O)N",
+        first_atom_idx=10,
+        last_atom_idx=7,
+        hydroxyl_idx=9,
+        distogram_atom_idx=0,
+    ),
+    I=dict(
+        smile="CCC(C)C(C(=O)O)N",
+        first_atom_idx=8,
+        last_atom_idx=5,
+        hydroxyl_idx=7,
+        distogram_atom_idx=0,
+    ),
+    L=dict(
+        smile="CC(C)CC(C(=O)O)N",
+        first_atom_idx=8,
+        last_atom_idx=5,
+        hydroxyl_idx=7,
+        distogram_atom_idx=0,
+    ),
+    K=dict(
+        smile="C(CCN)CC(C(=O)O)N",
+        first_atom_idx=9,
+        last_atom_idx=6,
+        hydroxyl_idx=8,
+        distogram_atom_idx=0,
+    ),
+    M=dict(
+        smile="CSCCC(C(=O)O)N",
+        first_atom_idx=8,
+        last_atom_idx=5,
+        hydroxyl_idx=7,
+        distogram_atom_idx=0,
+    ),
+    F=dict(
+        smile="C1=CC=C(C=C1)CC(C(=O)O)N",
+        first_atom_idx=11,
+        last_atom_idx=8,
+        hydroxyl_idx=10,
+        distogram_atom_idx=0,
+    ),
+    P=dict(
+        smile="C1CC(NC1)C(=O)O",
+        first_atom_idx=3,
+        last_atom_idx=5,
+        hydroxyl_idx=7,
+        distogram_atom_idx=0,
+    ),
+    S=dict(
+        smile="C(C(C(=O)O)N)O",
+        first_atom_idx=5,
+        last_atom_idx=2,
+        hydroxyl_idx=4,
+        distogram_atom_idx=0,
+    ),
+    T=dict(
+        smile="CC(C(C(=O)O)N)O",
+        first_atom_idx=6,
+        last_atom_idx=3,
+        hydroxyl_idx=5,
+        distogram_atom_idx=0,
+    ),
+    W=dict(
+        smile="C1=CC=C2C(=C1)C(=CN2)CC(C(=O)O)N",
+        first_atom_idx=14,
+        last_atom_idx=11,
+        hydroxyl_idx=13,
+        distogram_atom_idx=0,
+    ),
+    Y=dict(
+        smile="C1=CC(=CC=C1CC(C(=O)O)N)O",
+        first_atom_idx=11,
+        last_atom_idx=8,
+        hydroxyl_idx=10,
+        distogram_atom_idx=0,
+    ),
+    V=dict(
+        smile="CC(C)C(C(=O)O)N",
+        first_atom_idx=7,
+        last_atom_idx=4,
+        hydroxyl_idx=6,
+        distogram_atom_idx=0,
+    ),
 )
 
 # nucleotides
+# reordered from 5' to 3', so [O][P][...][C(3')][OH] - hydroxyl group removed when chaining into a nucleic acid chain
 
 DNA_NUCLEOTIDES = dict(
     A=dict(
         smile="C1C(C(OC1N2C=NC3=C(N=CN=C32)N)COP(=O)(O)O)O",
         complement="T",
+        first_atom_idx=20,
+        last_atom_idx=1,
+        hydroxyl_idx=21,
+    ),
+    C=dict(
+        smile="C1C(C(OC1N2C=CC(=NC2=O)N)COP(=O)(O)O)O",
+        complement="G",
+        first_atom_idx=17,
+        last_atom_idx=1,
+        hydroxyl_idx=19,
+    ),
+    G=dict(
+        smile="C1C(C(OC1N2C=NC3=C2N=C(NC3=O)N)COP(=O)(O)O)O",
+        complement="C",
+        first_atom_idx=21,
+        last_atom_idx=1,
+        hydroxyl_idx=22,
+    ),
+    T=dict(
+        smile="CC1=CN(C(=O)NC1=O)C2CC(C(O2)COP(=O)(O)O)O",
+        complement="A",
+        first_atom_idx=19,
+        last_atom_idx=11,
         hydroxyl_idx=20,
     ),
-    C=dict(smile="C1C(C(OC1N2C=CC(=NC2=O)N)COP(=O)(O)O)O", complement="G", hydroxyl_idx=17),
-    G=dict(smile="C1C(C(OC1N2C=NC3=C2N=C(NC3=O)N)COP(=O)(O)O)O", complement="C", hydroxyl_idx=21),
-    T=dict(smile="CC1=CN(C(=O)NC1=O)C2CC(C(O2)COP(=O)(O)O)O", complement="A", hydroxyl_idx=19),
 )
 
 RNA_NUCLEOTIDES = dict(
     A=dict(
-        smile="C1=NC(=C2C(=N1)N(C=N2)C3C(C(C(O3)COP(=O)(O)O)O)O)N", complement="U", hydroxyl_idx=19
+        smile="C1=NC(=C2C(=N1)N(C=N2)C3C(C(C(O3)COP(=O)(O)O)O)O)N",
+        complement="U",
+        first_atom_idx=19,
+        last_atom_idx=11,
+        hydroxyl_idx=20,
     ),
     C=dict(
-        smile="C1=CN(C(=O)N=C1N)C2C(C(C(O2)COP(=O)([O-])[O-])O)O", complement="G", hydroxyl_idx=17
+        smile="C1=CN(C(=O)N=C1N)C2C(C(C(O2)COP(=O)([O-])[O-])O)O",
+        complement="G",
+        first_atom_idx=17,
+        last_atom_idx=10,
+        hydroxyl_idx=19,
     ),
     G=dict(
-        smile="C1=NC2=C(N1C3C(C(C(O3)COP(=O)(O)O)O)O)N=C(NC2=O)N", complement="C", hydroxyl_idx=14
+        smile="C1=NC2=C(N1C3C(C(C(O3)COP(=O)(O)O)O)O)N=C(NC2=O)N",
+        complement="C",
+        first_atom_idx=14,
+        last_atom_idx=7,
+        hydroxyl_idx=16,
     ),
-    U=dict(smile="C1=CN(C(=O)NC1=O)C2C(C(C(O2)COP(=O)(O)O)O)O", complement="A", hydroxyl_idx=18),
+    U=dict(
+        smile="C1=CN(C(=O)NC1=O)C2C(C(C(O2)COP(=O)(O)O)O)O",
+        complement="A",
+        first_atom_idx=18,
+        last_atom_idx=10,
+        hydroxyl_idx=19,
+    ),
 )
 
 # complements in tensor form, following the ordering ACG(T|U)N
@@ -72,7 +228,7 @@ NUCLEIC_ACID_COMPLEMENT_TENSOR = torch.tensor([3, 2, 1, 0, 4], dtype=torch.long)
 
 @typecheck
 def reverse_complement(seq: str, nucleic_acid_type: Literal["dna", "rna"] = "dna"):
-    """Reverse complement a nucleic acid sequence."""
+    """Get the reverse complement of a nucleic acid sequence."""
     if nucleic_acid_type == "dna":
         nucleic_acid_entries = DNA_NUCLEOTIDES
     elif nucleic_acid_type == "rna":
@@ -87,8 +243,8 @@ def reverse_complement(seq: str, nucleic_acid_type: Literal["dna", "rna"] = "dna
 
 
 @typecheck
-def reverse_complement_tensor(t: Int["n"]):
-    """Reverse complement a nucleic acid tensor."""
+def reverse_complement_tensor(t: Int["n"]):  # type: ignore
+    """Get the reverse complement of a nucleic acid sequence tensor."""
     reverse_complement = t.flip(dims=(-1,))
     return reverse_complement
 
@@ -130,7 +286,7 @@ assert is_unique(ATOM_BONDS)
 
 @typecheck
 def generate_conformation(mol: Mol) -> Mol:
-    """Generate a single conformation for a molecule."""
+    """Generate a conformation for a molecule."""
     mol = Chem.AddHs(mol)
     Chem.EmbedMultipleConfs(mol, numConfs=1)
     mol = Chem.RemoveHs(mol)
@@ -138,13 +294,13 @@ def generate_conformation(mol: Mol) -> Mol:
 
 
 def mol_from_smile(smile: str) -> Mol:
-    """Generate rdkit.Chem.rdchem.Mol object from SMILES string."""
+    """Get an RDKit molecule from a SMILES string."""
     mol = Chem.MolFromSmiles(smile)
     return generate_conformation(mol)
 
 
 def remove_atom_from_mol(mol: Mol, atom_idx: int) -> Mol:
-    """Remove atom from molecule."""
+    """Remove an atom from an RDKit molecule."""
     edit_mol = Chem.EditableMol(mol)
     edit_mol.RemoveAtom(atom_idx)
     return mol
@@ -152,14 +308,35 @@ def remove_atom_from_mol(mol: Mol, atom_idx: int) -> Mol:
 
 # initialize rdkit.Chem with canonical SMILES
 
-ALL_ENTRIES = [
+CHAINABLE_BIOMOLECULES = [
     *HUMAN_AMINO_ACIDS.values(),
     *DNA_NUCLEOTIDES.values(),
     *RNA_NUCLEOTIDES.values(),
+]
+
+METALS_AND_MISC = [
     *METALS.values(),
     *MISC.values(),
 ]
 
-for entry in ALL_ENTRIES:
+for entry in [*CHAINABLE_BIOMOLECULES, *METALS_AND_MISC]:
     mol = mol_from_smile(entry["smile"])
     entry["rdchem_mol"] = mol
+
+# reorder all the chainable biomolecules
+# to simplify chaining them up and specifying the peptide or phosphodiesterase bonds
+
+for entry in CHAINABLE_BIOMOLECULES:
+    mol = entry["rdchem_mol"]
+
+    atom_order = torch.arange(mol.GetNumAtoms())
+
+    atom_order[entry["first_atom_idx"]] = -1
+    atom_order[entry["last_atom_idx"]] = 1e4
+    atom_order[entry["hydroxyl_idx"]] = 1e4 + 1
+
+    atom_reorder = atom_order.argsort().tolist()
+
+    mol = Chem.RenumberAtoms(mol, atom_reorder)
+
+    entry.update(atom_reorder=atom_reorder, rdchem_mol=mol)

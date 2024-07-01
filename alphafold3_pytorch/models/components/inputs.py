@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from functools import partial
-from typing import Any, Callable, List, Type
+from typing import Any, Callable, List, Tuple, Type
 
 import einx
-import rootutils
 import torch
 import torch.nn.functional as F
 from rdkit.Chem.rdchem import Mol
+from torch import tensor
 
 from alphafold3_pytorch.data.life import (
     ATOM_BONDS,
@@ -22,37 +22,32 @@ from alphafold3_pytorch.data.life import (
     reverse_complement,
     reverse_complement_tensor,
 )
-from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
 from alphafold3_pytorch.utils.utils import default, exists, identity
-
-rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
 # constants
 
 IS_MOLECULE_TYPES = 4
 ADDITIONAL_MOLECULE_FEATS = 5
 
-logger = RankedLogger(__name__, rank_zero_only=True)
-
 # functions
 
 
 def flatten(arr):
-    """Flattens a list of lists."""
+    """Flatten a list of lists."""
     return [el for sub_arr in arr for el in sub_arr]
 
 
 def pad_to_len(t, length, value=0):
-    """Pads a tensor to a certain length."""
+    """Pad tensor to a certain length."""
     return F.pad(t, (0, max(0, length - t.shape[-1])), value=value)
 
 
 def compose(*fns: Callable):
-    """A function for chaining from Alphafold3Input -> MoleculeInput -> AtomInput."""
+    """Chain from Alphafold3Input -> MoleculeInput -> AtomInput."""
 
     def inner(x, *args, **kwargs):
-        """Inner function for chaining the functions together."""
+        """Compose the functions."""
         for fn in fns:
             x = fn(x, *args, **kwargs)
         return x
@@ -90,7 +85,6 @@ class AtomInput:
     resolved_labels: Int[" n"] | None = None  # type: ignore
 
     def dict(self):
-        """Converts the AtomInput to a dictionary."""
         return asdict(self)
 
 
@@ -121,7 +115,6 @@ class BatchedAtomInput:
     resolved_labels: Int["b n"] | None = None  # type: ignore
 
     def dict(self):
-        """Converts the BatchedAtomInput to a dictionary."""
         return asdict(self)
 
 
@@ -132,8 +125,8 @@ class BatchedAtomInput:
 @dataclass
 class MoleculeInput:
     molecules: List[Mol]
-    molecule_token_pool_lens: List[int]  # type: ignore
-    molecule_atom_indices: List[int | None]  # type: ignore
+    molecule_token_pool_lens: List[int]
+    molecule_atom_indices: List[int | None]
     molecule_ids: Int[" n"]  # type: ignore
     additional_molecule_feats: Int[f"n {ADDITIONAL_MOLECULE_FEATS}"]  # type: ignore
     is_molecule_types: Bool[f"n {IS_MOLECULE_TYPES}"]  # type: ignore
@@ -155,8 +148,7 @@ class MoleculeInput:
 
 @typecheck
 def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
-    """Converts a MoleculeInput to an AtomInput."""
-
+    """Transform MoleculeInput to AtomInput."""
     molecules = mol_input.molecules
     atom_lens = mol_input.molecule_token_pool_lens
 
@@ -173,7 +165,7 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
             else:
                 atom_lens.append(num_atoms)
 
-    atom_lens = torch.tensor(atom_lens)
+    atom_lens = tensor(atom_lens)
     total_atoms = atom_lens.sum().item()
 
     # molecule_atom_lens
@@ -200,7 +192,7 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
 
             atom_ids.append(atom_index[atom_symbol])
 
-        atom_ids = torch.tensor(atom_ids, dtype=torch.long)
+        atom_ids = tensor(atom_ids, dtype=torch.long)
 
     # handle maybe atompair embeds
 
@@ -233,8 +225,8 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
 
                 updates.extend([bond_id, bond_id])
 
-            coordinates = torch.tensor(coordinates).long()
-            updates = torch.tensor(updates).long()
+            coordinates = tensor(coordinates).long()
+            updates = tensor(updates).long()
 
             mol_atompair_ids = einx.set_at(
                 "[h w], c [2], c -> [h w]", mol_atompair_ids, coordinates, updates
@@ -277,7 +269,7 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
             pos = mol.GetConformer().GetAtomPosition(i)
             all_atom_pos.append([pos.x, pos.y, pos.z])
 
-        all_atom_pos_tensor = torch.tensor(all_atom_pos)
+        all_atom_pos_tensor = tensor(all_atom_pos)
 
         dist_matrix = torch.cdist(all_atom_pos_tensor, all_atom_pos_tensor)
 
@@ -289,9 +281,9 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
         offset += num_atoms
 
     atom_input = AtomInput(
-        atom_inputs=torch.tensor(atom_inputs, dtype=torch.float),
+        atom_inputs=tensor(atom_inputs, dtype=torch.float),
         atompair_inputs=atompair_inputs,
-        molecule_atom_lens=torch.tensor(atom_lens, dtype=torch.long),
+        molecule_atom_lens=tensor(atom_lens, dtype=torch.long),
         molecule_ids=mol_input.molecule_ids,
         additional_token_feats=mol_input.additional_token_feats,
         additional_molecule_feats=mol_input.additional_molecule_feats,
@@ -339,10 +331,10 @@ def map_int_or_string_indices_to_mol(
     entries: dict,
     indices: Int[" _"] | List[str] | str,  # type: ignore
     mol_keyname="rdchem_mol",
-    remove_hydroxyl=False,
-    hydroxyl_idx_keyname="hydroxyl_idx",
-) -> List[Mol]:
-    """Maps indices or strings to molecules."""
+    chain=False,
+    return_entries=False,
+) -> List[Mol] | Tuple[List[Mol], List[dict]]:
+    """Map indices to molecules."""
     if isinstance(indices, str):
         indices = list(indices)
 
@@ -365,20 +357,24 @@ def map_int_or_string_indices_to_mol(
 
         mol = entry[mol_keyname]
 
-        if remove_hydroxyl and not is_last:
-            hydroxyl_idx = entry[hydroxyl_idx_keyname]
+        if chain and not is_last:
+            # hydroxyl oxygen to be removed should be the last atom
+            hydroxyl_idx = mol.GetNumAtoms() - 1
             mol = remove_atom_from_mol(mol, hydroxyl_idx)
 
         mols.append(mol)
 
-    return mols
+    if not return_entries:
+        return mols
+
+    return mols, entries
 
 
 @typecheck
 def maybe_string_to_int(
     entries: dict, indices: Int[" _"] | List[str] | str, other_index: int = 0  # type: ignore
 ) -> Int[" _"]:  # type: ignore
-    """Converts a string to an integer index."""
+    """Convert string to int."""
     if isinstance(indices, str):
         indices = list(indices)
 
@@ -387,20 +383,21 @@ def maybe_string_to_int(
 
     index = {symbol: i for i, symbol in enumerate(entries.keys())}
 
-    return torch.tensor([index[c] for c in indices]).long()
+    return tensor([index[c] for c in indices]).long()
 
 
-@typecheck
 @typecheck
 def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> MoleculeInput:
-    """Converts an Alphafold3Input to a MoleculeInput."""
-    ss_rnas = list(alphafold3_input.ss_rna)
-    ss_dnas = list(alphafold3_input.ss_dna)
+    """Transform Alphafold3Input to MoleculeInput."""
+    i = alphafold3_input
+
+    ss_rnas = list(i.ss_rna)
+    ss_dnas = list(i.ss_dna)
 
     # any double stranded nucleic acids is added to single stranded lists with its reverse complement
     # rc stands for reverse complement
 
-    for seq in alphafold3_input.ds_rna:
+    for seq in i.ds_rna:
         rc_fn = (
             partial(reverse_complement, nucleic_acid_type="rna")
             if isinstance(seq, str)
@@ -409,7 +406,7 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
         rc_seq = rc_fn(seq)
         ss_rnas.extend([seq, rc_seq])
 
-    for seq in alphafold3_input.ds_dna:
+    for seq in i.ds_dna:
         rc_fn = (
             partial(reverse_complement, nucleic_acid_type="dna")
             if isinstance(seq, str)
@@ -423,19 +420,24 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
 
     protein_offset = 1
     rna_offset = len(HUMAN_AMINO_ACIDS) + protein_offset
+    dna_offset = len(RNA_NUCLEOTIDES) + rna_offset
 
     molecule_ids = []
 
     # convert all proteins to a List[Mol] of each peptide
 
-    proteins = alphafold3_input.proteins
+    proteins = i.proteins
     mol_proteins = []
+    protein_entries = []
+    molecule_atom_indices = []
 
     for protein in proteins:
-        mol_peptides = map_int_or_string_indices_to_mol(
-            HUMAN_AMINO_ACIDS, protein, remove_hydroxyl=True
+        mol_peptides, protein_entries = map_int_or_string_indices_to_mol(
+            HUMAN_AMINO_ACIDS, protein, chain=True, return_entries=True
         )
         mol_proteins.append(mol_peptides)
+
+        molecule_atom_indices.extend([entry["distogram_atom_idx"] for entry in protein_entries])
 
         protein_ids = maybe_string_to_int(HUMAN_AMINO_ACIDS, protein) + protein_offset
         molecule_ids.append(protein_ids)
@@ -446,15 +448,18 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
     mol_ss_rnas = []
 
     for seq in ss_rnas:
-        mol_seq = map_int_or_string_indices_to_mol(RNA_NUCLEOTIDES, seq, remove_hydroxyl=True)
+        mol_seq = map_int_or_string_indices_to_mol(RNA_NUCLEOTIDES, seq, chain=True)
         mol_ss_rnas.append(mol_seq)
 
         rna_ids = maybe_string_to_int(RNA_NUCLEOTIDES, seq) + rna_offset
         molecule_ids.append(rna_ids)
 
     for seq in ss_dnas:
-        mol_seq = map_int_or_string_indices_to_mol(DNA_NUCLEOTIDES, seq, remove_hydroxyl=True)
+        mol_seq = map_int_or_string_indices_to_mol(DNA_NUCLEOTIDES, seq, chain=True)
         mol_ss_dnas.append(mol_seq)
+
+        dna_ids = maybe_string_to_int(DNA_NUCLEOTIDES, seq) + dna_offset
+        molecule_ids.append(dna_ids)
 
     # convert metal ions to rdchem.Mol
 
@@ -508,7 +513,7 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
 
     arange = torch.arange(num_tokens)[:, None]
 
-    molecule_types_lens_cumsum = torch.tensor([0, *molecule_type_token_lens]).cumsum(dim=-1)
+    molecule_types_lens_cumsum = tensor([0, *molecule_type_token_lens]).cumsum(dim=-1)
     left, right = molecule_types_lens_cumsum[:-1], molecule_types_lens_cumsum[1:]
 
     is_molecule_types = (arange >= left) & (arange < right)
@@ -558,8 +563,8 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
 
             updates.extend([True, True])
 
-        coordinates = torch.tensor(coordinates).long()
-        updates = torch.tensor(updates).bool()
+        coordinates = tensor(coordinates).long()
+        updates = tensor(updates).bool()
 
         has_bond = einx.set_at("[h w], c [2], c -> [h w]", has_bond, coordinates, updates)
 
@@ -594,20 +599,15 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
     num_ss_dna_atoms = get_num_atoms_per_chain(mol_ss_dnas)
     num_ligand_atoms = [lig.GetNumAtoms() for lig in mol_ligands]
 
-    unflattened_atom_parent_ids = [
-        ([asym_id] * num_tokens)
-        for asym_id, num_tokens in enumerate(
-            [
-                *num_protein_atoms,
-                *num_ss_rna_atoms,
-                *num_ss_dna_atoms,
-                *num_ligand_atoms,
-                num_metal_ions,
-            ]
-        )
+    atom_counts = [
+        *num_protein_atoms,
+        *num_ss_rna_atoms,
+        *num_ss_dna_atoms,
+        *num_ligand_atoms,
+        num_metal_ions,
     ]
 
-    atom_parent_ids = torch.tensor(flatten(unflattened_atom_parent_ids))
+    atom_parent_ids = torch.repeat_interleave(torch.arange(len(atom_counts)), tensor(atom_counts))
 
     # constructing the additional_molecule_feats
     # which is in turn used to derive relative positions
@@ -624,53 +624,95 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
     num_ss_dna_tokens = [len(dna) for dna in ss_dnas]
     num_ligand_tokens = [lig.GetNumAtoms() for lig in mol_ligands]
 
-    unflattened_asym_ids = [
-        ([asym_id] * num_tokens)
-        for asym_id, num_tokens in enumerate(
-            [
-                *num_protein_tokens,
-                *num_ss_rna_tokens,
-                *num_ss_dna_tokens,
-                *num_ligand_tokens,
-                num_metal_ions,
-            ]
-        )
-    ]
-
-    asym_ids = torch.tensor(flatten(unflattened_asym_ids))
-    asym_ids = pad_to_len(asym_ids, num_tokens)
-
-    additional_molecule_feats = torch.stack(
-        (
-            molecule_ids,
-            torch.arange(num_tokens),
-            asym_ids,
-            torch.zeros(num_tokens).long(),
-            torch.zeros(num_tokens).long(),
-        ),
-        dim=-1,
+    token_repeats = tensor(
+        [
+            *num_protein_tokens,
+            *num_ss_rna_tokens,
+            *num_ss_dna_tokens,
+            *num_ligand_tokens,
+            num_metal_ions,
+        ]
     )
 
-    # create molecule input
+    asym_ids = torch.repeat_interleave(torch.arange(len(token_repeats)), token_repeats)
 
-    af3_input = alphafold3_input
+    # entity ids
+
+    unrepeated_entity_ids = tensor(
+        [
+            0,
+            *[*range(len(i.ss_rna))],
+            *[*range(len(i.ds_rna))],
+            *[*range(len(i.ss_dna))],
+            *[*range(len(i.ds_dna))],
+            *([1] * len(mol_ligands)),
+            1,
+        ]
+    ).cumsum(dim=-1)
+
+    entity_id_counts = [
+        sum(num_protein_tokens),
+        *[len(rna) for rna in i.ss_rna],
+        *[len(rna) * 2 for rna in i.ds_rna],
+        *[len(dna) for dna in i.ss_dna],
+        *[len(dna) * 2 for dna in i.ds_dna],
+        *num_ligand_tokens,
+        num_metal_ions,
+    ]
+
+    entity_ids = torch.repeat_interleave(unrepeated_entity_ids, tensor(entity_id_counts))
+
+    # sym_id
+
+    unrepeated_sym_ids = [
+        *[*range(len(i.proteins))],
+        *[*range(len(i.ss_rna))],
+        *[i for rna in i.ds_rna for i in range(2)],
+        *[*range(len(i.ss_dna))],
+        *[i for dna in i.ds_dna for i in range(2)],
+        *([0] * len(mol_ligands)),
+        0,
+    ]
+
+    sym_id_counts = [
+        *num_protein_tokens,
+        *[len(rna) for rna in i.ss_rna],
+        *flatten([((len(rna),) * 2) for rna in i.ds_rna]),
+        *[len(dna) for dna in i.ss_dna],
+        *flatten([((len(dna),) * 2) for dna in i.ds_dna]),
+        *num_ligand_tokens,
+        num_metal_ions,
+    ]
+
+    sym_ids = torch.repeat_interleave(tensor(unrepeated_sym_ids), tensor(sym_id_counts))
+
+    # concat for all of additional_molecule_feats
+
+    additional_molecule_feats = torch.stack(
+        (molecule_ids, torch.arange(num_tokens), asym_ids, entity_ids, sym_ids), dim=-1
+    )
+
+    # molecule atom indices
+
+    molecule_atom_indices = tensor(molecule_atom_indices)
+    molecule_atom_indices = pad_to_len(molecule_atom_indices, num_tokens, value=-1)
+
+    # create molecule input
 
     molecule_input = MoleculeInput(
         molecules=molecules,
         molecule_token_pool_lens=token_pool_lens,
-        molecule_atom_indices=[0] * num_tokens,
+        molecule_atom_indices=molecule_atom_indices,
         molecule_ids=molecule_ids,
         token_bonds=token_bonds,
         additional_molecule_feats=additional_molecule_feats,
-        additional_token_feats=default(
-            af3_input.additional_token_feats, torch.zeros(num_tokens, 2)
-        ),
+        additional_token_feats=default(i.additional_token_feats, torch.zeros(num_tokens, 2)),
         is_molecule_types=is_molecule_types,
-        atom_pos=af3_input.atom_pos,
-        templates=af3_input.templates,
-        msa=af3_input.msa,
-        template_mask=af3_input.template_mask,
-        msa_mask=af3_input.msa_mask,
+        atom_pos=i.atom_pos,
+        templates=i.templates,
+        msa=i.msa,
+        template_mask=i.template_mask,
+        msa_mask=i.msa_mask,
         atom_parent_ids=atom_parent_ids,
         add_atom_ids=alphafold3_input.add_atom_ids,
         add_atompair_ids=alphafold3_input.add_atompair_ids,
@@ -690,7 +732,7 @@ class PDBInput:
 
 @typecheck
 def pdb_input_to_alphafold3_input(pdb_input: PDBInput) -> Alphafold3Input:
-    """Converts a PDBInput to an Alphafold3Input."""
+    """Transform PDBInput to Alphafold3Input."""
     raise NotImplementedError
 
 
@@ -711,9 +753,10 @@ INPUT_TO_ATOM_TRANSFORM = {
 
 @typecheck
 def register_input_transform(input_type: Type, fn: Callable[[Any], AtomInput]):
-    """Registers a new input transform function."""
+    """Register a new input transform."""
     if input_type in INPUT_TO_ATOM_TRANSFORM:
-        logger.info(f"{input_type} is already registered, but overwriting")
+        print(f"{input_type} is already registered, but overwriting")
+
     INPUT_TO_ATOM_TRANSFORM[input_type] = fn
 
 
@@ -722,7 +765,7 @@ def register_input_transform(input_type: Type, fn: Callable[[Any], AtomInput]):
 
 @typecheck
 def maybe_transform_to_atom_input(i: Any) -> AtomInput:
-    """Transforms a list of inputs to AtomInputs."""
+    """Transform any input to AtomInput."""
     maybe_to_atom_fn = INPUT_TO_ATOM_TRANSFORM.get(type(i), None)
 
     if not exists(maybe_to_atom_fn):
@@ -735,5 +778,5 @@ def maybe_transform_to_atom_input(i: Any) -> AtomInput:
 
 @typecheck
 def maybe_transform_to_atom_inputs(inputs: List[Any]) -> List[AtomInput]:
-    """Transforms a list of inputs to AtomInputs."""
+    """Transform any list of inputs to AtomInput."""
     return [maybe_transform_to_atom_input(i) for i in inputs]
