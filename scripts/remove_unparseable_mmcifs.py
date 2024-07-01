@@ -7,11 +7,12 @@ from alphafold3_pytorch.common.biomolecule import _from_mmcif_object
 from alphafold3_pytorch.data import mmcif_parsing
 
 
-def remove_unparseable_mmcifs(mmcif_dir: str):
+def remove_unparseable_mmcifs(mmcif_dir: str, dry_run: bool = False):
     """
     Delete unparseable mmCIF files from a directory.
 
     :param mmcif_dir: directory containing mmCIF files
+    :param dry_run: if True, print the unparseable mmCIF files without deleting them
     """
     assert os.path.exists(mmcif_dir), f"Directory '{mmcif_dir}' does not exist."
 
@@ -47,7 +48,8 @@ def remove_unparseable_mmcifs(mmcif_dir: str):
             if parsing_result.mmcif_object is None:
                 parsing_errors.append(list(parsing_result.errors.values())[0])
                 unparseable_complex_filepaths.append(complex_filepath)
-                os.remove(complex_filepath)
+                if not dry_run:
+                    os.remove(complex_filepath)
             else:
                 try:
                     biomol = _from_mmcif_object(parsing_result.mmcif_object)
@@ -57,7 +59,8 @@ def remove_unparseable_mmcifs(mmcif_dir: str):
                     else:
                         parsing_errors.append(e)
                         unparseable_complex_filepaths.append(complex_filepath)
-                        os.remove(complex_filepath)
+                        if not dry_run:
+                            os.remove(complex_filepath)
                         continue
                 if len(biomol.atom_positions) == 0:
                     parsing_errors.append(
@@ -66,7 +69,8 @@ def remove_unparseable_mmcifs(mmcif_dir: str):
                         )
                     )
                     unparseable_complex_filepaths.append(complex_filepath)
-                    os.remove(complex_filepath)
+                    if not dry_run:
+                        os.remove(complex_filepath)
 
     if parsing_errors:
         print(f"Failed to parse {len(parsing_errors)} files: '{unparseable_complex_filepaths}'.")
@@ -83,6 +87,11 @@ if __name__ == "__main__":
         required=True,
         help="Directory containing mmCIF files.",
     )
+    args.add_argument(
+        "--dry_run",
+        action="store_true",
+        help="Print the unparseable mmCIF files without deleting them.",
+    )
     args = args.parse_args()
 
-    remove_unparseable_mmcifs(args.mmcif_dir)
+    remove_unparseable_mmcifs(args.mmcif_dir, args.dry_run)
