@@ -1,7 +1,10 @@
 import argparse
 import os
 
+import rootutils
 from tqdm import tqdm
+
+rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
 from alphafold3_pytorch.common.biomolecule import _from_mmcif_object
 from alphafold3_pytorch.data import mmcif_parsing
@@ -80,17 +83,17 @@ def remove_unparseable_mmcifs(mmcif_dir: str, dry_run: bool = False):
 
 
 if __name__ == "__main__":
-    args = argparse.ArgumentParser()
-    args.add_argument(
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
         "mmcif_dir",
         type=str,
         help="Directory containing mmCIF files to validate.",
     )
-    args.add_argument(
+    parser.add_argument(
         "--dry_run",
         action="store_true",
         help="Print the unparseable mmCIF files without deleting them.",
     )
-    args = args.parse_args()
+    args = parser.parse_args()
 
     remove_unparseable_mmcifs(args.mmcif_dir, args.dry_run)
