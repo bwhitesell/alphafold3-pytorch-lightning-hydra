@@ -82,10 +82,9 @@ def remove_unparseable_mmcifs(mmcif_dir: str, dry_run: bool = False):
 if __name__ == "__main__":
     args = argparse.ArgumentParser()
     args.add_argument(
-        "--mmcif_dir",
+        "mmcif_dir",
         type=str,
-        required=True,
-        help="Directory containing mmCIF files.",
+        help="Directory containing mmCIF files to validate.",
     )
     args.add_argument(
         "--dry_run",
