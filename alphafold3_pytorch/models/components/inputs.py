@@ -77,6 +77,7 @@ class AtomInput:
     template_mask: Bool[" t"] | None = None  # type: ignore
     msa_mask: Bool[" s"] | None = None  # type: ignore
     atom_pos: Float["m 3"] | None = None  # type: ignore
+    output_atompos_indices: Int[" m"] | None = None  # type: ignore
     molecule_atom_indices: Int[" n"] | None = None  # type: ignore
     distance_labels: Int["n n"] | None = None  # type: ignore
     pae_labels: Int["n n"] | None = None  # type: ignore
@@ -107,6 +108,7 @@ class BatchedAtomInput:
     template_mask: Bool["b t"] | None = None  # type: ignore
     msa_mask: Bool["b s"] | None = None  # type: ignore
     atom_pos: Float["b m 3"] | None = None  # type: ignore
+    output_atompos_indices: Int["b m"] | None = None  # type: ignore
     molecule_atom_indices: Int["b n"] | None = None  # type: ignore
     distance_labels: Int["b n n"] | None = None  # type: ignore
     pae_labels: Int["b n n"] | None = None  # type: ignore
@@ -136,6 +138,7 @@ class MoleculeInput:
     templates: Float["t n n dt"] | None = None  # type: ignore
     msa: Float["s n dm"] | None = None  # type: ignore
     atom_pos: List[Float["_ 3"]] | Float["m 3"] | None = None  # type: ignore
+    output_atompos_indices: Int[" m"] | None = None  # type: ignore
     template_mask: Bool[" t"] | None = None  # type: ignore
     msa_mask: Bool[" s"] | None = None  # type: ignore
     distance_labels: Int["n n"] | None = None  # type: ignore
@@ -208,14 +211,17 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
 
         offset = 0
 
-        # need the asym_id (each molecule for each chain ascending) as well as `is_protein | is_dna | is_rna` for is_molecule_types (chainable biomolecules)
-        # will do a single bond from a peptide or nucleotide to the one before, if `asym_id` != 0 (first in the chain)
+        # need the asym_id (to keep track of each molecule for each chain ascending) as well as `is_protein | is_dna | is_rna` for is_molecule_types (chainable biomolecules)
+        # will do a single bond from a peptide or nucleotide to the one before. derive a `is_first_mol_in_chain` from `asym_ids`
 
         asym_ids = i.additional_molecule_feats[..., 2]
+        asym_ids = F.pad(asym_ids, (1, 0), value=-1)
+        is_first_mol_in_chains = (asym_ids[1:] - asym_ids[:-1]) == 1
+
         is_chainable_biomolecules = i.is_molecule_types[..., :3].any(dim=-1)
 
-        for idx, (mol, asym_id, is_chainable_biomolecule) in enumerate(
-            zip(molecules, asym_ids, is_chainable_biomolecules)
+        for idx, (mol, is_first_mol_in_chain, is_chainable_biomolecule) in enumerate(
+            zip(molecules, is_first_mol_in_chains, is_chainable_biomolecules)
         ):
             coordinates = []
             updates = []
@@ -249,7 +255,7 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
             # if is chainable biomolecule
             # and not the first biomolecule in the chain, add a single covalent bond between first atom of incoming biomolecule and the last atom  of the last biomolecule
 
-            if is_chainable_biomolecule and asym_id != 0:
+            if is_chainable_biomolecule and not is_first_mol_in_chain:
                 atompair_ids[offset, offset - 1] = 1
                 atompair_ids[offset - 1, offset] = 1
 
@@ -342,6 +348,7 @@ class Alphafold3Input:
     resolved_labels: Int[" n"] | None = None  # type: ignore
     add_atom_ids: bool = False
     add_atompair_ids: bool = False
+    add_output_atompos_indices: bool = True
 
 
 @typecheck
