@@ -14,7 +14,7 @@ from alphafold3_pytorch.utils.model_utils import (
     concat_previous_window,
     max_neg_value,
     pad_at_dim,
-    softclamp_value,
+    softclamp,
 )
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, typecheck
 from alphafold3_pytorch.utils.utils import default, exists
@@ -396,7 +396,7 @@ class Attend(Module):
         # maybe softclamp
 
         if self.enable_attn_softclamp:
-            sim = softclamp_value(sim, self.attn_softclamp_value)
+            sim = softclamp(sim, self.attn_softclamp_value)
 
         # windowed masking - for masking out atoms not belonging to the same molecule / polypeptide / nucleic acid in sequence-local attention
 
@@ -516,7 +516,7 @@ class Attend(Module):
         # maybe softclamp
 
         if self.enable_attn_softclamp:
-            sim = softclamp_value(sim, self.attn_softclamp_value)
+            sim = softclamp(sim, self.attn_softclamp_value)
 
         # masking
 

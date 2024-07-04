@@ -88,7 +88,7 @@ def unpack_one(t: Tensor, ps: List[Shape], pattern: str) -> List[Tensor]:
     return unpack(t, ps, pattern)[0]
 
 
-def softclamp_value(t: Tensor, value: float) -> Tensor:
+def softclamp(t: Tensor, value: float) -> Tensor:
     """
     Perform a soft clamp on a Tensor.
 

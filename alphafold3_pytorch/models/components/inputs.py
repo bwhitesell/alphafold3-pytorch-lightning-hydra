@@ -123,6 +123,11 @@ class BatchedAtomInput:
 # molecule input - accepting list of molecules as rdchem.Mol + the atomic lengths for how to pool into tokens
 
 
+def default_extract_atom_feats_fn(atom):
+    """Default function to extract atom features."""
+    return [atom.GetFormalCharge(), atom.GetImplicitValence(), atom.GetExplicitValence()]
+
+
 @typecheck
 @dataclass
 class MoleculeInput:
@@ -147,6 +152,7 @@ class MoleculeInput:
     resolved_labels: Int[" n"] | None = None  # type: ignore
     add_atom_ids: bool = False
     add_atompair_ids: bool = False
+    extract_atom_feats_fn: Callable[[Any], List[float]] = default_extract_atom_feats_fn
 
 
 @typecheck
@@ -156,6 +162,7 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
 
     molecules = i.molecules
     atom_lens = i.molecule_token_pool_lens
+    extract_atom_feats_fn = i.extract_atom_feats_fn
 
     # get total number of atoms
 
@@ -270,13 +277,7 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
         atom_feats = []
 
         for atom in atoms:
-            atom_feats.append(
-                [
-                    atom.GetFormalCharge(),
-                    atom.GetImplicitValence(),
-                    atom.GetExplicitValence(),
-                ]
-            )
+            atom_feats.append(extract_atom_feats_fn(atom))
 
         atom_inputs.extend(atom_feats)
 
@@ -345,7 +346,7 @@ class Alphafold3Input:
     ligands: List[Mol | str] = imm_list()  # can be given as smiles
     ds_dna: List[Int[" _"] | str] = imm_list()  # type: ignore
     ds_rna: List[Int[" _"] | str] = imm_list()  # type: ignore
-    atom_parent_ids: Int["m"] | None = None  # type: ignore
+    atom_parent_ids: Int[" m"] | None = None  # type: ignore
     additional_token_feats: Float["n dtf"] | None = None  # type: ignore
     templates: Float["t n n dt"] | None = None  # type: ignore
     msa: Float["s n dm"] | None = None  # type: ignore
@@ -359,6 +360,7 @@ class Alphafold3Input:
     add_atom_ids: bool = False
     add_atompair_ids: bool = False
     add_output_atompos_indices: bool = True
+    extract_atom_feats_fn: Callable[[Any], List[float]] = default_extract_atom_feats_fn
 
 
 @typecheck
@@ -516,7 +518,9 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
     # convert ligands to rdchem.Mol
 
     ligands = list(alphafold3_input.ligands)
-    mol_ligands = [(mol_from_smile(lig) if isinstance(lig, str) else lig) for lig in ligands]
+    mol_ligands = [
+        (mol_from_smile(ligand) if isinstance(ligand, str) else ligand) for ligand in ligands
+    ]
 
     # create the molecule input
 
@@ -648,7 +652,7 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
     num_protein_atoms = get_num_atoms_per_chain(mol_proteins)
     num_ss_rna_atoms = get_num_atoms_per_chain(mol_ss_rnas)
     num_ss_dna_atoms = get_num_atoms_per_chain(mol_ss_dnas)
-    num_ligand_atoms = [lig.GetNumAtoms() for lig in mol_ligands]
+    num_ligand_atoms = [ligand.GetNumAtoms() for ligand in mol_ligands]
 
     atom_counts = [
         *num_protein_atoms,
@@ -673,7 +677,7 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
     num_protein_tokens = [len(protein) for protein in proteins]
     num_ss_rna_tokens = [len(rna) for rna in ss_rnas]
     num_ss_dna_tokens = [len(dna) for dna in ss_dnas]
-    num_ligand_tokens = [lig.GetNumAtoms() for lig in mol_ligands]
+    num_ligand_tokens = [ligand.GetNumAtoms() for ligand in mol_ligands]
 
     token_repeats = tensor(
         [
@@ -809,6 +813,7 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
         atom_parent_ids=atom_parent_ids,
         add_atom_ids=i.add_atom_ids,
         add_atompair_ids=i.add_atompair_ids,
+        extract_atom_feats_fn=i.extract_atom_feats_fn,
     )
 
     return molecule_input
