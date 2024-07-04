@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from functools import partial
 from typing import Any, Callable, List, Tuple, Type
 
@@ -304,6 +304,13 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
 
         offset += num_atoms
 
+    # handle atom positions
+
+    atom_pos = i.atom_pos
+
+    if exists(atom_pos) and isinstance(atom_pos, list):
+        atom_pos = torch.cat(atom_pos, dim=-2)
+
     atom_input = AtomInput(
         atom_inputs=tensor(atom_inputs, dtype=torch.float),
         atompair_inputs=atompair_inputs,
@@ -312,6 +319,7 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
         additional_token_feats=i.additional_token_feats,
         additional_molecule_feats=i.additional_molecule_feats,
         is_molecule_types=i.is_molecule_types,
+        atom_pos=atom_pos,
         token_bonds=i.token_bonds,
         atom_parent_ids=i.atom_parent_ids,
         atom_ids=atom_ids,
@@ -323,18 +331,20 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
 
 # alphafold3 input - support polypeptides, nucleic acids, metal ions + any number of ligands + misc biomolecules
 
+imm_list = partial(field, default_factory=list)
+
 
 @typecheck
 @dataclass
 class Alphafold3Input:
-    proteins: List[Int[" _"] | str]  # type: ignore
-    ss_dna: List[Int[" _"] | str]  # type: ignore
-    ss_rna: List[Int[" _"] | str]  # type: ignore
-    metal_ions: Int[" _"] | List[str]  # type: ignore
-    misc_molecule_ids: Int[" _"] | List[str]  # type: ignore
-    ligands: List[Mol | str]  # can be given as smiles
-    ds_dna: List[Int[" _"] | str]  # type: ignore
-    ds_rna: List[Int[" _"] | str]  # type: ignore
+    proteins: List[Int[" _"] | str] = imm_list()  # type: ignore
+    ss_dna: List[Int[" _"] | str] = imm_list()  # type: ignore
+    ss_rna: List[Int[" _"] | str] = imm_list()  # type: ignore
+    metal_ions: Int[" _"] | List[str] = imm_list()  # type: ignore
+    misc_molecule_ids: Int[" _"] | List[str] = imm_list()  # type: ignore
+    ligands: List[Mol | str] = imm_list()  # can be given as smiles
+    ds_dna: List[Int[" _"] | str] = imm_list()  # type: ignore
+    ds_rna: List[Int[" _"] | str] = imm_list()  # type: ignore
     atom_parent_ids: Int["m"] | None = None  # type: ignore
     additional_token_feats: Float["n dtf"] | None = None  # type: ignore
     templates: Float["t n n dt"] | None = None  # type: ignore
@@ -416,6 +426,8 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
     """Transform Alphafold3Input to MoleculeInput."""
     i = alphafold3_input
 
+    chainable_biomol_entries: List[List[dict]] = []  # for reordering the atom positions at the end
+
     ss_rnas = list(i.ss_rna)
     ss_dnas = list(i.ss_dna)
 
@@ -467,24 +479,34 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
         protein_ids = maybe_string_to_int(HUMAN_AMINO_ACIDS, protein) + protein_offset
         molecule_ids.append(protein_ids)
 
+        chainable_biomol_entries.append(protein_entries)
+
     # convert all single stranded nucleic acids to mol
 
     mol_ss_dnas = []
     mol_ss_rnas = []
 
     for seq in ss_rnas:
-        mol_seq = map_int_or_string_indices_to_mol(RNA_NUCLEOTIDES, seq, chain=True)
+        mol_seq, ss_rna_entries = map_int_or_string_indices_to_mol(
+            RNA_NUCLEOTIDES, seq, chain=True, return_entries=True
+        )
         mol_ss_rnas.append(mol_seq)
 
         rna_ids = maybe_string_to_int(RNA_NUCLEOTIDES, seq) + rna_offset
         molecule_ids.append(rna_ids)
 
+        chainable_biomol_entries.append(ss_rna_entries)
+
     for seq in ss_dnas:
-        mol_seq = map_int_or_string_indices_to_mol(DNA_NUCLEOTIDES, seq, chain=True)
+        mol_seq, ss_dna_entries = map_int_or_string_indices_to_mol(
+            DNA_NUCLEOTIDES, seq, chain=True, return_entries=True
+        )
         mol_ss_dnas.append(mol_seq)
 
         dna_ids = maybe_string_to_int(DNA_NUCLEOTIDES, seq) + dna_offset
         molecule_ids.append(dna_ids)
+
+        chainable_biomol_entries.append(ss_dna_entries)
 
     # convert metal ions to rdchem.Mol
 
@@ -536,6 +558,8 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
 
     num_tokens = sum(molecule_type_token_lens) + num_metal_ions
 
+    assert num_tokens > 0, "You have an empty alphafold3 input"
+
     arange = torch.arange(num_tokens)[:, None]
 
     molecule_types_lens_cumsum = tensor([0, *molecule_type_token_lens]).cumsum(dim=-1)
@@ -553,6 +577,8 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
         *flatten(ligands_token_pool_lens),
         *metal_ions_pool_lens,
     ]
+
+    total_atoms = sum(token_pool_lens)
 
     # construct the token bonds
 
@@ -722,6 +748,47 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
     molecule_atom_indices = tensor(molecule_atom_indices)
     molecule_atom_indices = pad_to_len(molecule_atom_indices, num_tokens, value=-1)
 
+    # handle atom positions
+
+    atom_pos = i.atom_pos
+    output_atompos_indices = None
+
+    if exists(atom_pos):
+        if isinstance(atom_pos, list):
+            atom_pos = torch.cat(atom_pos, dim=-2)
+
+        assert atom_pos.shape[-2] == total_atoms
+
+        # to automatically reorder the atom positions back to canonical
+
+        if i.add_output_atompos_indices:
+            offset = 0
+            output_atompos_indices = []
+
+            for chain in chainable_biomol_entries:
+                for idx, entry in enumerate(chain):
+                    is_last = idx == (len(chain) - 1)
+
+                    mol = entry["rdchem_mol"]
+                    num_atoms = mol.GetNumAtoms()
+                    atom_reorder_indices = entry["atom_reorder_indices"]
+
+                    if not is_last:
+                        num_atoms -= 1
+                        atom_reorder_indices = atom_reorder_indices[:-1]
+
+                    reorder_back_indices = atom_reorder_indices.argsort()
+                    output_atompos_indices.append(reorder_back_indices + offset)
+
+                    offset += num_atoms
+
+            output_atompos_indices = torch.cat(output_atompos_indices, dim=-1)
+            output_atompos_indices = F.pad(
+                output_atompos_indices,
+                (0, total_atoms - output_atompos_indices.shape[-1]),
+                value=-1,
+            )
+
     # create molecule input
 
     molecule_input = MoleculeInput(
@@ -733,14 +800,15 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
         additional_molecule_feats=additional_molecule_feats,
         additional_token_feats=default(i.additional_token_feats, torch.zeros(num_tokens, 2)),
         is_molecule_types=is_molecule_types,
-        atom_pos=i.atom_pos,
+        atom_pos=atom_pos,
+        output_atompos_indices=output_atompos_indices,
         templates=i.templates,
         msa=i.msa,
         template_mask=i.template_mask,
         msa_mask=i.msa_mask,
         atom_parent_ids=atom_parent_ids,
-        add_atom_ids=alphafold3_input.add_atom_ids,
-        add_atompair_ids=alphafold3_input.add_atompair_ids,
+        add_atom_ids=i.add_atom_ids,
+        add_atompair_ids=i.add_atompair_ids,
     )
 
     return molecule_input
