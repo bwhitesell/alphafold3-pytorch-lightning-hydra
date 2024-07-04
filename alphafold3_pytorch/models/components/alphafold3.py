@@ -3764,6 +3764,11 @@ class Alphafold3(Module):
                 molecule_atom_lens=molecule_atom_lens,
             )
 
+            if exists(atom_mask):
+                sampled_atom_pos = einx.where(
+                    "b m, b m c, -> b m c", atom_mask, sampled_atom_pos, 0.0
+                )
+
             if not exists(output_atompos_indices):
                 return sampled_atom_pos
 
