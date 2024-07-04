@@ -1,6 +1,6 @@
 import warnings
 from importlib.util import find_spec
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, Optional, Tuple
 
 import numpy as np
 from omegaconf import DictConfig
@@ -137,6 +137,16 @@ def default(v: Any, d: Any) -> Any:
     :return: The value `v` if it exists, otherwise the default value `d`.
     """
     return v if exists(v) else d
+
+
+def first(arr: Iterable[Any]) -> Any:
+    """
+    Return the first element of an iterable object such as a list.
+
+    :param arr: An iterable object.
+    :return: The first element of the iterable object.
+    """
+    return arr[0]
 
 
 def always(value):

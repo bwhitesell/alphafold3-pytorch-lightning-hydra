@@ -8,7 +8,7 @@ from alphafold3_pytorch.utils.tensor_typing import Int, typecheck
 
 
 def is_unique(arr):
-    """Check if all elements in a list are unique."""
+    """Check if all elements in an array are unique."""
     return len(arr) == len({*arr})
 
 
@@ -21,49 +21,49 @@ HUMAN_AMINO_ACIDS = dict(
         first_atom_idx=5,
         last_atom_idx=2,
         hydroxyl_idx=4,
-        distogram_atom_idx=0,
+        distogram_atom_idx=1,
     ),
     R=dict(
         smile="C(CC(C(=O)O)N)CN=C(N)N",
         first_atom_idx=6,
         last_atom_idx=3,
         hydroxyl_idx=5,
-        distogram_atom_idx=0,
+        distogram_atom_idx=2,
     ),
     N=dict(
         smile="C(C(C(=O)O)N)C(=O)N",
         first_atom_idx=5,
         last_atom_idx=2,
         hydroxyl_idx=4,
-        distogram_atom_idx=0,
+        distogram_atom_idx=1,
     ),
     D=dict(
         smile="C(C(C(=O)O)N)C(=O)O",
         first_atom_idx=5,
         last_atom_idx=2,
         hydroxyl_idx=8,
-        distogram_atom_idx=0,
+        distogram_atom_idx=1,
     ),
     C=dict(
         smile="C(C(C(=O)O)N)S",
         first_atom_idx=5,
         last_atom_idx=2,
         hydroxyl_idx=4,
-        distogram_atom_idx=0,
+        distogram_atom_idx=1,
     ),
     Q=dict(
         smile="C(CC(=O)N)C(C(=O)O)N",
         first_atom_idx=9,
         last_atom_idx=6,
         hydroxyl_idx=8,
-        distogram_atom_idx=0,
+        distogram_atom_idx=5,
     ),
     E=dict(
         smile="C(CC(=O)O)C(C(=O)O)N",
         first_atom_idx=9,
         last_atom_idx=6,
         hydroxyl_idx=8,
-        distogram_atom_idx=0,
+        distogram_atom_idx=5,
     ),
     G=dict(
         smile="C(C(=O)O)N", first_atom_idx=4, last_atom_idx=1, hydroxyl_idx=3, distogram_atom_idx=0
@@ -87,70 +87,70 @@ HUMAN_AMINO_ACIDS = dict(
         first_atom_idx=8,
         last_atom_idx=5,
         hydroxyl_idx=7,
-        distogram_atom_idx=0,
+        distogram_atom_idx=4,
     ),
     K=dict(
         smile="C(CCN)CC(C(=O)O)N",
         first_atom_idx=9,
         last_atom_idx=6,
         hydroxyl_idx=8,
-        distogram_atom_idx=0,
+        distogram_atom_idx=5,
     ),
     M=dict(
         smile="CSCCC(C(=O)O)N",
         first_atom_idx=8,
         last_atom_idx=5,
         hydroxyl_idx=7,
-        distogram_atom_idx=0,
+        distogram_atom_idx=4,
     ),
     F=dict(
         smile="C1=CC=C(C=C1)CC(C(=O)O)N",
         first_atom_idx=11,
         last_atom_idx=8,
         hydroxyl_idx=10,
-        distogram_atom_idx=0,
+        distogram_atom_idx=7,
     ),
     P=dict(
         smile="C1CC(NC1)C(=O)O",
         first_atom_idx=3,
         last_atom_idx=5,
         hydroxyl_idx=7,
-        distogram_atom_idx=0,
+        distogram_atom_idx=2,
     ),
     S=dict(
         smile="C(C(C(=O)O)N)O",
         first_atom_idx=5,
         last_atom_idx=2,
         hydroxyl_idx=4,
-        distogram_atom_idx=0,
+        distogram_atom_idx=1,
     ),
     T=dict(
         smile="CC(C(C(=O)O)N)O",
         first_atom_idx=6,
         last_atom_idx=3,
         hydroxyl_idx=5,
-        distogram_atom_idx=0,
+        distogram_atom_idx=2,
     ),
     W=dict(
         smile="C1=CC=C2C(=C1)C(=CN2)CC(C(=O)O)N",
         first_atom_idx=14,
         last_atom_idx=11,
         hydroxyl_idx=13,
-        distogram_atom_idx=0,
+        distogram_atom_idx=10,
     ),
     Y=dict(
         smile="C1=CC(=CC=C1CC(C(=O)O)N)O",
         first_atom_idx=11,
         last_atom_idx=8,
         hydroxyl_idx=10,
-        distogram_atom_idx=0,
+        distogram_atom_idx=7,
     ),
     V=dict(
         smile="CC(C)C(C(=O)O)N",
         first_atom_idx=7,
         last_atom_idx=4,
         hydroxyl_idx=6,
-        distogram_atom_idx=0,
+        distogram_atom_idx=3,
     ),
 )
 
@@ -243,8 +243,8 @@ def reverse_complement(seq: str, nucleic_acid_type: Literal["dna", "rna"] = "dna
 
 
 @typecheck
-def reverse_complement_tensor(t: Int["n"]):  # type: ignore
-    """Get the reverse complement of a nucleic acid sequence tensor."""
+def reverse_complement_tensor(t: Int[" n"]):  # type: ignore
+    """Get the reverse complement of a nucleic acid tensor."""
     complement = NUCLEIC_ACID_COMPLEMENT_TENSOR[t]
     reverse_complement = complement.flip(dims=(-1,))
     return reverse_complement
@@ -287,7 +287,7 @@ assert is_unique(ATOM_BONDS)
 
 @typecheck
 def generate_conformation(mol: Mol) -> Mol:
-    """Generate a conformation for a molecule."""
+    """Generate a single conformation for a molecule."""
     mol = Chem.AddHs(mol)
     Chem.EmbedMultipleConfs(mol, numConfs=1)
     mol = Chem.RemoveHs(mol)
@@ -295,7 +295,7 @@ def generate_conformation(mol: Mol) -> Mol:
 
 
 def mol_from_smile(smile: str) -> Mol:
-    """Get an RDKit molecule from a SMILES string."""
+    """Generate an RDKit molecule from a SMILES string."""
     mol = Chem.MolFromSmiles(smile)
     return generate_conformation(mol)
 
@@ -336,8 +336,8 @@ for entry in CHAINABLE_BIOMOLECULES:
     atom_order[entry["last_atom_idx"]] = 1e4
     atom_order[entry["hydroxyl_idx"]] = 1e4 + 1
 
-    atom_reorder = atom_order.argsort().tolist()
+    atom_reorder = atom_order.argsort()
 
-    mol = Chem.RenumberAtoms(mol, atom_reorder)
+    mol = Chem.RenumberAtoms(mol, atom_reorder.tolist())
 
-    entry.update(atom_reorder=atom_reorder, rdchem_mol=mol)
+    entry.update(atom_reorder_indices=atom_reorder, rdchem_mol=mol)

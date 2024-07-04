@@ -19,17 +19,6 @@ from alphafold3_pytorch.utils.model_utils import (
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, typecheck
 from alphafold3_pytorch.utils.utils import default, exists
 
-# config
-
-
-class AttentionConfig(NamedTuple):
-    """Configuration for an attention mechanism."""
-
-    enable_flash: bool
-    enable_math: bool
-    enable_mem_efficient: bool
-
-
 # for changing full attention bias matrix to a local windowed one for atom attention
 
 
@@ -94,10 +83,8 @@ class Attention(Module):
         dropout=0.0,
         gate_output=True,
         query_bias=True,
-        flash=False,
         window_size=None,
         num_memory_kv: int = 0,
-        efficient_attn_config: AttentionConfig = AttentionConfig(True, True, True),
         enable_attn_softclamp=False,
         attn_softclamp_value=30.0,
     ):
@@ -118,10 +105,8 @@ class Attention(Module):
         dim_inner = dim_head * heads
 
         self.attend = Attend(
-            flash=flash,
             dropout=dropout,
             window_size=window_size,
-            attn_config=efficient_attn_config,
             enable_attn_softclamp=enable_attn_softclamp,
             attn_softclamp_value=attn_softclamp_value,
         )
@@ -204,7 +189,7 @@ class Attention(Module):
         return self.to_out(out)
 
 
-# attending, both vanilla as well as in-built flash attention
+# the main attention function
 
 
 class Attend(Module):
@@ -213,10 +198,8 @@ class Attend(Module):
     def __init__(
         self,
         dropout=0.0,
-        flash=False,
         window_size=None,
         scale: float | None = None,
-        attn_config: AttentionConfig = AttentionConfig(True, True, True),
         enable_attn_softclamp=False,
         attn_softclamp_value=30.0,
     ):
@@ -240,56 +223,13 @@ class Attend(Module):
         self.is_local_attn = exists(window_size)
         self.window_size = window_size
 
-        self.flash = flash
-        self.attn_config = attn_config
         self.attn_dropout = nn.Dropout(dropout)
-
-        assert not (
-            flash and enable_attn_softclamp
-        ), "softclamp of attn logits not compatible with flash yet"
 
         # softclamp attention logits
         # being adopted by a number of recent llms (gemma, grok)
 
         self.enable_attn_softclamp = enable_attn_softclamp
         self.attn_softclamp_value = attn_softclamp_value
-
-    @typecheck
-    def flash_attn(
-        self,
-        q: Float["b h i d"],  # type: ignore
-        k: Float["b h j d"],  # type: ignore
-        v: Float["b h j d"],  # type: ignore
-        mask: Bool["b j"] | None = None,  # type: ignore
-    ) -> Float["b h i d"]:  # type: ignore
-        """
-        Run flash attention.
-
-        :param q: The query tensor.
-        :param k: The key tensor.
-        :param v: The value tensor.
-        :param mask: The mask to apply to the sequence.
-        :return: The output tensor.
-        """
-
-        _, heads, seq_len, _ = q.shape
-
-        attn_mask = None
-
-        if exists(mask):
-            mask = repeat(mask, "b j -> b h i j", h=heads, i=seq_len)
-
-        with torch.backends.cuda.sdp_kernel(**self.attn_config._asdict()):
-            out = F.scaled_dot_product_attention(
-                q,
-                k,
-                v,
-                attn_mask=attn_mask,
-                scale=self.scale,
-                dropout_p=self.dropout if self.training else 0.0,
-            )
-
-        return out
 
     @typecheck
     def local_attn(
@@ -487,16 +427,6 @@ class Attend(Module):
 
             if exists(mask):
                 mask = pad_at_dim(mask, (num_mem_kv, 0), value=True)
-
-        # forward to using flash attention if applicable
-
-        can_use_flash = (
-            self.flash and not exists(attn_bias),
-            "flash attention does not support attention bias with gradients",
-        )
-
-        if can_use_flash:
-            return self.flash_attn(q, k, v, mask=mask)
 
         # default attention
 
