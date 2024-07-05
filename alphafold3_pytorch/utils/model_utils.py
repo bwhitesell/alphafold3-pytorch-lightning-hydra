@@ -124,7 +124,7 @@ def maybe(fn):
 
 
 @typecheck
-def pad_at_dim(t, pad: Tuple[int, int], *, dim=-1, value=0.0):
+def pad_at_dim(t, pad: Tuple[int, int], *, dim=-1, value=0.0) -> Tensor:
     """Pad a Tensor at a specific dimension.
 
     :param t: The Tensor.
@@ -142,7 +142,7 @@ def pad_at_dim(t, pad: Tuple[int, int], *, dim=-1, value=0.0):
 
 
 @typecheck
-def slice_at_dim(t: Tensor, dim_slice: slice, *, dim: int):
+def slice_at_dim(t: Tensor, dim_slice: slice, *, dim: int) -> Tensor:
     """
     Slice a Tensor at a specific dimension.
 
@@ -158,7 +158,26 @@ def slice_at_dim(t: Tensor, dim_slice: slice, *, dim: int):
 
 
 @typecheck
-def pad_or_slice_to(t: Tensor, length: int, *, dim: int, pad_value=0):
+def pad_to_length(t: Tensor, length: int, *, dim: int = -1, value=0) -> Tensor:
+    """
+    Pad a Tensor to a specific length at a specific dimension.
+
+    :param t: The Tensor.
+    :param length: The length to pad to.
+    :param dim: The dimension to pad.
+    :param value: The value to pad with.
+    :return: The padded Tensor.
+    """
+    padding = max(length - t.shape[dim], 0)
+
+    if padding == 0:
+        return t
+
+    return pad_at_dim(t, (0, padding), dim=dim, value=value)
+
+
+@typecheck
+def pad_or_slice_to(t: Tensor, length: int, *, dim: int, pad_value=0) -> Tensor:
     """
     Pad or slice a Tensor to a specific length at a specific dimension.
 
@@ -171,7 +190,7 @@ def pad_or_slice_to(t: Tensor, length: int, *, dim: int, pad_value=0):
     curr_length = t.shape[dim]
 
     if curr_length < length:
-        t = pad_at_dim(t, (0, length - curr_length), dim=dim, value=pad_value)
+        t = pad_to_length(t, length, dim=dim, value=pad_value)
     elif curr_length > length:
         t = slice_at_dim(t, slice(0, length), dim=dim)
 
@@ -179,7 +198,7 @@ def pad_or_slice_to(t: Tensor, length: int, *, dim: int, pad_value=0):
 
 
 @typecheck
-def pad_to_multiple(t: Tensor, multiple: int, *, dim=-1, value=0.0):
+def pad_to_multiple(t: Tensor, multiple: int, *, dim=-1, value=0.0) -> Tensor:
     """
     Pad a Tensor to a multiple of a specific number at a specific dimension.
 
@@ -199,7 +218,7 @@ def pad_to_multiple(t: Tensor, multiple: int, *, dim=-1, value=0.0):
 
 
 @typecheck
-def concat_previous_window(t: Tensor, *, dim_seq: int, dim_window: int):
+def concat_previous_window(t: Tensor, *, dim_seq: int, dim_window: int) -> Tensor:
     """
     Concatenate the previous window of a Tensor.
 
@@ -222,7 +241,7 @@ def concat_previous_window(t: Tensor, *, dim_seq: int, dim_window: int):
 
 
 @typecheck
-def pad_and_window(t: Float["b n ..."] | Int["b n ..."], window_size: int):  # type: ignore
+def pad_and_window(t: Float["b n ..."] | Int["b n ..."], window_size: int) -> Tensor:  # type: ignore
     """
     Pad and window a Tensor.
 

@@ -22,7 +22,7 @@ from alphafold3_pytorch.data.life import (
     reverse_complement,
     reverse_complement_tensor,
 )
-from alphafold3_pytorch.utils.model_utils import exclusive_cumsum
+from alphafold3_pytorch.utils.model_utils import exclusive_cumsum, pad_to_length
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
 from alphafold3_pytorch.utils.utils import default, exists, first, identity
 
@@ -370,6 +370,7 @@ class Alphafold3Input:
     templates: Float["t n n dt"] | None = None  # type: ignore
     msa: Float["s n dm"] | None = None  # type: ignore
     atom_pos: List[Float["_ 3"]] | Float["m 3"] | None = None  # type: ignore
+    reorder_atom_pos: bool = True
     template_mask: Bool[" t"] | None = None  # type: ignore
     msa_mask: Bool[" s"] | None = None  # type: ignore
     distance_labels: Int["n n"] | None = None  # type: ignore
@@ -788,6 +789,8 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
 
         if i.add_output_atompos_indices:
             offset = 0
+
+            reorder_atompos_indices = []
             output_atompos_indices = []
 
             for chain in chainable_biomol_entries:
@@ -803,16 +806,28 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
                         atom_reorder_indices = atom_reorder_indices[:-1]
 
                     reorder_back_indices = atom_reorder_indices.argsort()
+
                     output_atompos_indices.append(reorder_back_indices + offset)
+                    reorder_atompos_indices.append(atom_reorder_indices + offset)
 
                     offset += num_atoms
 
             output_atompos_indices = torch.cat(output_atompos_indices, dim=-1)
-            output_atompos_indices = F.pad(
-                output_atompos_indices,
-                (0, total_atoms - output_atompos_indices.shape[-1]),
-                value=-1,
+            output_atompos_indices = pad_to_length(output_atompos_indices, total_atoms, value=-1)
+
+        # if atom positions are passed in, need to be reordered for the bonds between residues / nucleotides to be contiguous
+        # todo - fix to have no reordering needed (bonds are built not contiguous, just hydroxyl removed)
+
+        if i.reorder_atom_pos:
+            orig_order = torch.arange(total_atoms)
+            reorder_atompos_indices = torch.cat(reorder_atompos_indices, dim=-1)
+            reorder_atompos_indices = pad_to_length(reorder_atompos_indices, total_atoms, value=-1)
+
+            reorder_indices = torch.where(
+                reorder_atompos_indices != -1, reorder_atompos_indices, orig_order
             )
+
+            atom_pos = atom_pos[reorder_indices]
 
     # create molecule input
 
