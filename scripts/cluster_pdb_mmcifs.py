@@ -556,7 +556,7 @@ if __name__ == "__main__":
         "-n",
         "--no_workers",
         type=int,
-        default=2,
+        default=16,
         help="Number of workers to use for clustering.",
     )
     args = parser.parse_args()
