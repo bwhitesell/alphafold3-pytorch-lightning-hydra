@@ -41,6 +41,7 @@
                 "--mmcif_dir", "data/pdb_data/clustering_dev_mmcifs",
                 "--output_dir", "data/pdb_data/data_caches/dev_clusterings",
                 "--clustering_filtered_pdb_dataset",
+                "--no_workers", "2",
             ]
         },
         {
