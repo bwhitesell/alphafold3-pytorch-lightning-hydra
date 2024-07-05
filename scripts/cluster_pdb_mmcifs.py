@@ -320,7 +320,9 @@ def parse_chain_sequences_and_interfaces_from_mmcif_directory(
             for cif_filepath in mmcif_filepaths
         }
         for future in tqdm(
-            as_completed(futures), total=len(futures), desc="Parsing chain sequences"
+            as_completed(futures),
+            total=len(futures),
+            desc="Parsing chain sequences and interfaces",
         ):
             structure_id, chain_sequences, interface_chain_ids = future.result()
             if chain_sequences:
