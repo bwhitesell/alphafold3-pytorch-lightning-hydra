@@ -5,7 +5,7 @@ from typing import Mapping, Sequence
 
 import numpy as np
 
-alphafold_version = version("alphafold3_pytorch")
+alphafold_version = version("alphafold3_pytorch_lightning_hydra")
 
 _DISCLAIMER = """THE INFORMATION IS NOT INTENDED FOR, HAS NOT BEEN VALIDATED FOR, AND IS NOT
 APPROVED FOR CLINICAL USE. IT SHOULD NOT BE USED FOR CLINICAL PURPOSE OR RELIED
