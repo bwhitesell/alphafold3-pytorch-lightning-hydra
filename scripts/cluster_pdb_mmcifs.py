@@ -582,7 +582,7 @@ if __name__ == "__main__":
         with open(os.path.join(args.output_dir, "interface_chain_ids.json"), "r") as f:
             interface_chain_ids = json.load(f)
     else:
-        # Parse all chain sequences from mmCIF files
+        # Parse all chain sequences and interfaces from mmCIF files
 
         (
             all_chain_sequences,
