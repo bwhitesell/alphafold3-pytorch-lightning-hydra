@@ -21,6 +21,7 @@
 
 import argparse
 import glob
+import json
 import os
 import subprocess
 from typing import Dict, List, Literal, Optional, Set, Tuple
@@ -541,14 +542,33 @@ if __name__ == "__main__":
     aligned_fasta_filepath = os.path.join(args.output_dir, "aligned_sequences.fasta")
     distmat_filepath = os.path.join(args.output_dir, "distmat.txt")
 
-    # Parse all chain sequences from mmCIF files
+    # Attempt to load existing chain sequences and interfaces from local storage
 
-    (
-        all_chain_sequences,
-        interface_chain_ids,
-    ) = parse_chain_sequences_and_interfaces_from_mmcif_directory(
-        args.mmcif_dir, assume_one_based_residue_ids=args.clustering_filtered_pdb_dataset
-    )
+    if os.path.exists(
+        os.path.join(args.output_dir, "all_chain_sequences.json")
+    ) and os.path.exists(os.path.join(args.output_dir, "interface_chain_ids.json")):
+        with open(os.path.join(args.output_dir, "all_chain_sequences.json"), "r") as f:
+            all_chain_sequences = json.load(f)
+
+        with open(os.path.join(args.output_dir, "interface_chain_ids.json"), "r") as f:
+            interface_chain_ids = json.load(f)
+    else:
+        # Parse all chain sequences from mmCIF files
+
+        (
+            all_chain_sequences,
+            interface_chain_ids,
+        ) = parse_chain_sequences_and_interfaces_from_mmcif_directory(
+            args.mmcif_dir, assume_one_based_residue_ids=args.clustering_filtered_pdb_dataset
+        )
+
+        # Cache chain sequences and interfaces to local storage
+
+        with open(os.path.join(args.output_dir, "all_chain_sequences.json"), "w") as f:
+            json.dump(all_chain_sequences, f)
+
+        with open(os.path.join(args.output_dir, "interface_chain_ids.json"), "w") as f:
+            json.dump(interface_chain_ids, f)
 
     # Attempt to load existing chain cluster mappings from local storage
 
