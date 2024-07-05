@@ -65,6 +65,7 @@ RNA_LETTERS_1TO3 = {
     "A": "A",
     "C": "C",
     "G": "G",
+    "T": "U",  # NOTE: This mapping is required for PDBs such as `41Od`
     "U": "U",
 }
 DNA_LETTERS_1TO3 = {
@@ -72,6 +73,7 @@ DNA_LETTERS_1TO3 = {
     "C": "DC",
     "G": "DG",
     "T": "DT",
+    "U": "DT",  # NOTE: This mapping is present as a precaution based on outlier PDBs such as `410d`
 }
 
 
@@ -281,12 +283,18 @@ def parse_chain_sequences_and_interfaces_from_mmcif_directory(
     mmcif_filepaths = list(glob.glob(os.path.join(mmcif_dir, "*", "*.cif")))
     for cif_filepath in tqdm(mmcif_filepaths, desc="Parsing chain sequences"):
         structure_id = os.path.splitext(os.path.basename(cif_filepath))[0]
-        (
-            chain_sequences,
-            interface_chain_ids,
-        ) = parse_chain_sequences_and_interfaces_from_mmcif_file(
-            cif_filepath, assume_one_based_residue_ids=assume_one_based_residue_ids
-        )
+        try:
+            (
+                chain_sequences,
+                interface_chain_ids,
+            ) = parse_chain_sequences_and_interfaces_from_mmcif_file(
+                cif_filepath, assume_one_based_residue_ids=assume_one_based_residue_ids
+            )
+        except Exception as e:
+            log.warning(
+                f"Failed to parse chain sequences and interfaces from mmCIF file '{cif_filepath}' due to: {e}"
+            )
+            continue
         all_chain_sequences.append({structure_id: chain_sequences})
         all_interface_chain_ids[structure_id] = list(interface_chain_ids)
 
