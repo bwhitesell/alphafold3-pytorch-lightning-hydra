@@ -37,10 +37,10 @@ from tqdm import tqdm
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
+from alphafold3_pytorch.data import mmcif_parsing
 from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import IntType, typecheck
 from alphafold3_pytorch.utils.utils import exists, np_mode
-from scripts.filter_pdb_mmcifs import parse_mmcif_object
 
 log = RankedLogger(__name__, rank_zero_only=True)
 
@@ -175,7 +175,7 @@ def parse_chain_sequences_and_interfaces_from_mmcif(
     """
     assert filepath.endswith(".cif"), "The input file must be an mmCIF file."
     file_id = os.path.splitext(os.path.basename(filepath))[0]
-    mmcif_object = parse_mmcif_object(filepath, file_id)
+    mmcif_object = mmcif_parsing.parse_mmcif_object(filepath, file_id)
     model = mmcif_object.structure
 
     # NOTE: After dataset filtering, only heavy (non-hydrogen) atoms remain in the structure
