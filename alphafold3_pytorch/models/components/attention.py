@@ -86,7 +86,7 @@ class Attention(Module):
         window_size=None,
         num_memory_kv: int = 0,
         enable_attn_softclamp=False,
-        attn_softclamp_value=30.0,
+        attn_softclamp_value=50.0,
     ):
         super().__init__()
         """
