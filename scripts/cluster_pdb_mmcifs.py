@@ -814,6 +814,16 @@ if __name__ == "__main__":
 
     # Cluster interfaces based on the cluster IDs of the chains involved, and save the interface cluster mapping to local (CSV) storage
 
+    assert all(
+        (
+            protein_chain_cluster_mapping,
+            nucleic_acid_chain_cluster_mapping,
+            peptide_chain_cluster_mapping,
+            ligand_chain_cluster_mapping,
+        ),
+        "All molecule type-specific chain cluster mappings must be available to cluster interfaces.",
+    )
+
     interface_cluster_mapping = cluster_interfaces(
         protein_chain_cluster_mapping,
         nucleic_acid_chain_cluster_mapping,
