@@ -3154,6 +3154,7 @@ class Alphafold3(Module):
         num_molecule_types: int = 32,  # restype in additional residue information, apparently 32 (must be human amino acids + nucleotides + something else)
         num_atom_embeds: int | None = None,
         num_atompair_embeds: int | None = None,
+        num_molecule_mods: int | None = None,
         distance_bins: List[float] = torch.linspace(3, 20, 38).float().tolist(),
         ignore_index=-1,
         num_dist_bins: int | None = None,
@@ -3235,8 +3236,11 @@ class Alphafold3(Module):
 
         # optional atom and atom bond embeddings
 
-        has_atom_embeds = exists(num_atom_embeds)
-        has_atompair_embeds = exists(num_atompair_embeds)
+        num_atom_embeds = default(num_atom_embeds, 0)
+        num_atompair_embeds = default(num_atompair_embeds, 0)
+
+        has_atom_embeds = num_atom_embeds > 0
+        has_atompair_embeds = num_atompair_embeds > 0
 
         if has_atom_embeds:
             self.atom_embeds = nn.Embedding(num_atom_embeds, dim_atom)
@@ -3246,6 +3250,16 @@ class Alphafold3(Module):
 
         self.has_atom_embeds = has_atom_embeds
         self.has_atompair_embeds = has_atompair_embeds
+
+        # residue or nucleotide modifications
+
+        num_molecule_mods = default(num_molecule_mods, 0)
+        has_molecule_mod_embeds = num_molecule_mods > 0
+
+        if has_molecule_mod_embeds:
+            self.molecule_mod_embeds = nn.Embedding(num_molecule_mods, dim_single)
+
+        self.has_molecule_mod_embeds = has_molecule_mod_embeds
 
         # atoms per window
 
@@ -3392,6 +3406,12 @@ class Alphafold3(Module):
 
         self.register_buffer("zero", torch.tensor(0.0), persistent=False)
 
+        # some shorthand for jaxtyping
+
+        self.w = atoms_per_window
+        self.dapi = self.dim_atompair_inputs
+        self.dai = self.dim_atom_inputs
+
     @property
     def device(self):
         """Device of the model."""
@@ -3481,15 +3501,16 @@ class Alphafold3(Module):
     def forward(
         self,
         *,
-        atom_inputs: Float["b m dai"],  # type: ignore
-        atompair_inputs: Float["b m m dapi"] | Float["b nw w1 w2 dapi"],  # type: ignore
+        atom_inputs: Float["b m {self.dai}"],  # type: ignore
+        atompair_inputs: Float["b m m {self.dapi}"] | Float["b nw {self.w} {self.w*2} {self.dapi}"],  # type: ignore
         additional_molecule_feats: Int[f"b n {ADDITIONAL_MOLECULE_FEATS}"],  # type: ignore
         is_molecule_types: Bool[f"b n {IS_MOLECULE_TYPES}"],  # type: ignore
         molecule_atom_lens: Int["b n"],  # type: ignore
         molecule_ids: Int["b n"],  # type: ignore
         additional_token_feats: Float["b n {self.dim_additional_token_feats}"] | None = None,  # type: ignore
         atom_ids: Int["b m"] | None = None,  # type: ignore
-        atompair_ids: Int["b m m"] | Int["b nw w1 w2"] | None = None,  # type: ignore
+        atompair_ids: Int["b m m"] | Int["b nw {self.w} {self.w*2}"] | None = None,  # type: ignore
+        is_molecule_mod: Bool["b n num_mods"] | None = None,  # type: ignore
         atom_mask: Bool["b m"] | None = None,  # type: ignore
         atom_parent_ids: Int["b m"] | None = None,  # type: ignore
         token_bonds: Bool["b n n"] | None = None,  # type: ignore
@@ -3634,6 +3655,28 @@ class Alphafold3(Module):
                 )
 
             atompair_feats = atompair_feats + atompair_embeds
+
+        # handle maybe molecule modifications
+
+        assert not (
+            exists(is_molecule_mod) ^ self.has_molecule_mod_embeds
+        ), "you either set `num_molecule_mods` and did not pass in `is_molecule_mod` or vice versa"
+
+        if self.has_molecule_mod_embeds:
+            single_init, seq_packed_shape = pack_one(single_init, "* ds")
+
+            is_molecule_mod, _ = pack_one(is_molecule_mod, "* mods")
+
+            if not is_molecule_mod.is_sparse:
+                is_molecule_mod = is_molecule_mod.to_sparse()
+
+            seq_indices, mod_id = is_molecule_mod.indices()
+            scatter_values = self.molecule_mod_embeds(mod_id)
+
+            seq_indices = repeat(seq_indices, "n -> n ds", ds=single_init.shape[-1])
+            single_init = single_init.scatter_add(0, seq_indices, scatter_values)
+
+            single_init = unpack_one(single_init, seq_packed_shape, "* ds")
 
         # relative positional encoding
 
