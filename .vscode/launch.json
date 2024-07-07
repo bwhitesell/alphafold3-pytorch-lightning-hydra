@@ -38,10 +38,13 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "--mmcif_dir", "data/pdb_data/clustering_dev_mmcifs",
-                "--output_dir", "data/pdb_data/data_caches/dev_clusterings",
+                // "--mmcif_dir", "data/pdb_data/clustering_dev_mmcifs",
+                "--mmcif_dir", "data/pdb_data/mmcifs",
+                // "--output_dir", "data/pdb_data/data_caches/dev_clusterings",
+                "--output_dir", "data/pdb_data/data_caches/clusterings",
                 "--clustering_filtered_pdb_dataset",
-                "--no_workers", "2",
+                // "--no_workers", "2",
+                "--no_workers", "16",
             ]
         },
         {
