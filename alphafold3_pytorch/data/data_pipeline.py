@@ -154,7 +154,7 @@ if __name__ == "__main__":
     mmcif_object = mmcif_parsing.parse_mmcif_object(
         # Load an example mmCIF file that includes
         # protein, nucleic acid, and ligand residues.
-        filepath="data/pdb_data/mmcifs/16/316d.cif",
-        file_id="316d",
+        filepath="data/pdb_data/mmcifs/k7/1k7a.cif",
+        file_id="1k7a",
     )
     mmcif_feats = make_mmcif_features(mmcif_object)
