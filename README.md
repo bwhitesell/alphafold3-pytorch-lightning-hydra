@@ -299,13 +299,16 @@ To acquire the AlphaFold 3 PDB dataset, first download all complexes in the Prot
 For example, one can use the following command to download the PDB as a collection of mmCIF files:
 ```bash
 rsync -rlpt -v -z --delete --port=33444 \
-rsync.rcsb.org::ftp_data/structures/divided/mmCIF/ ./data/pdb_data/unfiltered_mmcifs/
+rsync.rcsb.org::ftp_data/assemblies/divided/mmCIF/ ./data/pdb_data/unfiltered_mmcifs/
 ```
 
 > WARNING: Downloading PDB can take up to 1TB of space.
 
+> NOTE: PDB also hosts snapshots on AWS: https://pdbsnapshots.s3.us-west-2.amazonaws.com/index.html
+> TODO: We should pick one snapshot to make the training reproducible
+
 After downloading, you should have a directory formatted like this:
-https://files.rcsb.org/pub/pdb/data/structures/divided/mmCIF/
+https://files.rcsb.org/pub/pdb/data/assemblies/divided/mmCIF/
 ```bash
 00/
 01/
