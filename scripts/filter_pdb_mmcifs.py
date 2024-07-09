@@ -36,7 +36,7 @@ import glob
 import os
 import random
 from operator import itemgetter
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Literal, Set, Tuple
 
 import numpy as np
 import pandas as pd
@@ -68,10 +68,22 @@ from alphafold3_pytorch.utils.utils import exists
 # Constants
 
 FILTER_STRUCTURE_MAX_SECONDS_PER_INPUT = (
-    120  # Maximum time allocated to filter a single structure (in seconds)
+    600  # Maximum time allocated to filter a single structure (in seconds)
 )
 
+EVALUATION_SPLITS = {"eval", "test"}
+
 # Helper functions
+
+
+@typecheck
+def impute_missing_assembly_metadata(
+    mmcif_object: MmcifObject, asym_mmcif_object: MmcifObject
+) -> MmcifObject:
+    """Impute missing assembly metadata from the asymmetric unit mmCIF."""
+    mmcif_object.header.update(asym_mmcif_object.header)
+    mmcif_object.covalent_bonds.extend(asym_mmcif_object.covalent_bonds)
+    return mmcif_object
 
 
 @typecheck
@@ -353,7 +365,11 @@ def remove_leaving_atoms(
     atoms_to_remove = set()
 
     for covalent_bond in mmcif_object.covalent_bonds:
-        if covalent_bond.leaving_atom_flag in {"one", "both"}:
+        bond_chain_ids_in_structure = (
+            covalent_bond.ptnr1_auth_asym_id in mmcif_object.structure
+            and covalent_bond.ptnr2_auth_asym_id in mmcif_object.structure
+        )
+        if covalent_bond.leaving_atom_flag in {"one", "both"} and bond_chain_ids_in_structure:
             # Identify the chemical types of the residues of the "partner 1" and "partner 2" bond atoms in the structure
             ptnr1_chain = mmcif_object.structure[covalent_bond.ptnr1_auth_asym_id]
             ptnr2_chain = mmcif_object.structure[covalent_bond.ptnr2_auth_asym_id]
@@ -592,7 +608,7 @@ def filter_structure_with_timeout(
     output_dir: str,
     min_cutoff_date: pd.Timestamp = pd.to_datetime("1970-01-01"),
     max_cutoff_date: pd.Timestamp = pd.to_datetime("2021-09-30"),
-    is_evaluation_set: bool = False,
+    split: Literal["train", "eval", "test"] = "train",
 ):
     """
     Given an input mmCIF file, create a new filtered mmCIF file
@@ -600,6 +616,10 @@ def filter_structure_with_timeout(
     timeout constraint.
     """
     # Section 2.5.4 of the AlphaFold 3 supplement
+    asym_filepath = os.path.join(
+        os.path.dirname(filepath).replace("unfiltered_assembly", "unfiltered_asym"),
+        os.path.basename(filepath).replace("-assembly1", ""),
+    )
     file_id = os.path.splitext(os.path.basename(filepath))[0]
     output_file_dir = os.path.join(output_dir, file_id[1:3])
     output_filepath = os.path.join(output_file_dir, f"{file_id}.cif")
@@ -607,6 +627,11 @@ def filter_structure_with_timeout(
 
     # Filtering of targets
     mmcif_object = mmcif_parsing.parse_mmcif_object(filepath, file_id)
+    asym_mmcif_object = mmcif_parsing.parse_mmcif_object(asym_filepath, file_id)
+    # NOTE: The assembly mmCIF does not contain the full header or the
+    # structure connectivity (i.e., bond) information, so we impute
+    # these from the asymmetric unit mmCIF
+    mmcif_object = impute_missing_assembly_metadata(mmcif_object, asym_mmcif_object)
     mmcif_object = prefilter_target(
         mmcif_object, min_cutoff_date=min_cutoff_date, max_cutoff_date=max_cutoff_date
     )
@@ -618,7 +643,7 @@ def filter_structure_with_timeout(
     mmcif_object = remove_hydrogens(mmcif_object, remove_waters=True)
     mmcif_object = remove_polymer_chains_with_all_unknown_residues(mmcif_object)
     mmcif_object = remove_clashing_chains(mmcif_object)
-    if is_evaluation_set:
+    if split in EVALUATION_SPLITS:
         # NOTE: The AlphaFold 3 supplement suggests the training dataset retains these (excluded) ligands
         mmcif_object = remove_excluded_ligands(mmcif_object, LIGAND_EXCLUSION_SET)
     mmcif_object = remove_non_ccd_atoms(mmcif_object, CCD_READER_RESULTS)
@@ -646,12 +671,12 @@ def filter_structure_with_timeout(
 
 
 @typecheck
-def filter_structure(args: Tuple[str, str, pd.Timestamp, pd.Timestamp, bool]):
+def filter_structure(args: Tuple[str, str, pd.Timestamp, pd.Timestamp, str]):
     """
     Given an input mmCIF file, create a new filtered mmCIF file
     using AlphaFold 3's PDB dataset filtering criteria.
     """
-    filepath, output_dir, min_cutoff_date, max_cutoff_date, is_evaluation_set = args
+    filepath, output_dir, min_cutoff_date, max_cutoff_date, split = args
     file_id = os.path.splitext(os.path.basename(filepath))[0]
     output_file_dir = os.path.join(output_dir, file_id[1:3])
     output_filepath = os.path.join(output_file_dir, f"{file_id}.cif")
@@ -662,7 +687,7 @@ def filter_structure(args: Tuple[str, str, pd.Timestamp, pd.Timestamp, bool]):
             output_dir,
             min_cutoff_date=min_cutoff_date,
             max_cutoff_date=max_cutoff_date,
-            is_evaluation_set=is_evaluation_set,
+            split=split,
         )
     except Exception as e:
         print(f"Skipping structure filtering of {filepath} due to: {e}")
@@ -683,10 +708,17 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-i",
-        "--mmcif_dir",
+        "--mmcif_assembly_dir",
         type=str,
-        default=os.path.join("data", "pdb_data", "unfiltered_mmcifs"),
-        help="Path to the input directory containing mmCIF files to filter.",
+        default=os.path.join("data", "pdb_data", "unfiltered_assembly_mmcifs"),
+        help="Path to the input directory containing `assembly1` mmCIF files to filter.",
+    )
+    parser.add_argument(
+        "-a",
+        "--mmcif_asym_dir",
+        type=str,
+        default=os.path.join("data", "pdb_data", "unfiltered_asym_mmcifs"),
+        help="Path to the input directory containing asymmetric unit mmCIF files with which to filter the `assembly1` mmCIF files.",
     )
     parser.add_argument(
         "-c",
@@ -724,9 +756,11 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-e",
-        "--is_evaluation_set",
-        action="store_true",
-        help="Whether the dataset being filtered is an evaluation (e.g., validation or testing) set.",
+        "--split",
+        type=str,
+        choices=["train", "eval", "test"],
+        default="train",
+        help="To which split the filtered dataset should be assigned (i.e., `train`, `eval`, or `test`).",
     )
     parser.add_argument(
         "-n",
@@ -744,7 +778,12 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    assert os.path.exists(args.mmcif_dir), f"Input directory {args.mmcif_dir} does not exist."
+    assert os.path.exists(
+        args.mmcif_assembly_dir
+    ), f"Input assembly directory {args.mmcif_assembly_dir} does not exist."
+    assert os.path.exists(
+        args.mmcif_asym_dir
+    ), f"Input asymmetric unit directory {args.mmcif_asym_dir} does not exist."
     assert os.path.exists(args.ccd_dir), f"CCD directory {args.ccd_dir} does not exist."
     assert os.path.exists(
         os.path.join(args.ccd_dir, "chem_comp_model.cif")
@@ -772,10 +811,17 @@ if __name__ == "__main__":
             args.output_dir,
             args.min_cutoff_date,
             args.max_cutoff_date,
-            args.is_evaluation_set,
+            args.split,
         )
-        for filepath in glob.glob(os.path.join(args.mmcif_dir, "*", "*.cif"))
-        if not (
+        for filepath in glob.glob(os.path.join(args.mmcif_assembly_dir, "*", "*.cif"))
+        if "assembly1" in os.path.basename(filepath)
+        and os.path.exists(
+            os.path.join(
+                os.path.dirname(filepath).replace("unfiltered_assembly", "unfiltered_asym"),
+                os.path.basename(filepath).replace("-assembly1", ""),
+            )
+        )
+        and not (
             args.skip_existing
             and os.path.exists(
                 os.path.join(
