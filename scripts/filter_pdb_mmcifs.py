@@ -83,6 +83,47 @@ def impute_missing_assembly_metadata(
     """Impute missing assembly metadata from the asymmetric unit mmCIF."""
     mmcif_object.header.update(asym_mmcif_object.header)
     mmcif_object.covalent_bonds.extend(asym_mmcif_object.covalent_bonds)
+
+    # Impute structure method
+    if "_exptl.method" not in mmcif_object.raw_string:
+        mmcif_object.raw_string["_exptl.method"] = asym_mmcif_object.raw_string.get(
+            "_exptl.method", ""
+        )
+
+    # Impute release date
+    if "_pdbx_audit_revision_history.revision_date" not in mmcif_object.raw_string:
+        mmcif_object.raw_string[
+            "_pdbx_audit_revision_history.revision_date"
+        ] = asym_mmcif_object.raw_string.get("_pdbx_audit_revision_history.revision_date", "")
+
+    # Impute resolution
+    if (
+        "_refine.ls_d_res_high" not in mmcif_object.raw_string
+        and "_refine.ls_d_res_high" in asym_mmcif_object.raw_string
+    ):
+        mmcif_object.raw_string["_refine.ls_d_res_high"] = asym_mmcif_object.raw_string[
+            "_refine.ls_d_res_high"
+        ]
+    if (
+        "_em_3d_reconstruction.resolution" not in mmcif_object.raw_string
+        and "_em_3d_reconstruction.resolution" in asym_mmcif_object.raw_string
+    ):
+        mmcif_object.raw_string["_em_3d_reconstruction.resolution"] = asym_mmcif_object.raw_string[
+            "_em_3d_reconstruction.resolution"
+        ]
+    if (
+        "_reflns.d_resolution_high" not in mmcif_object.raw_string
+        and "_reflns.d_resolution_high" in asym_mmcif_object.raw_string
+    ):
+        mmcif_object.raw_string["_reflns.d_resolution_high"] = asym_mmcif_object.raw_string[
+            "_reflns.d_resolution_high"
+        ]
+
+    # Impute structure connectivity
+    for key in asym_mmcif_object.raw_string:
+        if key.startswith("_struct_conn.") and key not in mmcif_object.raw_string:
+            mmcif_object.raw_string[key] = asym_mmcif_object.raw_string[key]
+
     return mmcif_object
 
 
