@@ -1,12 +1,13 @@
 """General-purpose data pipeline."""
 
-from typing import MutableMapping, Optional
+from typing import MutableMapping, Optional, Tuple
 
 import numpy as np
 
-from alphafold3_pytorch.common.biomolecule import Biomolecule, _from_mmcif_object
+from alphafold3_pytorch.common.biomolecule import Biomolecule, _from_mmcif_object, to_mmcif
 from alphafold3_pytorch.data import mmcif_parsing
 from alphafold3_pytorch.utils.pylogger import RankedLogger
+from alphafold3_pytorch.utils.utils import exists
 
 FeatureDict = MutableMapping[str, np.ndarray]
 
@@ -23,7 +24,7 @@ def make_sequence_features(sequence: str, description: str, num_res: int) -> Fea
     return features
 
 
-def get_assembly(biomol: Biomolecule, assembly_id: Optional[int] = None) -> Biomolecule:
+def get_assembly(biomol: Biomolecule, assembly_id: Optional[str] = None) -> Biomolecule:
     """
     Get a specified (Biomolecule) assembly of a given Biomolecule.
 
@@ -77,10 +78,9 @@ def get_assembly(biomol: Biomolecule, assembly_id: Optional[int] = None) -> Biom
             asym_ids = asym_id_expr.split(",")
             # Filter affected asym IDs
             sub_assembly = mmcif_parsing.apply_transformations(
-                biomol,
+                biomol.subset_chains(asym_ids),
                 transformations,
                 operations,
-                asym_ids,
             )
             # Merge the chains with asym IDs for this operation
             # with chains from other operations
@@ -89,25 +89,13 @@ def get_assembly(biomol: Biomolecule, assembly_id: Optional[int] = None) -> Biom
             else:
                 assembly += sub_assembly
 
-    assert assembly is not None, f"Assembly with ID `{assembly_id}` not found."
-    return Biomolecule(
-        atom_positions=assembly.atom_positions,
-        atom_mask=assembly.atom_mask,
-        b_factors=assembly.b_factors,
-        chain_index=assembly.chain_index,
-        chemid=assembly.chemid,
-        chemtype=assembly.chemtype,
-        residue_index=assembly.residue_index,
-        restype=assembly.restype,
-        chem_comp_table=biomol.chem_comp_table,
-        # TODO: Ensure `entity_to_chain` and `mmcif_to_author_chain` are repeated for the assembly
-        entity_to_chain=biomol.entity_to_chain,
-        mmcif_to_author_chain=biomol.mmcif_to_author_chain,
-        mmcif_metadata=biomol.mmcif_metadata,
-    )
+    assert exists(assembly), f"Assembly with ID `{assembly_id}` not found."
+    return assembly
 
 
-def make_mmcif_features(mmcif_object: mmcif_parsing.MmcifObject) -> FeatureDict:
+def make_mmcif_features(
+    mmcif_object: mmcif_parsing.MmcifObject,
+) -> Tuple[FeatureDict, Biomolecule]:
     """Make features from an mmCIF object."""
     input_sequence = "".join(
         mmcif_object.chain_to_seqres[chain_id] for chain_id in mmcif_object.chain_to_seqres
@@ -134,6 +122,7 @@ def make_mmcif_features(mmcif_object: mmcif_parsing.MmcifObject) -> FeatureDict:
     mmcif_feats["all_atom_mask"] = assembly.atom_mask
     mmcif_feats["b_factors"] = assembly.b_factors
     mmcif_feats["chain_index"] = assembly.chain_index
+    mmcif_feats["chain_id"] = assembly.chain_id
     mmcif_feats["chemid"] = assembly.chemid
     mmcif_feats["chemtype"] = assembly.chemtype
     mmcif_feats["residue_index"] = assembly.residue_index
@@ -147,14 +136,24 @@ def make_mmcif_features(mmcif_object: mmcif_parsing.MmcifObject) -> FeatureDict:
 
     mmcif_feats["is_distillation"] = np.array(0.0, dtype=np.float32)
 
-    return mmcif_feats
+    return mmcif_feats, assembly
 
 
 if __name__ == "__main__":
     mmcif_object = mmcif_parsing.parse_mmcif_object(
         # Load an example mmCIF file that includes
         # protein, nucleic acid, and ligand residues.
-        filepath="data/pdb_data/mmcifs/k7/1k7a.cif",
-        file_id="1k7a",
+        filepath="data/pdb_data/mmcifs/f7/4f7u.cif",
+        file_id="4f7u",
     )
-    mmcif_feats = make_mmcif_features(mmcif_object)
+    mmcif_feats, assembly = make_mmcif_features(mmcif_object)
+    mmcif_string = to_mmcif(
+        assembly,
+        file_id="4f7u",
+        gapless_poly_seq=True,
+        insert_alphafold_mmcif_metadata=False,
+        unique_res_atom_names=assembly.unique_res_atom_names,
+    )
+    with open("4f7u_reconstructed.cif", "w") as f:
+        f.write(mmcif_string)
+    print("Successfully reconstructed the mmCIF file after assembly expansion.")
