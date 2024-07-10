@@ -145,16 +145,20 @@ def convert_modified_residue_three_to_one(
 
     if residue_mol_type == "protein":
         return (
-            PROTEIN_LETTERS_3TO1[mapped_residue]
-            if mapped_residue in PROTEIN_LETTERS_3TO1
-            else "X",
+            (
+                PROTEIN_LETTERS_3TO1[mapped_residue]
+                if mapped_residue in PROTEIN_LETTERS_3TO1
+                else "X"
+            ),
             "protein",
         )
     elif residue_mol_type in {"rna", "dna"}:
         return (
-            NUCLEIC_LETTERS_3TO1[mapped_residue]
-            if mapped_residue in NUCLEIC_LETTERS_3TO1
-            else "X",
+            (
+                NUCLEIC_LETTERS_3TO1[mapped_residue]
+                if mapped_residue in NUCLEIC_LETTERS_3TO1
+                else "X"
+            ),
             "nucleic_acid",
         )
     else:
@@ -371,7 +375,7 @@ def cluster_sequences_using_mmseqs2(
     min_seq_id: float = 0.5,
     coverage: float = 0.8,
     coverage_mode: Literal[0, 1, 2, 3] = 1,
-    extra_parameters: Optional[Dict[str, Union[int, float, str]]] = None
+    extra_parameters: Optional[Dict[str, Union[int, float, str]]] = None,
 ) -> Dict[str, int]:
     """Run MMseqs2 on the input FASTA file and write the resulting clusters to a local output directory."""
     assert input_filepath.endswith(".fasta"), "The input file must be a FASTA file."
@@ -756,7 +760,7 @@ if __name__ == "__main__":
                 # cluster reassign improves clusters by reassigning sequences to the best cluster
                 # and fixes transitivity issues of the cascade clustering
                 "--cluster-reassign": 1,
-            }
+            },
         )
 
     if not nucleic_acid_chain_cluster_mapping:
@@ -793,7 +797,7 @@ if __name__ == "__main__":
             min_seq_id=1.0,
             coverage=0.8,
             coverage_mode=0,
-            # some of these parameters are from the spacepharer optimized parameters 
+            # some of these parameters are from the spacepharer optimized parameters
             # these were for short CRISPR spacer recognition, so they should work well for arbitrary peptides
             # this is a adhoc solution, with some recent new introduction like the ungapped prefilter
             extra_parameters={
