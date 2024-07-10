@@ -164,6 +164,7 @@ DNA_NUCLEOTIDES = dict(
         first_atom_idx=20,
         last_atom_idx=1,
         hydroxyl_idx=21,
+        distogram_atom_idx=4,
     ),
     C=dict(
         smile="C1C(C(OC1N2C=CC(=NC2=O)N)COP(=O)(O)O)O",
@@ -171,6 +172,7 @@ DNA_NUCLEOTIDES = dict(
         first_atom_idx=17,
         last_atom_idx=1,
         hydroxyl_idx=19,
+        distogram_atom_idx=4,
     ),
     G=dict(
         smile="C1C(C(OC1N2C=NC3=C2N=C(NC3=O)N)COP(=O)(O)O)O",
@@ -178,6 +180,7 @@ DNA_NUCLEOTIDES = dict(
         first_atom_idx=21,
         last_atom_idx=1,
         hydroxyl_idx=22,
+        distogram_atom_idx=4,
     ),
     T=dict(
         smile="CC1=CN(C(=O)NC1=O)C2CC(C(O2)COP(=O)(O)O)O",
@@ -185,6 +188,7 @@ DNA_NUCLEOTIDES = dict(
         first_atom_idx=19,
         last_atom_idx=11,
         hydroxyl_idx=20,
+        distogram_atom_idx=9,
     ),
 )
 
@@ -195,6 +199,7 @@ RNA_NUCLEOTIDES = dict(
         first_atom_idx=19,
         last_atom_idx=11,
         hydroxyl_idx=20,
+        distogram_atom_idx=9,
     ),
     C=dict(
         smile="C1=CN(C(=O)N=C1N)C2C(C(C(O2)COP(=O)([O-])[O-])O)O",
@@ -202,6 +207,7 @@ RNA_NUCLEOTIDES = dict(
         first_atom_idx=17,
         last_atom_idx=10,
         hydroxyl_idx=19,
+        distogram_atom_idx=8,
     ),
     G=dict(
         smile="C1=NC2=C(N1C3C(C(C(O3)COP(=O)(O)O)O)O)N=C(NC2=O)N",
@@ -209,6 +215,7 @@ RNA_NUCLEOTIDES = dict(
         first_atom_idx=14,
         last_atom_idx=7,
         hydroxyl_idx=16,
+        distogram_atom_idx=5,
     ),
     U=dict(
         smile="C1=CN(C(=O)NC1=O)C2C(C(C(O2)COP(=O)(O)O)O)O",
@@ -216,6 +223,7 @@ RNA_NUCLEOTIDES = dict(
         first_atom_idx=18,
         last_atom_idx=10,
         hydroxyl_idx=19,
+        distogram_atom_idx=8,
     ),
 )
 
@@ -243,8 +251,8 @@ def reverse_complement(seq: str, nucleic_acid_type: Literal["dna", "rna"] = "dna
 
 
 @typecheck
-def reverse_complement_tensor(t: Int[" n"]):  # type: ignore
-    """Get the reverse complement of a nucleic acid tensor."""
+def reverse_complement_tensor(t: Int[" n"]):
+    """Get the reverse complement of a nucleic acid sequence tensor."""
     complement = NUCLEIC_ACID_COMPLEMENT_TENSOR[t]
     reverse_complement = complement.flip(dims=(-1,))
     return reverse_complement
@@ -287,7 +295,7 @@ assert is_unique(ATOM_BONDS)
 
 @typecheck
 def generate_conformation(mol: Mol) -> Mol:
-    """Generate a single conformation for a molecule."""
+    """Generate a conformation for a molecule."""
     mol = Chem.AddHs(mol)
     Chem.EmbedMultipleConfs(mol, numConfs=1)
     mol = Chem.RemoveHs(mol)
@@ -295,13 +303,13 @@ def generate_conformation(mol: Mol) -> Mol:
 
 
 def mol_from_smile(smile: str) -> Mol:
-    """Generate an RDKit molecule from a SMILES string."""
+    """Generate an rdkit.Chem molecule from a SMILES string."""
     mol = Chem.MolFromSmiles(smile)
     return generate_conformation(mol)
 
 
 def remove_atom_from_mol(mol: Mol, atom_idx: int) -> Mol:
-    """Remove an atom from an RDKit molecule."""
+    """Remove an atom from an rdkit.Chem molecule."""
     edit_mol = Chem.EditableMol(mol)
     edit_mol.RemoveAtom(atom_idx)
     return mol
