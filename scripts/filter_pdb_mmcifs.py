@@ -85,16 +85,20 @@ def impute_missing_assembly_metadata(
     mmcif_object.covalent_bonds.extend(asym_mmcif_object.covalent_bonds)
 
     # Impute structure method
-    if "_exptl.method" not in mmcif_object.raw_string:
-        mmcif_object.raw_string["_exptl.method"] = asym_mmcif_object.raw_string.get(
-            "_exptl.method", ""
-        )
+    if (
+        "_exptl.method" not in mmcif_object.raw_string
+        and "_exptl.method" in asym_mmcif_object.raw_string
+    ):
+        mmcif_object.raw_string["_exptl.method"] = asym_mmcif_object.raw_string["_exptl.method"]
 
     # Impute release date
-    if "_pdbx_audit_revision_history.revision_date" not in mmcif_object.raw_string:
+    if (
+        "_pdbx_audit_revision_history.revision_date" not in mmcif_object.raw_string
+        and "_pdbx_audit_revision_history.revision_date" in asym_mmcif_object.raw_string
+    ):
         mmcif_object.raw_string[
             "_pdbx_audit_revision_history.revision_date"
-        ] = asym_mmcif_object.raw_string.get("_pdbx_audit_revision_history.revision_date", "")
+        ] = asym_mmcif_object.raw_string["_pdbx_audit_revision_history.revision_date"]
 
     # Impute resolution
     if (
