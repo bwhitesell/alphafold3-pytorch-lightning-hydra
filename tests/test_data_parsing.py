@@ -14,6 +14,12 @@ from alphafold3_pytorch.data import mmcif_parsing
 
 os.environ["TYPECHECK"] = "True"
 
+# constants
+
+ERRONEOUS_PDB_IDS = [
+    "3tob"  # NOTE: At residue index 97, ALY and LYS are assigned the same residue ID of 118 by the authors.
+]
+
 
 @pytest.mark.parametrize(
     "mmcif_dir",
@@ -115,6 +121,11 @@ def test_random_mmcif_objects_parsing(
 
         if not os.path.exists(random_complex_filepath):
             print(f"File '{random_complex_filepath}' does not exist.")
+            continue
+
+        if any(
+            id in os.path.basename(random_complex_filepath)[:4].lower() for id in ERRONEOUS_PDB_IDS
+        ):
             continue
 
         with open(random_complex_filepath, "r") as f:
