@@ -2696,17 +2696,32 @@ class CentreRandomAugmentation(Module):
         return self.dummy.device
 
     @typecheck
-    def forward(self, coords: Float["b n 3"]) -> Float["b n 3"]:  # type: ignore
+    def forward(
+        self,
+        coords: Float["b n 3"],  # type: ignore
+        mask: Bool["b n"] | None = None,  # type: ignore
+    ) -> Float["b n 3"]:  # type: ignore
         """
         Compute the augmented coordinates.
 
         :param coords: The coordinates to be augmented by a random rotation and translation.
+        :param mask: The mask for variable lengths.
         :return: The augmented coordinates.
         """
         batch_size = coords.shape[0]
 
         # Center the coordinates
-        centered_coords = coords - coords.mean(dim=1, keepdim=True)
+        # Accounting for masking
+
+        if exists(mask):
+            coords = einx.where("b n, b n c, -> b n c", mask, coords, 0.0)
+            num = reduce(coords, "b n c -> b c", "sum")
+            den = reduce(mask.float(), "b n -> b", "sum")
+            coords_mean = einx.divide("b c, b -> b 1 c", num, den.clamp(min=1.0))
+        else:
+            coords_mean = coords.mean(dim=1, keepdim=True)
+
+        centered_coords = coords - coords_mean
 
         # Generate random rotation matrix
         rotation_matrix = self._random_rotation_matrix(batch_size)
@@ -3948,14 +3963,17 @@ class Alphafold3(Module):
 
                 # handle stochastic frame averaging
 
+                aug_atom_mask = atom_mask
+
                 if self.stochastic_frame_average:
                     fa_atom_pos, atom_pos = atom_pos[:1], atom_pos[1:]
+                    fa_atom_mask, aug_atom_mask = atom_mask[:1], atom_mask[1:]
 
-                    fa_atom_pos = self.frame_average(fa_atom_pos, frame_average_mask=atom_mask[:1])
+                    fa_atom_pos = self.frame_average(fa_atom_pos, frame_average_mask=fa_atom_mask)
 
                 # normal random augmentations, 48 times in paper
 
-                atom_pos = self.augmenter(atom_pos)
+                atom_pos = self.augmenter(atom_pos, mask=aug_atom_mask)
 
                 # concat back the stochastic frame averaged position
 

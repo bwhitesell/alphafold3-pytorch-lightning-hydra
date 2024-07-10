@@ -13,7 +13,7 @@ import numpy as np
 from Bio import PDB
 from Bio.Data import PDBData
 
-from alphafold3_pytorch.utils.data_utils import is_polymer, is_water, matrix_rotate, repeat_biomol
+from alphafold3_pytorch.utils.data_utils import is_polymer, is_water, matrix_rotate
 
 # Type aliases:
 ChainId = str
@@ -221,7 +221,6 @@ def apply_transformations(
     biomol: Any,
     transformation_dict: Mapping[str, Tuple[np.ndarray, np.ndarray]],
     operations: Sequence[Tuple[str, str]],
-    asym_ids: Sequence[str],
 ) -> Any:
     """
     Gets subassembly by applying the given operations to the input
@@ -236,14 +235,12 @@ def apply_transformations(
         of a single step.
     :return: The subassembly Biomolecule.
     """
-    # TODO: Filter to only the affected asym IDs
-
-    # Additional first dimension for 'Biomolecule.repeat()'
-    assembly_coord = np.zeros((len(operations),) + biomol.coord.shape)
+    # Additional first dimension for 'repeat_biomol()'
+    assembly_coord = np.zeros((len(operations),) + biomol.atom_positions.shape)
 
     # Apply corresponding transformation for each copy in the assembly
     for i, operation in enumerate(operations):
-        coord = biomol.coord
+        coord = biomol.atom_positions.copy()
         # Execute for each transformation step
         # in the operation expression
         for op_step in operation:
@@ -254,7 +251,7 @@ def apply_transformations(
             coord += translation_vector
         assembly_coord[i] = coord
 
-    return repeat_biomol(biomol, assembly_coord)
+    return biomol.repeat(assembly_coord)
 
 
 def get_transformations(
@@ -277,10 +274,12 @@ def get_transformations(
             [
                 [struct_oper[id][f"_pdbx_struct_oper_list.matrix[{i}][{j}]"] for j in (1, 2, 3)]
                 for i in (1, 2, 3)
-            ]
+            ],
+            dtype=np.float64,
         )
         translation_vector = np.array(
-            [struct_oper[id][f"_pdbx_struct_oper_list.vector[{i}]"] for i in (1, 2, 3)]
+            [struct_oper[id][f"_pdbx_struct_oper_list.vector[{i}]"] for i in (1, 2, 3)],
+            dtype=np.float64,
         )
         transformation_dict[id] = (rotation_matrix, translation_vector)
     return transformation_dict
@@ -399,9 +398,9 @@ def parse(
                 min([monomer.num for monomer in seq]),
             )
 
-        # Loop over the atoms for which we have coordinates. Populate a mapping:
+        # Loop over the atoms for which we have coordinates. Populate two mappings:
         # -mmcif_seq_to_structure_mappings (maps mmCIF idx into sequence to author ResidueAtPosition).
-        # -author_entity_to_chain_mappings (maps author chain ids to entity ids).
+        # -mmcif_entity_to_author_chain_mappings (maps entity number to author chain IDs).
         mmcif_seq_to_structure_mappings = {}
         mmcif_entity_to_author_chain_mappings = defaultdict(dict)
         for atom in atom_site_list:
@@ -595,7 +594,7 @@ def _get_header(parsed_info: MmCIFDict) -> PdbHeader:
     if "_pdbx_audit_revision_history.revision_date" in parsed_info:
         header["release_date"] = get_release_date(parsed_info)
     else:
-        logging.warning("Could not determine release_date: %s", parsed_info["_entry.id"])
+        logging.warning("Could not determine release_date for entry: %s", parsed_info["_entry.id"])
 
     header["resolution"] = 0.00
     for res_key in (
