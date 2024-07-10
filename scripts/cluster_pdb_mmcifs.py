@@ -801,14 +801,18 @@ if __name__ == "__main__":
                 "--gap-open": 16,
                 "--gap-extend": 2,
                 "--sub-mat": "VTML40.out",
-                # use ungapped prefilter mode to avoid
-                # minimum consecutive k-mer match restrictions
-                "--prefilter-mode": 1,
+                # we would like to try using ungapped prefilter mode to avoid
+                # minimum consecutive k-mer match restrictions, but the cluster workflow doesn't expose this yet
+                # let's use a real small k-mer size instead
+                # "--prefilter-mode": 1,
+                "-k": 5,
+                "--spaced-kmer-mode": 0,
                 # Don't try suppresing FP hits since the peptides are too short
                 "--mask": 0,
                 "--comp-bias-corr": 0,
                 # let more things through the prefilter
                 "--min-ungapped-score": 5,
+                # Try disabling completely with "inf"?
                 "-e": 1,
                 # see above
                 "--cluster-reassign": 1,
