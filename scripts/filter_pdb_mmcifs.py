@@ -173,11 +173,15 @@ def filter_polymer_chains(
 def filter_resolved_chains(
     mmcif_object: MmcifObject, minimum_polymer_residues: int = 4
 ) -> MmcifObject | None:
-    """Filter based on number of resolved residues."""
+    """Filter polymer chains based on number of resolved residues."""
     chains_to_remove = {
         mmcif_object.structure[chain.id].get_full_id()
         for chain in mmcif_object.structure.get_chains()
-        if len(
+        if any(
+            is_polymer(mmcif_object.all_chem_comp_details[chain.id][res_index].type)
+            for res_index in range(len(mmcif_object.chain_to_seqres[chain.id]))
+        )
+        and len(
             [
                 res_index
                 for res_index in range(len(mmcif_object.chain_to_seqres[chain.id]))
@@ -246,9 +250,12 @@ def remove_polymer_chains_with_all_unknown_residues(mmcif_object: MmcifObject) -
     chains_to_remove = {
         chain.get_full_id()
         for chain in mmcif_object.structure.get_chains()
-        if not any(
+        if any(
             is_polymer(mmcif_object.all_chem_comp_details[chain.id][res_index].type)
-            and mmcif_object.chain_to_seqres[chain.id][res_index] != "X"
+            for res_index in range(len(mmcif_object.chain_to_seqres[chain.id]))
+        )
+        and not any(
+            mmcif_object.chain_to_seqres[chain.id][res_index] != "X"
             for res_index in range(len(mmcif_object.chain_to_seqres[chain.id]))
         )
     }
@@ -460,10 +467,12 @@ def remove_leaving_atoms(
 
 @typecheck
 def filter_large_ca_distances(
-    mmcif_object: MmcifObject, max_distance: float = 10.0
+    mmcif_object: MmcifObject,
+    max_distance: float = 10.0,
+    min_num_residues_for_protein_classification: int = 10,
 ) -> MmcifObject:
     """
-    Identify chains with large sequential Ca-Ca atom distances to be removed.
+    Identify chains with all large sequential Ca-Ca atom distances to be removed.
 
     NOTE: This function currently does not account for residues
     with alternative Ca atom locations.
@@ -471,17 +480,29 @@ def filter_large_ca_distances(
     chains_to_remove = set()
 
     for chain in mmcif_object.structure.get_chains():
+        num_peptide_residues = sum(
+            1
+            for res_index in range(len(chain))
+            if "peptide" in mmcif_object.chem_comp_details[chain.id][res_index].type.lower()
+        )
+        if num_peptide_residues < min_num_residues_for_protein_classification:
+            # Only filter protein chains
+            continue
         ca_atoms = [
             res["CA"]
             for (res_index, res) in enumerate(chain)
             if "peptide" in mmcif_object.chem_comp_details[chain.id][res_index].type.lower()
             and "CA" in res
         ]
+        ca_ca_distance_in_range = False
         for i, ca1 in enumerate(ca_atoms[:-1]):
             ca2 = ca_atoms[i + 1]
-            if (ca1 - ca2) > max_distance:
-                chains_to_remove.add(chain.get_full_id())
+            if (ca1 - ca2) <= max_distance:
+                ca_ca_distance_in_range = True
                 break
+
+        if len(ca_atoms) > 1 and not ca_ca_distance_in_range:
+            chains_to_remove.add(chain.get_full_id())
 
     mmcif_object.chains_to_remove.update(chains_to_remove)
 
@@ -548,6 +569,16 @@ def select_closest_chains(
         return token_center_atoms
 
     @typecheck
+    def get_token_chain_id(token: TokenType) -> str:
+        """Get chain ID of a token."""
+        if isinstance(token, AtomType):
+            # For an Atom, navigate up twice to get to the Chain level
+            return token.get_parent().get_parent().id
+        elif isinstance(token, ResidueType):
+            # For a Residue, navigate up once to get to the Chain level
+            return token.get_parent().id
+
+    @typecheck
     def get_interface_tokens(
         tokens: List[TokenType],
         protein_residue_center_atoms: Dict[str, str],
@@ -555,16 +586,30 @@ def select_closest_chains(
         center_atom_interaction_distance: float = 15.0,
     ) -> List[TokenType]:
         """Get interface tokens."""
-        interface_tokens = set()
         token_center_atoms = get_token_center_atoms(
             tokens, protein_residue_center_atoms, nucleic_acid_residue_center_atoms
         )
-        token_center_atoms_array = np.array([atom.coord for atom in token_center_atoms])
+        token_center_atoms_coords_array = np.array([atom.coord for atom in token_center_atoms])
+        token_chains_array = np.array([get_token_chain_id(token) for token in tokens])
+
+        # Compute all pairwise distances
+        differences = (
+            token_center_atoms_coords_array[:, None, :]
+            - token_center_atoms_coords_array[None, :, :]
+        )
+        distances = np.linalg.norm(differences, axis=2)
+
+        # Create masks
+        token_self_mask = distances != 0
+        token_interface_mask = token_chains_array[:, None] != token_chains_array[None, :]
+        token_interaction_mask = distances < center_atom_interaction_distance
+        interface_distance_mask = token_self_mask & token_interface_mask & token_interaction_mask
+
+        interface_tokens = set()
         for token_index, token in enumerate(tokens):
-            token_center_atom = token_center_atoms_array[None, token_index]
-            distances = np.linalg.norm(token_center_atoms_array - token_center_atom, axis=1)
-            if np.any(distances < center_atom_interaction_distance).item():
+            if np.any(interface_distance_mask[token_index, :]):
                 interface_tokens.add(token)
+
         return list(interface_tokens)
 
     chains_to_remove = set()
