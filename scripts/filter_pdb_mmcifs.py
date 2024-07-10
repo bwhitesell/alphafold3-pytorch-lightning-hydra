@@ -472,7 +472,7 @@ def filter_large_ca_distances(
     min_num_residues_for_protein_classification: int = 10,
 ) -> MmcifObject:
     """
-    Identify chains with all large sequential Ca-Ca atom distances to be removed.
+    Identify chains (to be removed) with any large sequential Ca-Ca atom distances.
 
     NOTE: This function currently does not account for residues
     with alternative Ca atom locations.
@@ -494,11 +494,11 @@ def filter_large_ca_distances(
             if "peptide" in mmcif_object.chem_comp_details[chain.id][res_index].type.lower()
             and "CA" in res
         ]
-        ca_ca_distance_in_range = False
+        ca_ca_distance_in_range = True
         for i, ca1 in enumerate(ca_atoms[:-1]):
             ca2 = ca_atoms[i + 1]
-            if (ca1 - ca2) <= max_distance:
-                ca_ca_distance_in_range = True
+            if (ca1 - ca2) > max_distance:
+                ca_ca_distance_in_range = False
                 break
 
         if len(ca_atoms) > 1 and not ca_ca_distance_in_range:
