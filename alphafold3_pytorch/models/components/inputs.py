@@ -1019,9 +1019,12 @@ def pdb_input_to_alphafold3_input(pdb_input: PDBInput) -> Alphafold3Input:
         atom_pos=torch.from_numpy(atom_positions.astype("float32")),
     )
 
-    # TODO: Add support for AlphaFold 2-style amino acid atom parametrization (i.e., 47 possible atom types per residue)
+    # TODO: Add support for AlphaFold 2-style amino/nucleic acid atom parametrization (i.e., 47 possible atom types per residue)
+
     # TODO: Reference bonds from `biomol` instead of instantiating them within `Alphafold3Input`
-    # TODO: Ensure only polymer-ligand (e.g., protein/RNA/DNA-ligand) bonds are referenced in `Alphafold3Input`
+
+    # TODO: Ensure only polymer-ligand (e.g., protein/RNA/DNA-ligand) and ligand-ligand bonds
+    # (and bonds less than 2.4 Å) are referenced in `Alphafold3Input` (AF3 Supplement - Table 5, `token_bonds`)
 
     return alphafold_input
 
