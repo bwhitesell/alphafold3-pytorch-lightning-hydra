@@ -45,7 +45,7 @@ def pad_to_len(t, length, value=0):
 
 
 def compose(*fns: Callable):
-    """Chain from Alphafold3Input -> MoleculeInput -> AtomInput."""
+    """Chain e.g., from Alphafold3Input -> MoleculeInput -> AtomInput."""
 
     def inner(x, *args, **kwargs):
         """Compose the functions."""
