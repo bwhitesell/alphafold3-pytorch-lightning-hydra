@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import os
 from dataclasses import asdict, dataclass, field
 from functools import partial
 from typing import Any, Callable, List, Tuple, Type
@@ -7,9 +9,17 @@ from typing import Any, Callable, List, Tuple, Type
 import einx
 import torch
 import torch.nn.functional as F
+from pdbeccdutils.core import ccd_reader
+from rdkit import Chem
 from rdkit.Chem.rdchem import Atom, Mol
 from torch import tensor
 
+from alphafold3_pytorch.common.biomolecule import (
+    _from_mmcif_object,
+    get_residue_constants,
+)
+from alphafold3_pytorch.data import mmcif_parsing
+from alphafold3_pytorch.data.data_pipeline import get_assembly
 from alphafold3_pytorch.data.life import (
     ATOM_BONDS,
     ATOMS,
@@ -23,13 +33,47 @@ from alphafold3_pytorch.data.life import (
     reverse_complement_tensor,
 )
 from alphafold3_pytorch.utils.model_utils import exclusive_cumsum, pad_to_length
+from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
 from alphafold3_pytorch.utils.utils import default, exists, first, identity
+
+logger = RankedLogger(__name__, rank_zero_only=False)
 
 # constants
 
 IS_MOLECULE_TYPES = 4
 ADDITIONAL_MOLECULE_FEATS = 5
+
+CCD_COMPONENTS_FILEPATH = os.path.join("data", "ccd_data", "components.cif")
+CCD_COMPONENTS_SMILES_FILEPATH = os.path.join("data", "ccd_data", "components_smiles.json")
+
+# load all SMILES strings in the PDB Chemical Component Dictionary (CCD)
+
+if os.path.exists(CCD_COMPONENTS_SMILES_FILEPATH):
+    logger.info(f"Loading CCD component SMILES strings from {CCD_COMPONENTS_SMILES_FILEPATH}.")
+    with open(CCD_COMPONENTS_SMILES_FILEPATH) as f:
+        CCD_COMPONENTS_SMILES = json.load(f)
+else:
+    assert os.path.exists(CCD_COMPONENTS_FILEPATH), (
+        f"The PDB Chemical Component Dictionary (CCD) components file {CCD_COMPONENTS_FILEPATH} does not exist. "
+        "Please follow the instructions in `README.md` to first download the file."
+    )
+    logger.info(
+        f"Loading CCD components from {CCD_COMPONENTS_FILEPATH} to extract all available SMILES strings (~3 minutes, one-time only)."
+    )
+    CCD_COMPONENTS = ccd_reader.read_pdb_components_file(
+        CCD_COMPONENTS_FILEPATH,
+        sanitize=False,  # Reduce loading time
+    )
+    logger.info(
+        f"Saving CCD component SMILES strings to {CCD_COMPONENTS_SMILES_FILEPATH} (one-time only)."
+    )
+    with open(CCD_COMPONENTS_SMILES_FILEPATH, "w") as f:
+        CCD_COMPONENTS_SMILES = {
+            ccd_code: Chem.MolToSmiles(CCD_COMPONENTS[ccd_code].component.mol)
+            for ccd_code in CCD_COMPONENTS
+        }
+        json.dump(CCD_COMPONENTS_SMILES, f)
 
 # functions
 
@@ -758,9 +802,9 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
     unrepeated_sym_ids = [
         *[*range(len(i.proteins))],
         *[*range(len(i.ss_rna))],
-        *[i for rna in i.ds_rna for i in range(2)],
+        *[i for _ in i.ds_rna for i in range(2)],
         *[*range(len(i.ss_dna))],
-        *[i for dna in i.ds_dna for i in range(2)],
+        *[i for _ in i.ds_dna for i in range(2)],
         *([0] * len(mol_ligands)),
         0,
     ]
@@ -881,9 +925,105 @@ class PDBInput:
 
 
 @typecheck
+def extract_chain_sequences_from_chemical_components(
+    chem_comps: List[mmcif_parsing.ChemComp],
+) -> Tuple[List[str], List[str], List[str], List[Mol | str]]:
+    """Extract chain sequences from a biomolecule."""
+    current_chain_seq = []
+    proteins, ss_dna, ss_rna, ligands = [], [], [], []
+
+    for idx, details in enumerate(chem_comps):
+        residue_constants = get_residue_constants(details.type)
+        restype = residue_constants.restype_3to1.get(details.id, "X")
+
+        # Protein residues
+
+        if "peptide" in details.type.lower():
+            if not current_chain_seq:
+                proteins.append(current_chain_seq)
+            current_chain_seq.append(restype)
+            # Reset current_chain_seq if the next residue is not a protein residue
+            if idx + 1 < len(chem_comps) and "peptide" not in chem_comps[idx + 1].type.lower():
+                current_chain_seq = []
+
+        # DNA residues
+
+        elif "dna" in details.type.lower():
+            if not current_chain_seq:
+                ss_dna.append(current_chain_seq)
+            current_chain_seq.append(restype)
+            # Reset current_chain_seq if the next residue is not a DNA residue
+            if idx + 1 < len(chem_comps) and "dna" not in chem_comps[idx + 1].type.lower():
+                current_chain_seq = []
+
+        # RNA residues
+
+        elif "rna" in details.type.lower():
+            if not current_chain_seq:
+                ss_rna.append(current_chain_seq)
+            current_chain_seq.append(restype)
+            # Reset current_chain_seq if the next residue is not a RNA residue
+            if idx + 1 < len(chem_comps) and "rna" not in chem_comps[idx + 1].type.lower():
+                current_chain_seq = []
+
+        # Ligand SMILES strings
+
+        else:
+            if not current_chain_seq:
+                ligands.append(current_chain_seq)
+            current_chain_seq.append(CCD_COMPONENTS_SMILES[details.id])
+            # Reset current_chain_seq after adding each ligand's SMILES string
+            current_chain_seq = []
+
+    # Efficiently build sequence strings
+
+    proteins = ["".join(protein) for protein in proteins]
+    ss_dna = ["".join(dna) for dna in ss_dna]
+    ss_rna = ["".join(rna) for rna in ss_rna]
+    ligands = ["".join(ligand) for ligand in ligands]
+
+    return proteins, ss_dna, ss_rna, ligands
+
+
+@typecheck
 def pdb_input_to_alphafold3_input(pdb_input: PDBInput) -> Alphafold3Input:
     """Convert a PDBInput to an Alphafold3Input."""
-    raise NotImplementedError
+    filepath = pdb_input.filepath
+    file_id = os.path.splitext(os.path.basename(filepath))[0]
+    assert os.path.exists(filepath), f"PDB input file `{filepath}` does not exist."
+
+    mmcif_object = mmcif_parsing.parse_mmcif_object(
+        filepath=filepath,
+        file_id=file_id,
+    )
+
+    biomol = (
+        _from_mmcif_object(mmcif_object)
+        if "assembly" in file_id
+        else get_assembly(_from_mmcif_object(mmcif_object))
+    )
+
+    chem_comp_table = {comp.id: comp for comp in biomol.chem_comp_table}
+    chem_comp_details = [chem_comp_table[chemid] for chemid in biomol.chemid]
+
+    proteins, ss_dna, ss_rna, ligands = extract_chain_sequences_from_chemical_components(
+        chem_comp_details
+    )
+
+    atom_positions = biomol.atom_positions[biomol.atom_mask.astype(bool)]
+    alphafold_input = Alphafold3Input(
+        proteins=proteins,
+        ss_dna=ss_dna,
+        ss_rna=ss_rna,
+        ligands=ligands,
+        atom_pos=torch.from_numpy(atom_positions.astype("float32")),
+    )
+
+    # TODO: Add support for AlphaFold 2-style amino acid atom parametrization (i.e., 47 possible atom types per residue)
+    # TODO: Reference bonds from `biomol` instead of instantiating them within `Alphafold3Input`
+    # TODO: Ensure only polymer-ligand (e.g., protein/RNA/DNA-ligand) bonds are referenced in `Alphafold3Input`
+
+    return alphafold_input
 
 
 # the config used for keeping track of all the disparate inputs and their transforms down to AtomInput

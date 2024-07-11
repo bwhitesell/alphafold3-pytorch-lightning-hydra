@@ -15,6 +15,7 @@ from alphafold3_pytorch.models.components.inputs import (
     Alphafold3Input,
     AtomInput,
     BatchedAtomInput,
+    PDBInput,
     maybe_transform_to_atom_inputs,
 )
 from alphafold3_pytorch.utils.model_utils import pad_at_dim, pad_or_slice_to
@@ -166,6 +167,24 @@ def alphafold3_inputs_to_batched_atom_input(
     :return: A BatchedAtomInput object.
     """
     if isinstance(inp, Alphafold3Input):
+        inp = [inp]
+
+    atom_inputs = maybe_transform_to_atom_inputs(inp)
+    return collate_inputs_to_batched_atom_input(atom_inputs, **collate_kwargs)
+
+
+@typecheck
+def pdb_inputs_to_batched_atom_input(
+    inp: PDBInput | List[PDBInput], **collate_kwargs
+) -> BatchedAtomInput:
+    """
+    Convert a list of PDBInput objects to a BatchedAtomInput object.
+
+    :param inp: A list of PDBInput objects.
+    :param collate_kwargs: Additional keyword arguments for collation.
+    :return: A BatchedAtomInput object.
+    """
+    if isinstance(inp, PDBInput):
         inp = [inp]
 
     atom_inputs = maybe_transform_to_atom_inputs(inp)
