@@ -15,12 +15,10 @@ FeatureDict = MutableMapping[str, np.ndarray]
 log = RankedLogger(__name__, rank_zero_only=True)
 
 
-def make_sequence_features(sequence: str, description: str, num_res: int) -> FeatureDict:
+def make_sequence_features(sequence: str, description: str) -> FeatureDict:
     """Construct a feature dict of sequence features."""
     features = {}
-    features["between_segment_residues"] = np.zeros((num_res,), dtype=np.int32)
     features["domain_name"] = np.array([description.encode("utf-8")], dtype=object)
-    features["seq_length"] = np.array([num_res] * num_res, dtype=np.int32)
     features["sequence"] = np.array([sequence.encode("utf-8")], dtype=object)
     return features
 
@@ -102,7 +100,6 @@ def make_mmcif_features(
         mmcif_object.chain_to_seqres[chain_id] for chain_id in mmcif_object.chain_to_seqres
     )
     description = mmcif_object.file_id
-    num_res = len(input_sequence)
 
     mmcif_feats = {}
 
@@ -110,7 +107,6 @@ def make_mmcif_features(
         make_sequence_features(
             sequence=input_sequence,
             description=description,
-            num_res=num_res,
         )
     )
 
@@ -133,6 +129,8 @@ def make_mmcif_features(
     mmcif_feats["residue_index"] = assembly.residue_index
     mmcif_feats["restype"] = assembly.restype
 
+    mmcif_feats["bonds"] = mmcif_object.bonds
+
     mmcif_feats["resolution"] = np.array([mmcif_object.header["resolution"]], dtype=np.float32)
 
     mmcif_feats["release_date"] = np.array(
@@ -145,7 +143,7 @@ def make_mmcif_features(
 
 
 if __name__ == "__main__":
-    filepath = "data/pdb_data/dev_mmcifs/ak/7akd-assembly1.cif"
+    filepath = "data/pdb_data/dev_mmcifs/a4/7a4d-assembly1.cif"
     file_id = os.path.splitext(os.path.basename(filepath))[0]
 
     mmcif_object = mmcif_parsing.parse_mmcif_object(

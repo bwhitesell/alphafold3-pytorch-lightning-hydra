@@ -251,7 +251,7 @@ def reverse_complement(seq: str, nucleic_acid_type: Literal["dna", "rna"] = "dna
 
 
 @typecheck
-def reverse_complement_tensor(t: Int[" n"]):
+def reverse_complement_tensor(t: Int[" n"]):  # type: ignore
     """Get the reverse complement of a nucleic acid sequence tensor."""
     complement = NUCLEIC_ACID_COMPLEMENT_TENSOR[t]
     reverse_complement = complement.flip(dims=(-1,))
