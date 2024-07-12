@@ -7,6 +7,7 @@ from functools import partial
 from typing import Any, Callable, List, Tuple, Type
 
 import einx
+import numpy as np
 import torch
 import torch.nn.functional as F
 from pdbeccdutils.core import ccd_reader
@@ -32,6 +33,7 @@ from alphafold3_pytorch.data.life import (
     reverse_complement,
     reverse_complement_tensor,
 )
+from alphafold3_pytorch.utils.data_utils import get_residue_molecule_type
 from alphafold3_pytorch.utils.model_utils import exclusive_cumsum, pad_to_length
 from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
@@ -68,7 +70,7 @@ elif os.path.exists(CCD_COMPONENTS_FILEPATH):
     )
     with open(CCD_COMPONENTS_SMILES_FILEPATH, "w") as f:
         CCD_COMPONENTS_SMILES = {
-            ccd_code: Chem.MolToSmiles(CCD_COMPONENTS[ccd_code].component.mol)
+            ccd_code: Chem.MolToSmiles(CCD_COMPONENTS[ccd_code].component.mol_no_h)
             for ccd_code in CCD_COMPONENTS
         }
         json.dump(CCD_COMPONENTS_SMILES, f)
@@ -919,80 +921,99 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
 @typecheck
 @dataclass
 class PDBInput:
-    filepath: str
+    mmcif_filepath: str
+    msa_dir: str | None = None
+    templates_dir: str | None = None
+    add_atom_ids: bool = False
+    add_atompair_ids: bool = False
+    directed_bonds: bool = False
+    extract_atom_feats_fn: Callable[[Atom], Float["m dai"]] = default_extract_atom_feats_fn  # type: ignore
+    extract_atompair_feats_fn: Callable[[Mol], Float["m m dapi"]] = default_extract_atompair_feats_fn  # type: ignore
 
 
 @typecheck
 def extract_chain_sequences_from_chemical_components(
     chem_comps: List[mmcif_parsing.ChemComp],
-) -> Tuple[List[str], List[str], List[str], List[Mol | str]]:
-    """Extract chain sequences from a biomolecule."""
+    chain_index: np.ndarray,
+) -> Tuple[List[str], List[str]]:
+    """Extract paired chain sequences and chemical types from a biomolecule."""
+    assert len(chem_comps) == len(chain_index), (
+        f"The number of chemical components ({len(chem_comps)}) does not match the number of chain indices ({len(chain_index)}). "
+        "Please ensure that chain indices are correctly assigned to each chemical component."
+    )
     assert exists(CCD_COMPONENTS_SMILES), (
         f"The PDB Chemical Component Dictionary (CCD) components SMILES file {CCD_COMPONENTS_SMILES_FILEPATH} does not exist. "
         f"Please re-run this script after ensuring the preliminary CCD file {CCD_COMPONENTS_FILEPATH} has been downloaded according to this project's `README.md` file."
         f"After doing so, the SMILES file {CCD_COMPONENTS_SMILES_FILEPATH} will be cached locally and used for subsequent runs."
     )
 
+    chain_seqs = []
     current_chain_seq = []
-    proteins, ss_dna, ss_rna, ligands = [], [], [], []
 
-    for idx, details in enumerate(chem_comps):
-        residue_constants = get_residue_constants(details.type)
-        restype = residue_constants.restype_3to1.get(details.id, "X")
+    for idx, comp_details in enumerate(chem_comps):
+        residue_constants = get_residue_constants(comp_details.type)
+        restype = residue_constants.restype_3to1.get(comp_details.id, "X")
 
-        # Protein residues
+        # map chemical types to protein, DNA, RNA, or ligand
 
-        if "peptide" in details.type.lower():
-            if not current_chain_seq:
-                proteins.append(current_chain_seq)
-            current_chain_seq.append(restype)
-            # Reset current_chain_seq if the next residue is not a protein residue
-            if idx + 1 < len(chem_comps) and "peptide" not in chem_comps[idx + 1].type.lower():
-                current_chain_seq = []
+        res_chem_type = get_residue_molecule_type(comp_details.type)
 
-        # DNA residues
+        # aggregate the residue sequences of each chain
 
-        elif "dna" in details.type.lower():
-            if not current_chain_seq:
-                ss_dna.append(current_chain_seq)
-            current_chain_seq.append(restype)
-            # Reset current_chain_seq if the next residue is not a DNA residue
-            if idx + 1 < len(chem_comps) and "dna" not in chem_comps[idx + 1].type.lower():
-                current_chain_seq = []
+        if not current_chain_seq:
+            chain_seqs.append(current_chain_seq)
+        mapped_restype = (
+            CCD_COMPONENTS_SMILES.get(comp_details.id, "UNL")
+            if res_chem_type == "ligand"
+            else restype
+        )
+        if mapped_restype == "UNL":
+            raise ValueError(
+                f"Could not locate the PDB CCD's SMILES string for ligand residue: {comp_details.id}"
+            )
+        current_chain_seq.append((mapped_restype, res_chem_type))
 
-        # RNA residues
+        # reset current_chain_seq if the next residue is either not part of the current chain or is a different molecule type
 
-        elif "rna" in details.type.lower():
-            if not current_chain_seq:
-                ss_rna.append(current_chain_seq)
-            current_chain_seq.append(restype)
-            # Reset current_chain_seq if the next residue is not a RNA residue
-            if idx + 1 < len(chem_comps) and "rna" not in chem_comps[idx + 1].type.lower():
-                current_chain_seq = []
-
-        # Ligand SMILES strings
-
-        else:
-            if not current_chain_seq:
-                ligands.append(current_chain_seq)
-            current_chain_seq.append(CCD_COMPONENTS_SMILES[details.id])
-            # Reset current_chain_seq after adding each ligand's SMILES string
+        chain_ending = idx + 1 < len(chain_index) and chain_index[idx] != chain_index[idx + 1]
+        chem_type_ending = idx + 1 < len(
+            chem_comps
+        ) and res_chem_type != get_residue_molecule_type(chem_comps[idx + 1].type)
+        if chain_ending or chem_type_ending:
             current_chain_seq = []
 
-    # Efficiently build sequence strings
+    # efficiently build sequence strings
 
-    proteins = ["".join(protein) for protein in proteins]
-    ss_dna = ["".join(dna) for dna in ss_dna]
-    ss_rna = ["".join(rna) for rna in ss_rna]
-    ligands = ["".join(ligand) for ligand in ligands]
+    mapped_chain_seqs = []
+    mapped_chain_chem_types = []
+    for chain_seq in chain_seqs:
+        # NOTE: from here on, all residue chemical types are guaranteed to be identical within a chain
+        chain_chem_type = chain_seq[-1][-1]
+        if chain_chem_type == "ligand":
+            for seq, chem_type in chain_seq:
+                # NOTE: there originally may have been multiple ligands in the same chain,
+                # so we need to aggregate their SMILES strings in order
+                mapped_chain_seqs.append(seq)
+                mapped_chain_chem_types.append(chem_type)
+        else:
+            mapped_chain_seqs.append("".join([res[0] for res in chain_seq]))
+            mapped_chain_chem_types.append(chain_chem_type)
 
-    return proteins, ss_dna, ss_rna, ligands
+    assert len(mapped_chain_seqs) == len(mapped_chain_chem_types), (
+        f"The number of mapped chain sequences ({len(mapped_chain_seqs)}) does not match the number of mapped chain chemical types ({len(mapped_chain_chem_types)}). "
+        "Please ensure that the chain sequences and chemical types are correctly aggregated."
+    )
+    return mapped_chain_seqs, mapped_chain_chem_types
 
 
 @typecheck
-def pdb_input_to_alphafold3_input(pdb_input: PDBInput) -> Alphafold3Input:
-    """Convert a PDBInput to an Alphafold3Input."""
-    filepath = pdb_input.filepath
+def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
+    """Convert a PDBInput to a MoleculeInput."""
+    i = pdb_input
+
+    # construct a `Biomolecule` object from the input PDB mmCIF file
+
+    filepath = pdb_input.mmcif_filepath
     file_id = os.path.splitext(os.path.basename(filepath))[0]
     assert os.path.exists(filepath), f"PDB input file `{filepath}` does not exist."
 
@@ -1007,30 +1028,76 @@ def pdb_input_to_alphafold3_input(pdb_input: PDBInput) -> Alphafold3Input:
         else get_assembly(_from_mmcif_object(mmcif_object))
     )
 
+    # retrieve features directly available within the `Biomolecule` object
+
+    num_tokens = len(biomol.atom_mask)
+
+    # retrieve atom positions
+    atom_pos = torch.from_numpy(
+        biomol.atom_positions[biomol.atom_mask.astype(bool)].astype("float32")
+    )
+
+    # retrieve molecule_ids from the `Biomolecule` object, where here it is the mapping of 32 possible residue types
+    # `proteins (20) | unknown protein (1) | rna (4) | unknown RNA (1) | dna (4) | unknown DNA (1) | gap (1)`,
+    # where ligands are mapped to the unknown protein category (i.e., residue index 20)
+    molecule_ids = torch.from_numpy(biomol.restype)
+
+    # retrieve is_molecule_types from the `Biomolecule` object, which is a boolean tensor of shape [*, 4]
+    # is_protein | is_rna | is_dna | is_ligand
+    # this is needed for their special diffusion loss
+    is_molecule_types = torch.from_numpy(biomol.chemtype)
+
+    # manually derive remaining features using the `Biomolecule` object
+
+    # extract chain sequences and chemical types from the `Biomolecule` object
     chem_comp_table = {comp.id: comp for comp in biomol.chem_comp_table}
     chem_comp_details = [chem_comp_table[chemid] for chemid in biomol.chemid]
-
-    proteins, ss_dna, ss_rna, ligands = extract_chain_sequences_from_chemical_components(
-        chem_comp_details
+    chain_seqs, chain_chem_types = extract_chain_sequences_from_chemical_components(
+        chem_comp_details,
+        biomol.chain_index,
     )
 
-    atom_positions = biomol.atom_positions[biomol.atom_mask.astype(bool)]
-    alphafold_input = Alphafold3Input(
-        proteins=proteins,
-        ss_dna=ss_dna,
-        ss_rna=ss_rna,
-        ligands=ligands,
-        atom_pos=torch.from_numpy(atom_positions.astype("float32")),
-    )
+    # TODO: reference bonds from `biomol` instead of instantiating them within `Alphafold3Input`
 
-    # TODO: Add support for AlphaFold 2-style amino/nucleic acid atom parametrization (i.e., 47 possible atom types per residue)
-
-    # TODO: Reference bonds from `biomol` instead of instantiating them within `Alphafold3Input`
-
-    # TODO: Ensure only polymer-ligand (e.g., protein/RNA/DNA-ligand) and ligand-ligand bonds
+    # TODO: ensure only polymer-ligand (e.g., protein/RNA/DNA-ligand) and ligand-ligand bonds
     # (and bonds less than 2.4 Å) are referenced in `Alphafold3Input` (AF3 Supplement - Table 5, `token_bonds`)
 
-    return alphafold_input
+    # TODO: install additional token features once MSAs are available
+    # 0: f_profile
+    # 1: f_deletion_mean
+    additional_token_feats = None
+
+    # TODO: retrieve templates and MSAs for each chain once available
+    # msa, msa_mask = load_msa_from_msa_dir(i.msa_dir)
+    # templates, template_mask = load_templates_from_templates_dir(i.templates_dir)
+    msa, msa_mask = None, None
+    templates, template_mask = None, None
+
+    # create molecule input
+
+    molecule_input = MoleculeInput(
+        molecules=molecules,
+        molecule_token_pool_lens=token_pool_lens,
+        molecule_atom_indices=molecule_atom_indices,
+        molecule_ids=molecule_ids,
+        token_bonds=token_bonds,
+        additional_molecule_feats=additional_molecule_feats,
+        additional_token_feats=default(additional_token_feats, torch.zeros(num_tokens, 2)),
+        is_molecule_types=is_molecule_types,
+        atom_pos=atom_pos,
+        templates=templates,
+        msa=msa,
+        template_mask=template_mask,
+        msa_mask=msa_mask,
+        atom_parent_ids=atom_parent_ids,
+        add_atom_ids=i.add_atom_ids,
+        add_atompair_ids=i.add_atompair_ids,
+        directed_bonds=i.directed_bonds,
+        extract_atom_feats_fn=i.extract_atom_feats_fn,
+        extract_atompair_feats_fn=i.extract_atompair_feats_fn,
+    )
+
+    return molecule_input
 
 
 # the config used for keeping track of all the disparate inputs and their transforms down to AtomInput
@@ -1040,9 +1107,7 @@ INPUT_TO_ATOM_TRANSFORM = {
     AtomInput: identity,
     MoleculeInput: molecule_to_atom_input,
     Alphafold3Input: compose(alphafold3_input_to_molecule_input, molecule_to_atom_input),
-    PDBInput: compose(
-        pdb_input_to_alphafold3_input, alphafold3_input_to_molecule_input, molecule_to_atom_input
-    ),
+    PDBInput: compose(pdb_input_to_molecule_input, molecule_to_atom_input),
 }
 
 # function for extending the config

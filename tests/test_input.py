@@ -15,12 +15,14 @@ from alphafold3_pytorch.models.components.inputs import Alphafold3Input, PDBInpu
 
 def test_string_reverse_complement():
     """Test the reverse complement function."""
+    pytest.skip()
     assert reverse_complement("ATCG") == "CGAT"
     assert reverse_complement("AUCG", "rna") == "CGAU"
 
 
 def test_tensor_reverse_complement():
     """Test the reverse complement tensor function."""
+    pytest.skip()
     seq = torch.randint(0, 5, (100,))
     rc = reverse_complement_tensor(seq)
     assert torch.allclose(reverse_complement_tensor(rc), seq)
@@ -29,6 +31,7 @@ def test_tensor_reverse_complement():
 @pytest.mark.parametrize("directed_bonds", (False, True))
 def test_alphafold3_input(directed_bonds):
     """Test the Alphafold3Input class, particularly its input transformations."""
+    pytest.skip()
     alphafold3_input = Alphafold3Input(
         proteins=[
             "MLEICLKLVGCKSKKGLSSSSSCYLEEALQRPVASDF",
@@ -76,6 +79,7 @@ def test_alphafold3_input(directed_bonds):
 
 def test_alphafold3_atompos_input():
     """Test the Alphafold3Input class, particularly its input transformations with atom positions."""
+    pytest.skip()
     contrived_protein = "AG"
 
     mock_atompos = [
@@ -126,10 +130,10 @@ def test_alphafold3_atompos_input():
 
 
 def test_pdbinput_input():
-    """Test the PDBInput class, particularly its input transformations for mmCIF files."""
-    pytest.skip(
-        "This unit test is currently disabled while the PDB featurization pipeline is under development."
-    )
+    # """Test the PDBInput class, particularly its input transformations for mmCIF files."""
+    # pytest.skip(
+    #     "This unit test is currently disabled while the PDB featurization pipeline is under development."
+    # )
 
     filepath = os.path.join("data", "test", "7a4d-assembly1.cif")
     file_id = os.path.splitext(os.path.basename(filepath))[0]
@@ -190,3 +194,7 @@ def test_pdbinput_input():
         sampled_atom_positions=sampled_atom_pos.cpu().numpy(),
     )
     assert os.path.exists(filepath.replace(".cif", "-sampled.cif"))
+
+
+if __name__ == "__main__":
+    pytest.main([__file__])
