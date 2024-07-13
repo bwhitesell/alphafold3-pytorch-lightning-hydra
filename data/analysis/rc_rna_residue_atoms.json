@@ -34,9 +34,5 @@
             "O": 8,
             "P": 1
         }
-    },
-    "N": {
-        "num_atoms": 0,
-        "atom_compositions": {}
     }
 }

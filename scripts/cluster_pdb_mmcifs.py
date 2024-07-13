@@ -270,6 +270,7 @@ def parse_chain_sequences_and_interfaces_from_mmcif(
     return sequences, interface_chain_ids
 
 
+@typecheck
 def parse_chain_sequences_and_interfaces_from_mmcif_file(
     cif_filepath: str, assume_one_based_residue_ids: bool = False
 ) -> Tuple[str, Dict[str, Dict[str, str]], Set[str]]:

@@ -35,11 +35,8 @@ from alphafold3_pytorch.data.life import (
 )
 from alphafold3_pytorch.utils.data_utils import get_residue_molecule_type
 from alphafold3_pytorch.utils.model_utils import exclusive_cumsum, pad_to_length
-from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
 from alphafold3_pytorch.utils.utils import default, exists, first, identity
-
-logger = RankedLogger(__name__, rank_zero_only=False)
 
 # constants
 
@@ -54,18 +51,18 @@ CCD_COMPONENTS_SMILES_FILEPATH = os.path.join("data", "ccd_data", "components_sm
 CCD_COMPONENTS_SMILES = None
 
 if os.path.exists(CCD_COMPONENTS_SMILES_FILEPATH):
-    logger.info(f"Loading CCD component SMILES strings from {CCD_COMPONENTS_SMILES_FILEPATH}.")
+    print(f"Loading CCD component SMILES strings from {CCD_COMPONENTS_SMILES_FILEPATH}.")
     with open(CCD_COMPONENTS_SMILES_FILEPATH) as f:
         CCD_COMPONENTS_SMILES = json.load(f)
 elif os.path.exists(CCD_COMPONENTS_FILEPATH):
-    logger.info(
+    print(
         f"Loading CCD components from {CCD_COMPONENTS_FILEPATH} to extract all available SMILES strings (~3 minutes, one-time only)."
     )
     CCD_COMPONENTS = ccd_reader.read_pdb_components_file(
         CCD_COMPONENTS_FILEPATH,
         sanitize=False,  # Reduce loading time
     )
-    logger.info(
+    print(
         f"Saving CCD component SMILES strings to {CCD_COMPONENTS_SMILES_FILEPATH} (one-time only)."
     )
     with open(CCD_COMPONENTS_SMILES_FILEPATH, "w") as f:
