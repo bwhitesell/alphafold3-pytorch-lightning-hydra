@@ -660,6 +660,7 @@ if __name__ == "__main__":
     # Determine paths for intermediate files
 
     fasta_filepath = os.path.join(args.output_dir, "sequences.fasta")
+
     # Attempt to load existing chain sequences and interfaces from local storage
 
     if os.path.exists(
