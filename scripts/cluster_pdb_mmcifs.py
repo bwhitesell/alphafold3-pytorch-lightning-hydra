@@ -763,24 +763,26 @@ if __name__ == "__main__":
 
     # Cluster sequences separately for each molecule type
 
-    # if not protein_chain_cluster_mapping:
-    #     protein_molecule_ids = write_sequences_to_fasta(
-    #         all_chain_sequences, fasta_filepath, molecule_type="protein"
-    #     )
-    #     protein_chain_cluster_mapping = cluster_sequences_using_mmseqs2(
-    #         # Cluster proteins at 40% sequence homology
-    #         fasta_filepath,
-    #         args.output_dir,
-    #         molecule_type="protein",
-    #         min_seq_id=0.4,
-    #         coverage=0.8,
-    #         coverage_mode=0,
-    #         extra_parameters={
-    #             # cluster reassign improves clusters by reassigning sequences to the best cluster
-    #             # and fixes transitivity issues of the cascade clustering
-    #             "--cluster-reassign": 1,
-    #         },
-    #     )
+    if not protein_chain_cluster_mapping:
+        protein_molecule_ids = write_sequences_to_fasta(
+            all_chain_sequences, fasta_filepath, molecule_type="protein"
+        )
+        protein_chain_cluster_mapping = cluster_sequences_using_mmseqs2(
+            # Cluster proteins at 40% sequence homology
+            fasta_filepath,
+            args.output_dir,
+            molecule_type="protein",
+            min_seq_id=0.4,
+            coverage=0.8,
+            coverage_mode=0,
+            extra_parameters={
+                # force protein mode
+                "--dbtype": 1,
+                # cluster reassign improves clusters by reassigning sequences to the best cluster
+                # and fixes transitivity issues of the cascade clustering
+                "--cluster-reassign": 1,
+            },
+        )
 
     if not nucleic_acid_chain_cluster_mapping:
         nucleic_acid_molecule_ids = write_sequences_to_fasta(
@@ -795,6 +797,8 @@ if __name__ == "__main__":
             coverage=0.8,
             coverage_mode=0,
             extra_parameters={
+                # force nucleotide mode
+                "--dbtype": 2,
                 # 7 or 8 should work best, something to test
                 "-k": 8,
                 # there is currently an issue in mmseqs2 with nucleotide search and spaced k-mers
@@ -818,8 +822,9 @@ if __name__ == "__main__":
             coverage_mode=0,
             # some of these parameters are from the spacepharer optimized parameters
             # these were for short CRISPR spacer recognition, so they should work well for arbitrary peptides
-            # this is a adhoc solution, with some recent new introduction like the ungapped prefilter
             extra_parameters={
+                # force protein mode
+                "--dbtype": 1,
                 # spacepharer optimized parameters
                 "--gap-open": 16,
                 "--gap-extend": 2,
@@ -835,8 +840,9 @@ if __name__ == "__main__":
                 "--comp-bias-corr": 0,
                 # let more things through the prefilter
                 "--min-ungapped-score": 5,
-                # Try disabling completely with "inf"?
-                "-e": 1,
+                # Let's disable e-values as these are too short for reliable homology anyway
+                # The most we can do is to collapse nearly identical peptides
+                "-e": "inf",
                 # see above
                 "--cluster-reassign": 1,
             },
