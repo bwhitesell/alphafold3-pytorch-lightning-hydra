@@ -1,0 +1,168 @@
+{
+    "ALA": {
+        "num_atoms": 5,
+        "atom_compositions": {
+            "C": 3,
+            "N": 1,
+            "O": 1
+        }
+    },
+    "ARG": {
+        "num_atoms": 11,
+        "atom_compositions": {
+            "C": 6,
+            "N": 4,
+            "O": 1
+        }
+    },
+    "ASN": {
+        "num_atoms": 8,
+        "atom_compositions": {
+            "C": 4,
+            "N": 2,
+            "O": 2
+        }
+    },
+    "ASP": {
+        "num_atoms": 8,
+        "atom_compositions": {
+            "C": 4,
+            "N": 1,
+            "O": 3
+        }
+    },
+    "CYS": {
+        "num_atoms": 6,
+        "atom_compositions": {
+            "C": 3,
+            "N": 1,
+            "O": 1,
+            "S": 1
+        }
+    },
+    "GLN": {
+        "num_atoms": 9,
+        "atom_compositions": {
+            "C": 5,
+            "N": 2,
+            "O": 2
+        }
+    },
+    "GLU": {
+        "num_atoms": 9,
+        "atom_compositions": {
+            "C": 5,
+            "N": 1,
+            "O": 3
+        }
+    },
+    "GLY": {
+        "num_atoms": 4,
+        "atom_compositions": {
+            "C": 2,
+            "N": 1,
+            "O": 1
+        }
+    },
+    "HIS": {
+        "num_atoms": 10,
+        "atom_compositions": {
+            "C": 6,
+            "N": 3,
+            "O": 1
+        }
+    },
+    "ILE": {
+        "num_atoms": 8,
+        "atom_compositions": {
+            "C": 6,
+            "N": 1,
+            "O": 1
+        }
+    },
+    "LEU": {
+        "num_atoms": 8,
+        "atom_compositions": {
+            "C": 6,
+            "N": 1,
+            "O": 1
+        }
+    },
+    "LYS": {
+        "num_atoms": 9,
+        "atom_compositions": {
+            "C": 6,
+            "N": 2,
+            "O": 1
+        }
+    },
+    "MET": {
+        "num_atoms": 8,
+        "atom_compositions": {
+            "C": 5,
+            "N": 1,
+            "O": 1,
+            "S": 1
+        }
+    },
+    "PHE": {
+        "num_atoms": 11,
+        "atom_compositions": {
+            "C": 9,
+            "N": 1,
+            "O": 1
+        }
+    },
+    "PRO": {
+        "num_atoms": 7,
+        "atom_compositions": {
+            "C": 5,
+            "N": 1,
+            "O": 1
+        }
+    },
+    "SER": {
+        "num_atoms": 6,
+        "atom_compositions": {
+            "C": 3,
+            "N": 1,
+            "O": 2
+        }
+    },
+    "THR": {
+        "num_atoms": 7,
+        "atom_compositions": {
+            "C": 4,
+            "N": 1,
+            "O": 2
+        }
+    },
+    "TRP": {
+        "num_atoms": 14,
+        "atom_compositions": {
+            "C": 11,
+            "N": 2,
+            "O": 1
+        }
+    },
+    "TYR": {
+        "num_atoms": 12,
+        "atom_compositions": {
+            "C": 9,
+            "N": 1,
+            "O": 2
+        }
+    },
+    "VAL": {
+        "num_atoms": 7,
+        "atom_compositions": {
+            "C": 5,
+            "N": 1,
+            "O": 1
+        }
+    },
+    "UNK": {
+        "num_atoms": 0,
+        "atom_compositions": {}
+    }
+}
