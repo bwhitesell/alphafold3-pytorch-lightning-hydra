@@ -360,6 +360,19 @@ def write_sequences_to_fasta(
 
 
 @typecheck
+def extract_pdb_chain_and_molecule_ids_from_clustering_string(x: str) -> Tuple[str, str, str]:
+    """Extract PDB, chain, and molecule IDs from a clustering output string."""
+    pdb_id = (
+        x.split(":")[0].split("-assembly1")[0] + "-assembly1"
+        if "-assembly1" in x
+        else x.split(":")[0][:4]
+    )
+    chain_id = x.split(":")[0].split("-assembly1")[1] if "assembly1" in x else x.split(":")[0][4:]
+    molecule_id = x.split(":")[1]
+    return pdb_id, chain_id, molecule_id
+
+
+@typecheck
 def cluster_sequences_using_mmseqs2(
     input_filepath: str,
     output_dir: str,
@@ -421,7 +434,7 @@ def cluster_sequences_using_mmseqs2(
     # Cache chain cluster mappings to local (CSV) storage
     local_chain_cluster_mapping = pd.DataFrame(
         chain_cluster_mapping["cluster_member"]
-        .apply(lambda x: pd.Series((x[:4].split(":")[0], x[4:].split(":")[0], x.split(":")[1])))
+        .apply(lambda x: pd.Series(extract_pdb_chain_and_molecule_ids_from_clustering_string(x)))
         .values,
         columns=["pdb_id", "chain_id", "molecule_id"],
     )
@@ -464,7 +477,7 @@ def cluster_ligands_by_ccd_code(
     # Cache chain cluster mappings to local (CSV) storage
     local_chain_cluster_mapping = pd.DataFrame(
         [
-            (k[:4].split(":")[0], k[4:].split(":")[0], k.split(":")[1], v)
+            (*extract_pdb_chain_and_molecule_ids_from_clustering_string(k), v)
             for (k, v) in chain_cluster_mapping.items()
         ],
         columns=["pdb_id", "chain_id", "molecule_id", "cluster_id"],
@@ -750,6 +763,8 @@ if __name__ == "__main__":
             coverage=0.8,
             coverage_mode=0,
             extra_parameters={
+                # force protein mode
+                "--dbtype": 1,
                 # cluster reassign improves clusters by reassigning sequences to the best cluster
                 # and fixes transitivity issues of the cascade clustering
                 "--cluster-reassign": 1,
@@ -769,6 +784,8 @@ if __name__ == "__main__":
             coverage=0.8,
             coverage_mode=0,
             extra_parameters={
+                # force nucleotide mode
+                "--dbtype": 2,
                 # 7 or 8 should work best, something to test
                 "-k": 8,
                 # there is currently an issue in mmseqs2 with nucleotide search and spaced k-mers
@@ -792,8 +809,9 @@ if __name__ == "__main__":
             coverage_mode=0,
             # some of these parameters are from the spacepharer optimized parameters
             # these were for short CRISPR spacer recognition, so they should work well for arbitrary peptides
-            # this is a adhoc solution, with some recent new introduction like the ungapped prefilter
             extra_parameters={
+                # force protein mode
+                "--dbtype": 1,
                 # spacepharer optimized parameters
                 "--gap-open": 16,
                 "--gap-extend": 2,
@@ -809,8 +827,9 @@ if __name__ == "__main__":
                 "--comp-bias-corr": 0,
                 # let more things through the prefilter
                 "--min-ungapped-score": 5,
-                # Try disabling completely with "inf"?
-                "-e": 1,
+                # Let's disable e-values as these are too short for reliable homology anyway
+                # The most we can do is to collapse nearly identical peptides
+                "-e": "inf",
                 # see above
                 "--cluster-reassign": 1,
             },
