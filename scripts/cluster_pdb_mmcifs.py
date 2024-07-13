@@ -240,9 +240,9 @@ def parse_chain_sequences_and_interfaces_from_mmcif(
                     if f"{neighbor_interface_key}+{atom_interface_key}" not in interface_chain_ids:
                         interface_chain_ids.add(f"{atom_interface_key}+{neighbor_interface_key}")
 
-        assert (
-            len(one_letter_seq_tokens) > 0
-        ), f"No residues found in chain {chain.id} within the mmCIF file {filepath}."
+        if not one_letter_seq_tokens:
+            # NOTE: This indicates that the current chain consists of only ligand residues
+            continue
 
         unique_token_molecule_types = set(token_molecule_types)
         if len(unique_token_molecule_types) > 1:
@@ -349,7 +349,12 @@ def write_sequences_to_fasta(
                         )
                         molecule_id = f"{structure_id}{chain_id_}:{molecule_type_and_name[0]}{molecule_index_postfix}"
 
-                        f.write(f">{molecule_id}\n{sequence}\n")
+                        mapped_sequence = (
+                            sequence.replace("X", "N")
+                            if molecule_type == "nucleic_acid"
+                            else sequence
+                        )
+                        f.write(f">{molecule_id}\n{mapped_sequence}\n")
                         molecule_ids.append(molecule_id)
     return molecule_ids
 
@@ -647,6 +652,7 @@ if __name__ == "__main__":
     # Determine paths for intermediate files
 
     fasta_filepath = os.path.join(args.output_dir, "sequences.fasta")
+
     # Attempt to load existing chain sequences and interfaces from local storage
 
     if os.path.exists(
