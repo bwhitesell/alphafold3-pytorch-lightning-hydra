@@ -373,6 +373,19 @@ def write_sequences_to_fasta(
 
 
 @typecheck
+def extract_pdb_chain_and_molecule_ids_from_clustering_string(x: str) -> Tuple[str, str, str]:
+    """Extract PDB, chain, and molecule IDs from a clustering output string."""
+    pdb_id = (
+        x.split(":")[0].split("-assembly1")[0] + "-assembly1"
+        if "-assembly1" in x
+        else x.split(":")[0][:4]
+    )
+    chain_id = x.split(":")[0].split("-assembly1")[1] if "assembly1" in x else x.split(":")[0][4:]
+    molecule_id = x.split(":")[1]
+    return pdb_id, chain_id, molecule_id
+
+
+@typecheck
 def cluster_sequences_using_mmseqs2(
     input_filepath: str,
     output_dir: str,
@@ -434,7 +447,7 @@ def cluster_sequences_using_mmseqs2(
     # Cache chain cluster mappings to local (CSV) storage
     local_chain_cluster_mapping = pd.DataFrame(
         chain_cluster_mapping["cluster_member"]
-        .apply(lambda x: pd.Series((x[:4].split(":")[0], x[4:].split(":")[0], x.split(":")[1])))
+        .apply(lambda x: pd.Series(extract_pdb_chain_and_molecule_ids_from_clustering_string(x)))
         .values,
         columns=["pdb_id", "chain_id", "molecule_id"],
     )
@@ -477,7 +490,7 @@ def cluster_ligands_by_ccd_code(
     # Cache chain cluster mappings to local (CSV) storage
     local_chain_cluster_mapping = pd.DataFrame(
         [
-            (k[:4].split(":")[0], k[4:].split(":")[0], k.split(":")[1], v)
+            (*extract_pdb_chain_and_molecule_ids_from_clustering_string(k), v)
             for (k, v) in chain_cluster_mapping.items()
         ],
         columns=["pdb_id", "chain_id", "molecule_id", "cluster_id"],
@@ -750,24 +763,24 @@ if __name__ == "__main__":
 
     # Cluster sequences separately for each molecule type
 
-    if not protein_chain_cluster_mapping:
-        protein_molecule_ids = write_sequences_to_fasta(
-            all_chain_sequences, fasta_filepath, molecule_type="protein"
-        )
-        protein_chain_cluster_mapping = cluster_sequences_using_mmseqs2(
-            # Cluster proteins at 40% sequence homology
-            fasta_filepath,
-            args.output_dir,
-            molecule_type="protein",
-            min_seq_id=0.4,
-            coverage=0.8,
-            coverage_mode=0,
-            extra_parameters={
-                # cluster reassign improves clusters by reassigning sequences to the best cluster
-                # and fixes transitivity issues of the cascade clustering
-                "--cluster-reassign": 1,
-            },
-        )
+    # if not protein_chain_cluster_mapping:
+    #     protein_molecule_ids = write_sequences_to_fasta(
+    #         all_chain_sequences, fasta_filepath, molecule_type="protein"
+    #     )
+    #     protein_chain_cluster_mapping = cluster_sequences_using_mmseqs2(
+    #         # Cluster proteins at 40% sequence homology
+    #         fasta_filepath,
+    #         args.output_dir,
+    #         molecule_type="protein",
+    #         min_seq_id=0.4,
+    #         coverage=0.8,
+    #         coverage_mode=0,
+    #         extra_parameters={
+    #             # cluster reassign improves clusters by reassigning sequences to the best cluster
+    #             # and fixes transitivity issues of the cascade clustering
+    #             "--cluster-reassign": 1,
+    #         },
+    #     )
 
     if not nucleic_acid_chain_cluster_mapping:
         nucleic_acid_molecule_ids = write_sequences_to_fasta(
