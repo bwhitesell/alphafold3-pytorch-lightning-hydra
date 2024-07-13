@@ -65,7 +65,7 @@ elif os.path.exists(CCD_COMPONENTS_FILEPATH):
     )
     with open(CCD_COMPONENTS_SMILES_FILEPATH, "w") as f:
         CCD_COMPONENTS_SMILES = {
-            ccd_code: Chem.MolToSmiles(CCD_COMPONENTS[ccd_code].component.mol)
+            ccd_code: Chem.MolToSmiles(CCD_COMPONENTS[ccd_code].component.mol_no_h)
             for ccd_code in CCD_COMPONENTS
         }
         json.dump(CCD_COMPONENTS_SMILES, f)
