@@ -56,7 +56,9 @@ def analyze_residue_constants(
                 atom_compositions[atom[0]] += 1
         atom_compositions = dict(sorted(atom_compositions.items()))
         num_atoms = sum(atom_compositions.values())
-        rc_analysis_dict[acid] = {
+        if acid not in rc.restype_3to1:
+            continue
+        rc_analysis_dict[rc.restype_3to1[acid]] = {
             "num_atoms": num_atoms,
             "atom_compositions": atom_compositions,
         }
