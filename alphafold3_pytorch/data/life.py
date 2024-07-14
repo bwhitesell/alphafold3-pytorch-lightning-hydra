@@ -1,9 +1,13 @@
+import os
 from typing import Literal
 
+import gemmi
+import rdkit.Geometry.rdGeometry as rdGeometry
 import torch
 from rdkit.Chem import AllChem as Chem
 from rdkit.Chem.rdchem import Mol
 
+from alphafold3_pytorch.common import amino_acid_constants, dna_constants, rna_constants
 from alphafold3_pytorch.utils.tensor_typing import Int, typecheck
 
 
@@ -315,6 +319,101 @@ def remove_atom_from_mol(mol: Mol, atom_idx: int) -> Mol:
     return mol
 
 
+def mol_from_template_mmcif_file(mmcif_filepath: str) -> Chem.Mol:
+    """
+    Load an RDKit molecule from a template mmCIF file.
+
+    Note that template atom positions are by default installed for each atom.
+    This means users of this function should override these default atom
+    positions as needed.
+
+    :param mmcif_filepath: The path to a residue/ligand template mmCIF file.
+    :return: A corresponding template RDKit molecule.
+    """
+    # Parse the mmCIF file using Gemmi
+    doc = gemmi.cif.read(mmcif_filepath)
+    block = doc.sole_block()
+
+    # Extract atoms and bonds
+    atom_table = block.find(
+        "_chem_comp_atom.",
+        ["atom_id", "type_symbol", "model_Cartn_x", "model_Cartn_y", "model_Cartn_z"],
+    )
+    bond_table = block.find(
+        "_chem_comp_bond.",
+        ["atom_id_1", "atom_id_2", "value_order", "pdbx_aromatic_flag", "pdbx_stereo_config"],
+    )
+
+    # Create an empty `rdkit.Chem.RWMol` object
+    mol = Chem.RWMol()
+
+    # Dictionary to map atom ids to RDKit atom indices
+    atom_id_to_idx = {}
+
+    # Add atoms to the molecule
+    for row in atom_table:
+        atom_id = row["atom_id"]
+        element = row["type_symbol"]
+        x = float(row["model_Cartn_x"])
+        y = float(row["model_Cartn_y"])
+        z = float(row["model_Cartn_z"])
+
+        rd_atom = Chem.Atom(element)
+        idx = mol.AddAtom(rd_atom)
+        atom_id_to_idx[atom_id] = idx
+
+    # Create a conformer to store atom positions
+    conf = Chem.Conformer(mol.GetNumAtoms())
+
+    # Set atom coordinates
+    for row in atom_table:
+        atom_id = row["atom_id"]
+        idx = atom_id_to_idx[atom_id]
+        x = float(row["model_Cartn_x"])
+        y = float(row["model_Cartn_y"])
+        z = float(row["model_Cartn_z"])
+        conf.SetAtomPosition(idx, rdGeometry.Point3D(x, y, z))
+
+    # Add conformer to the molecule
+    mol.AddConformer(conf)
+
+    # Add bonds to the molecule
+    bond_order = {
+        "SING": Chem.BondType.SINGLE,
+        "DOUB": Chem.BondType.DOUBLE,
+        "TRIP": Chem.BondType.TRIPLE,
+        "AROM": Chem.BondType.AROMATIC,
+    }
+
+    for row in bond_table:
+        atom_id1 = row["atom_id_1"]
+        atom_id2 = row["atom_id_2"]
+        order = row["value_order"]
+        aromatic_flag = row["pdbx_aromatic_flag"]
+        stereo_config = row["pdbx_stereo_config"]
+
+        idx1 = atom_id_to_idx[atom_id1]
+        idx2 = atom_id_to_idx[atom_id2]
+
+        mol.AddBond(idx1, idx2, bond_order[order])
+
+        if aromatic_flag == "Y":
+            mol.GetBondBetweenAtoms(idx1, idx2).SetIsAromatic(True)
+
+        # Handle stereochemistry
+        if stereo_config == "N":
+            continue
+        elif stereo_config == "E":
+            mol.GetBondBetweenAtoms(idx1, idx2).SetStereo(Chem.BondStereo.STEREOE)
+        elif stereo_config == "Z":
+            mol.GetBondBetweenAtoms(idx1, idx2).SetStereo(Chem.BondStereo.STEREOZ)
+
+    # Convert `RWMol` to `Mol`
+    mol = mol.GetMol()
+
+    return mol
+
+
 # initialize rdkit.Chem with canonical SMILES
 
 CHAINABLE_BIOMOLECULES = [
@@ -349,3 +448,18 @@ for entry in CHAINABLE_BIOMOLECULES:
     mol = Chem.RenumberAtoms(mol, atom_reorder.tolist())
 
     entry.update(atom_reorder_indices=atom_reorder, rdchem_mol=mol)
+
+# pre-load all PDB amino acid and nucleotide residue templates as `rdkit.Chem` molecules
+
+resname_to_mol = {}
+for resnames in (amino_acid_constants.resnames, rna_constants.resnames, dna_constants.resnames):
+    for resname in resnames:
+        template_filepath = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "chemical", f"{resname}.cif"
+        )
+        if os.path.exists(template_filepath):
+            resname_to_mol[resname] = mol_from_template_mmcif_file(template_filepath)
+        else:
+            print(
+                f"WARNING: Template residue file {template_filepath} not found, skipping pre-loading of this template..."
+            )
