@@ -7,7 +7,6 @@ import torch
 from rdkit.Chem import AllChem as Chem
 from rdkit.Chem.rdchem import Mol
 
-from alphafold3_pytorch.common import amino_acid_constants, dna_constants, rna_constants
 from alphafold3_pytorch.utils.tensor_typing import Int, typecheck
 
 
@@ -26,102 +25,170 @@ HUMAN_AMINO_ACIDS = dict(
     A=dict(
         resname="ALA",
         smile="NC(C=O)C",
+        first_atom_idx=0,
+        last_atom_idx=4,
         distogram_atom_idx=4,
+        token_center_atom_idx=1,
     ),
     R=dict(
         resname="ARG",
         smile="NC(C=O)CCCNC(N)=N",
+        first_atom_idx=0,
+        last_atom_idx=10,
         distogram_atom_idx=4,
+        token_center_atom_idx=1,
     ),
     N=dict(
         resname="ASN",
         smile="NC(C=O)CC(=O)N",
+        first_atom_idx=0,
+        last_atom_idx=7,
         distogram_atom_idx=4,
+        token_center_atom_idx=1,
     ),
     D=dict(
         resname="ASP",
         smile="NC(C=O)CC(=O)O",
+        first_atom_idx=0,
+        last_atom_idx=7,
         distogram_atom_idx=4,
+        token_center_atom_idx=1,
     ),
     C=dict(
         resname="CYS",
         smile="NC(C=O)CS",
+        first_atom_idx=0,
+        last_atom_idx=5,
         distogram_atom_idx=4,
+        token_center_atom_idx=1,
     ),
     Q=dict(
         resname="GLN",
         smile="NC(C=O)CCC(=O)N",
+        first_atom_idx=0,
+        last_atom_idx=8,
         distogram_atom_idx=4,
+        token_center_atom_idx=1,
     ),
     E=dict(
         resname="GLU",
         smile="NC(C=O)CCC(=O)O",
+        first_atom_idx=0,
+        last_atom_idx=8,
         distogram_atom_idx=4,
+        token_center_atom_idx=1,
     ),
     G=dict(
         resname="GLY",
         smile="NCC=O",
+        first_atom_idx=0,
+        last_atom_idx=3,
         distogram_atom_idx=1,
+        token_center_atom_idx=1,
     ),
     H=dict(
         resname="HIS",
         smile="NC(C=O)CC1=CNC=N1",
+        first_atom_idx=0,
+        last_atom_idx=9,
         distogram_atom_idx=4,
+        token_center_atom_idx=1,
     ),
     I=dict(
         resname="ILE",
         smile="NC(C=O)C(CC)C",
+        first_atom_idx=0,
+        last_atom_idx=7,
         distogram_atom_idx=4,
+        token_center_atom_idx=1,
     ),
     L=dict(
         resname="LEU",
         smile="NC(C=O)CC(C)C",
+        first_atom_idx=0,
+        last_atom_idx=7,
         distogram_atom_idx=4,
+        token_center_atom_idx=1,
     ),
     K=dict(
         resname="LYS",
         smile="NC(C=O)CCCCN",
+        first_atom_idx=0,
+        last_atom_idx=8,
         distogram_atom_idx=4,
+        token_center_atom_idx=1,
     ),
     M=dict(
         resname="MET",
         smile="NC(C=O)CCSC",
+        first_atom_idx=0,
+        last_atom_idx=7,
         distogram_atom_idx=4,
+        token_center_atom_idx=1,
     ),
     F=dict(
         resname="PHE",
         smile="NC(C=O)CC1=CC=CC=C1",
+        first_atom_idx=0,
+        last_atom_idx=10,
         distogram_atom_idx=4,
+        token_center_atom_idx=1,
     ),
     P=dict(
         resname="PRO",
         smile="N1C(C=O)CCC1",
+        first_atom_idx=0,
+        last_atom_idx=6,
         distogram_atom_idx=4,
+        token_center_atom_idx=1,
     ),
     S=dict(
         resname="SER",
         smile="NC(C=O)CO",
+        first_atom_idx=0,
+        last_atom_idx=5,
         distogram_atom_idx=4,
+        token_center_atom_idx=1,
     ),
     T=dict(
         resname="THR",
         smile="NC(C=O)C(O)C",
+        first_atom_idx=0,
+        last_atom_idx=6,
         distogram_atom_idx=4,
+        token_center_atom_idx=1,
     ),
     W=dict(
         resname="TRP",
         smile="NC(C=O)CC1=CNC2=C1C=CC=C2",
+        first_atom_idx=0,
+        last_atom_idx=13,
         distogram_atom_idx=4,
+        token_center_atom_idx=1,
     ),
     Y=dict(
         resname="TYR",
         smile="NC(C=O)CC1=CC=C(O)C=C1",
+        first_atom_idx=0,
+        last_atom_idx=11,
         distogram_atom_idx=4,
+        token_center_atom_idx=1,
     ),
     V=dict(
         resname="VAL",
         smile="NC(C=O)C(C)C",
+        first_atom_idx=0,
+        last_atom_idx=6,
         distogram_atom_idx=4,
+        token_center_atom_idx=1,
+    ),
+    X=dict(
+        resname="UNK",
+        smile="NC(C=O)C",
+        first_atom_idx=0,
+        last_atom_idx=4,
+        distogram_atom_idx=4,
+        token_center_atom_idx=1,
     ),
 )
 
@@ -132,26 +199,47 @@ DNA_NUCLEOTIDES = dict(
     A=dict(
         resname="DA",
         smile="OP(=O)(O)OCC1OC(N2C=NC3=C2N=CN=C3N)CC1O",
+        first_atom_idx=0,
+        last_atom_idx=21,
         complement="T",
         distogram_atom_idx=21,
+        token_center_atom_idx=11,
     ),
     C=dict(
         resname="DC",
         smile="OP(=O)(O)OCC1OC(N2C(=O)N=C(N)C=C2)CC1O",
+        first_atom_idx=0,
+        last_atom_idx=19,
         complement="G",
         distogram_atom_idx=13,
+        token_center_atom_idx=11,
     ),
     G=dict(
         resname="DG",
         smile="OP(=O)(O)OCC1OC(N2C=NC3=C2N=C(N)NC3=O)CC1O",
+        first_atom_idx=0,
+        last_atom_idx=22,
         complement="C",
         distogram_atom_idx=22,
+        token_center_atom_idx=11,
     ),
     T=dict(
         resname="DT",
         smile="OP(=O)(O)OCC1OC(N2C(=O)NC(=O)C(C)=C2)CC1O",
+        first_atom_idx=0,
+        last_atom_idx=20,
         complement="A",
         distogram_atom_idx=13,
+        token_center_atom_idx=11,
+    ),
+    X=dict(
+        resname="DN",
+        smile="OP(=O)(O)OCC1OC(N2C=NC3=C2N=CN=C3N)CC1O",
+        first_atom_idx=0,
+        last_atom_idx=21,
+        complement="N",
+        distogram_atom_idx=21,
+        token_center_atom_idx=11,
     ),
 )
 
@@ -159,26 +247,47 @@ RNA_NUCLEOTIDES = dict(
     A=dict(
         resname="A",
         smile="OP(=O)(O)OCC1OC(N2C=NC3=C2N=CN=C3N)C(O)C1O",
+        first_atom_idx=0,
+        last_atom_idx=22,
         complement="U",
         distogram_atom_idx=22,
+        token_center_atom_idx=12,
     ),
     C=dict(
         resname="C",
         smile="OP(=O)(O)OCC1OC(N2C(=O)N=C(N)C=C2)C(O)C1O",
+        first_atom_idx=0,
+        last_atom_idx=20,
         complement="G",
         distogram_atom_idx=14,
+        token_center_atom_idx=12,
     ),
     G=dict(
         resname="G",
         smile="OP(=O)(O)OCC1OC(N2C=NC3=C2N=C(N)NC3=O)C(O)C1O",
+        first_atom_idx=0,
+        last_atom_idx=23,
         complement="C",
         distogram_atom_idx=23,
+        token_center_atom_idx=12,
     ),
     U=dict(
         resname="U",
         smile="OP(=O)(O)OCC1OC(N2C(=O)NC(=O)C=C2)C(O)C1O",
+        first_atom_idx=0,
+        last_atom_idx=20,
         complement="A",
         distogram_atom_idx=14,
+        token_center_atom_idx=12,
+    ),
+    X=dict(
+        resname="N",
+        smile="OP(=O)(O)OCC1OC(N2C=NC3=C2N=CN=C3N)C(O)C1O",
+        first_atom_idx=0,
+        last_atom_idx=22,
+        complement="N",
+        distogram_atom_idx=22,
+        token_center_atom_idx=12,
     ),
 )
 
@@ -399,3 +508,14 @@ for entries in [*CHAINABLE_BIOMOLECULES, *METALS_AND_MISC]:
         else:
             mol = mol_from_smile(entry["smile"])
         entry["rdchem_mol"] = mol
+
+for entries in CHAINABLE_BIOMOLECULES:
+    for rescode in entries:
+        entry = entries[rescode]
+        num_atoms = mol.GetNumAtoms()
+
+        assert 0 <= entry["first_atom_idx"] < num_atoms
+        assert 0 <= entry["last_atom_idx"] < num_atoms
+        assert 0 <= entry["distogram_atom_idx"] < num_atoms
+        assert 0 <= entry["token_center_atom_idx"] < num_atoms
+        assert entry["first_atom_idx"] != entry["last_atom_idx"]
