@@ -137,18 +137,6 @@ def collate_inputs_to_batched_atom_input(
 
     batched_atom_input_dict = dict(tuple(zip(keys, outputs)))
 
-    # just ensure output_atompos_indices has full atom_seq_len manually for now
-
-    output_atompos_indices = batched_atom_input_dict.get("output_atompos_indices", None)
-
-    if exists(output_atompos_indices):
-        atom_seq_len = batched_atom_input_dict["atom_inputs"].shape[-2]
-        batched_atom_input_dict.update(
-            output_atompos_indices=pad_or_slice_to(
-                output_atompos_indices, atom_seq_len, dim=-1, pad_value=-1
-            )
-        )
-
     # reconstitute dictionary
 
     batched_atom_inputs = BatchedAtomInput(**batched_atom_input_dict)
@@ -264,12 +252,6 @@ class MockAtomDataset(Dataset):
         if random() > 0.5:
             msa_mask = torch.ones((7,)).bool()
 
-        # randomly reorder output atompos indices for testing
-
-        output_atompos_indices = None
-        if random() > 0.5:
-            output_atompos_indices = torch.arange(atom_seq_len).long()
-
         # required for training, but omitted on inference
 
         atom_pos = torch.randn(atom_seq_len, 3)
@@ -295,7 +277,6 @@ class MockAtomDataset(Dataset):
             msa=msa,
             msa_mask=msa_mask,
             atom_pos=atom_pos,
-            output_atompos_indices=output_atompos_indices,
             molecule_atom_indices=molecule_atom_indices,
             distance_labels=distance_labels,
             pae_labels=pae_labels,

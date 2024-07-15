@@ -3539,7 +3539,6 @@ class Alphafold3(Module):
         molecule_atom_indices: Int["b n"] | None = None,  # type: ignore
         num_sample_steps: int | None = None,
         atom_pos: Float["b m 3"] | None = None,  # type: ignore
-        output_atompos_indices: Int["b m"] | None = None,  # type: ignore
         distance_labels: Int["b n n"] | None = None,  # type: ignore
         pae_labels: Int["b n n"] | None = None,  # type: ignore
         pde_labels: Int["b n n"] | None = None,  # type: ignore
@@ -3569,7 +3568,6 @@ class Alphafold3(Module):
         :param molecule_atom_indices: The molecule atom indices tensor.
         :param num_sample_steps: The number of sample steps.
         :param atom_pos: The atom positions tensor.
-        :param output_atompos_indices: The output atom positions indices tensor.
         :param distance_labels: The distance labels tensor.
         :param pae_labels: The predicted aligned error (PAE) labels tensor.
         :param pde_labels: The predicted distance error (PDE) labels tensor.
@@ -3842,26 +3840,6 @@ class Alphafold3(Module):
                 sampled_atom_pos = einx.where(
                     "b m, b m c, -> b m c", atom_mask, sampled_atom_pos, 0.0
                 )
-
-            if not exists(output_atompos_indices):
-                return sampled_atom_pos
-
-            # in the case the atoms are passed in not ordered canonically
-
-            order_mask = (
-                output_atompos_indices >= 0
-            )  # -1 is padding, which means do not order (metal ions, ligands, or entire row if None was passed in)
-
-            output_atompos_indices = einx.where(
-                "b m, b m, m -> b m",
-                order_mask,
-                output_atompos_indices,
-                torch.arange(atom_seq_len, device=self.device),
-            )
-
-            sampled_atom_pos = einx.get_at(
-                "b [m] 3, b rm -> b rm 3", sampled_atom_pos, output_atompos_indices
-            )
 
             return sampled_atom_pos
 
