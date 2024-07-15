@@ -993,13 +993,15 @@ def add_atom_positions_to_mol(
     )
 
     atoms_to_remove = []
+    missing_atom_counter = 0
     conf = mol.GetConformer()
     for atom_idx in range(mol.GetNumAtoms()):
         if atom_idx in missing_atom_indices:
             conf.SetAtomPosition(atom_idx, (0.0, 0.0, 0.0))
             atoms_to_remove.append(atom_idx)
+            missing_atom_counter += 1
         else:
-            conf.SetAtomPosition(atom_idx, atom_positions[atom_idx])
+            conf.SetAtomPosition(atom_idx, atom_positions[atom_idx - missing_atom_counter])
 
     # remove atoms (and their bonds) that do not have a valid position
     rw_mol = Chem.RWMol(mol)
@@ -1088,18 +1090,53 @@ def extract_template_molecules_from_chains(
                 res_index += mol.GetNumAtoms()
             else:
                 mol = copy.deepcopy(seq_mapping[res][mol_keyname])
-                res_num_atoms = mol.GetNumAtoms()
-                res_all_atom_indices = set(range(res_num_atoms))
 
                 res_type = residue_types[res_index]
                 res_atom_mask = atom_mask[res_index]
+
+                # start by finding all possible atoms that may be present in the residue
+
+                res_unique_atom_mapping_indices = np.unique(
+                    atom_mapping[res_type - res_constants.min_restype_num], return_index=True
+                )[1]
+                res_unique_atom_mapping = np.array(
+                    [
+                        atom_mapping[res_type - res_constants.min_restype_num][idx]
+                        for idx in sorted(res_unique_atom_mapping_indices)
+                    ]
+                )
+
+                # then find the subset of atoms that are actually present in the residue,
+                # and gather the corresponding indices needed to remap these atoms
+                # from `atom47` atom type indexing to compact atom type indexing
+                # (e.g., mapping from `atom47` coordinates to `atom14` coordinates
+                # uniquely for each type of residue)
+
                 res_atom_mapping = atom_mapping[res_type - res_constants.min_restype_num][
                     res_atom_mask
                 ]
-                res_atom_mapping_indices = set(res_atom_mapping)
-                missing_atom_indices = res_all_atom_indices - res_atom_mapping_indices
+                res_atom_mapping_set = set(res_atom_mapping)
 
-                res_atom_positions = atom_positions[res_index][res_atom_mask][res_atom_mapping]
+                # ensure any missing atoms are accounted for in the atom positions during index remapping
+
+                missing_atom_indices = {
+                    idx
+                    for idx in range(len(res_unique_atom_mapping))
+                    if res_unique_atom_mapping[idx] not in res_atom_mapping_set
+                }
+
+                contiguous_res_atom_mapping = {
+                    # NOTE: `np.unique` already sorts the unique values
+                    value: index
+                    for index, value in enumerate(np.unique(res_atom_mapping))
+                }
+                contiguous_res_atom_mapping = np.vectorize(contiguous_res_atom_mapping.get)(
+                    res_atom_mapping
+                )
+
+                res_atom_positions = atom_positions[res_index][res_atom_mask][
+                    contiguous_res_atom_mapping
+                ]
                 mol = add_atom_positions_to_mol(
                     mol,
                     res_atom_positions.reshape(-1, 3),
