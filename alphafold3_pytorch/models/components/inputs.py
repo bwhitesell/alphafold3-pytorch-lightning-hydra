@@ -37,8 +37,11 @@ from alphafold3_pytorch.data.life import (
 )
 from alphafold3_pytorch.utils.data_utils import RESIDUE_MOLECULE_TYPE, get_residue_molecule_type
 from alphafold3_pytorch.utils.model_utils import exclusive_cumsum
+from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
 from alphafold3_pytorch.utils.utils import default, exists, first, identity
+
+logger = RankedLogger(__name__, rank_zero_only=False)
 
 # constants
 
@@ -962,17 +965,28 @@ class PDBInput:
 def extract_chain_sequences_from_chemical_components(
     chem_comps: List[mmcif_parsing.ChemComp],
     chain_index: np.ndarray,
+    residue_index: np.ndarray,
 ) -> Tuple[List[str], List[RESIDUE_MOLECULE_TYPE]]:
     """Extract paired chain sequences and chemical types from a biomolecule."""
     assert len(chem_comps) == len(chain_index), (
-        f"The number of chemical components ({len(chem_comps)}) does not match the number of chain indices ({len(chain_index)}). "
-        "Please ensure that chain indices are correctly assigned to each chemical component."
+        f"The number of chemical components ({len(chem_comps)}), chain indices ({len(chain_index)}), and residue indices do not match. "
+        "Please ensure that chain and residue indices are correctly assigned to each chemical component."
     )
 
     chain_seqs = []
     current_chain_seq = []
 
-    for idx, comp_details in enumerate(chem_comps):
+    chain_res_idx_seen = set()
+    for idx, (comp_details, chain_idx, res_idx) in enumerate(
+        zip(chem_comps, chain_index, residue_index)
+    ):
+        # only consider the first atom of each (e.g., ligand) residue
+
+        chain_res_idx = f"{chain_idx}:{res_idx}"
+        if chain_res_idx in chain_res_idx_seen:
+            current_chain_seq = []
+            continue
+
         residue_constants = get_residue_constants(comp_details.type)
         restype = residue_constants.restype_3to1.get(comp_details.id, "X")
 
@@ -995,6 +1009,10 @@ def extract_chain_sequences_from_chemical_components(
         ) and res_chem_type != get_residue_molecule_type(chem_comps[idx + 1].type)
         if chain_ending or chem_type_ending:
             current_chain_seq = []
+
+        # keep track of the chain-residue ID pairs seen so far
+
+        chain_res_idx_seen.add(chain_res_idx)
 
     # efficiently build sequence strings
 
@@ -1051,7 +1069,10 @@ def add_atom_positions_to_mol(
 
 
 def create_mol_from_atom_positions_and_types(
-    atom_positions: np.ndarray, element_types: List[str], missing_atom_indices: Set[int]
+    atom_positions: np.ndarray,
+    element_types: List[str],
+    missing_atom_indices: Set[int],
+    num_bond_attempts: int = 2,
 ) -> Mol:
     """
     Create an RDKit molecule from a NumPy array of atom positions and a list of their element types.
@@ -1059,6 +1080,7 @@ def create_mol_from_atom_positions_and_types(
     :param atom_positions: A NumPy array of shape (num_atoms, 3) containing the 3D coordinates of each atom.
     :param element_types: A list of element symbols for each atom in the molecule.
     :param missing_atom_indices: A set of atom indices that are missing from the atom_positions array.
+    :param num_bond_attempts: The number of attempts to determine the bonds in the molecule.
     :return: An RDKit molecule with the specified atom positions and element types.
     """
     if len(atom_positions) != len(element_types):
@@ -1079,12 +1101,21 @@ def create_mol_from_atom_positions_and_types(
         conf.SetAtomPosition(i, Point3D(x, y, z))
 
     mol.AddConformer(conf)
+    Chem.SanitizeMol(mol)
 
-    # finalize molecule
+    # finalize molecule by inferring bonds
 
-    for atom in mol.GetAtoms():
-        atom.SetFormalCharge(0)
-    rdDetermineBonds.DetermineBonds(mol, charge=0)
+    determined_bonds = False
+    for _ in range(num_bond_attempts):
+        try:
+            rdDetermineBonds.DetermineBonds(mol, charge=Chem.GetFormalCharge(mol))
+            determined_bonds = True
+        except Exception:
+            continue
+    if not determined_bonds:
+        raise ValueError("Failed to determine bonds in the input molecule.")
+    mol = Chem.RemoveHs(mol)
+    Chem.SanitizeMol(mol)
 
     # set a property to indicate the atom positions that are missing
 
@@ -1178,17 +1209,23 @@ def extract_template_molecules_from_chains(
                 res_atom_type_indices = np.where(res_atom_positions.all(axis=-1))[1]
                 res_atom_elements = [
                     # NOTE: here, we treat the first character of each atom type as its element symbol
-                    res_constants.atom_types[idx][0]
+                    res_constants.element_types[idx]
                     for idx in res_atom_type_indices
                 ]
-                input_mol = create_mol_from_atom_positions_and_types(
+                mol = create_mol_from_atom_positions_and_types(
                     # NOTE: for now, we construct molecules without referencing the canonical
                     # ligand SMILES strings, which means there are no missing ligand atoms by design
                     res_atom_positions[res_atom_mask],
                     res_atom_elements,
                     missing_atom_indices=set(),
                 )
-                mol = AllChem.AssignBondOrdersFromTemplate(template_mol, input_mol)
+                try:
+                    mol = AllChem.AssignBondOrdersFromTemplate(template_mol, mol)
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to assign bond orders from the template ligand molecule for residue {res} due to: {e}. "
+                        "Skipping bond order assignment."
+                    )
                 res_index += mol.GetNumAtoms()
 
             # Polymer residues
@@ -1214,7 +1251,7 @@ def extract_template_molecules_from_chains(
                 # and gather the corresponding indices needed to remap these atoms
                 # from `atom47` atom type indexing to compact atom type indexing
                 # (e.g., mapping from `atom47` coordinates to `atom14` coordinates
-                # uniquely for each type of residue)
+                # uniquely for each type of amino acid residue)
 
                 res_atom_mapping = atom_mapping[res_type - res_constants.min_restype_num][
                     res_atom_mask
@@ -1249,6 +1286,9 @@ def extract_template_molecules_from_chains(
                 res_index += 1
 
             mol_seq.append(mol)
+            if chem_type == "ligand":
+                break
+
         molecules.extend(mol_seq)
 
     assert res_index == len(atom_positions), (
@@ -1306,6 +1346,7 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
     chain_seqs, chain_chem_types = extract_chain_sequences_from_chemical_components(
         chem_comp_details,
         biomol.chain_index,
+        biomol.residue_index,
     )
 
     # retrieve RDKit template molecules for the residues of each chain,

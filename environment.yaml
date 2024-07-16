@@ -10,6 +10,19 @@ dependencies:
   - aom=3.9.0=hac33072_0
   - argtable2=2.13=hd590300_1004
   - aria2=1.37.0=h347180d_1
+  - aws-c-auth=0.7.22=h9137712_5
+  - aws-c-cal=0.6.15=h88a6e22_0
+  - aws-c-common=0.9.19=h4ab18f5_0
+  - aws-c-compression=0.2.18=h83b837d_6
+  - aws-c-event-stream=0.4.2=h0cbf018_13
+  - aws-c-http=0.8.2=h360477d_2
+  - aws-c-io=0.14.9=h2d549f9_2
+  - aws-c-mqtt=0.10.4=hf85b563_6
+  - aws-c-s3=0.5.10=h679ed35_3
+  - aws-c-sdkutils=0.1.16=h83b837d_2
+  - aws-checksums=0.1.18=h83b837d_6
+  - awscli=2.17.9=py310hff52083_0
+  - awscrt=0.20.10=py310hd11f4a6_6
   - blas=2.116=mkl
   - blas-devel=3.9.0=16_linux64_mkl
   - brotli=1.1.0=hd590300_1
@@ -19,10 +32,13 @@ dependencies:
   - c-ares=1.28.1=hd590300_0
   - ca-certificates=2024.7.4=hbcca054_0
   - cairo=1.18.0=h3faef2a_0
-  - certifi=2024.6.2=pyhd8ed1ab_0
+  - certifi=2024.7.4=pyhd8ed1ab_0
+  - cffi=1.16.0=py310h2fee648_0
   - chardet=5.2.0=py310hff52083_1
   - charset-normalizer=3.3.2=pyhd8ed1ab_0
+  - colorama=0.4.6=pyhd8ed1ab_0
   - contourpy=1.2.1=py310hd41b1e2_0
+  - cryptography=40.0.2=py310h34c0648_0
   - cuda-cudart=11.8.89=0
   - cuda-cupti=11.8.87=0
   - cuda-libraries=11.8.0=0
@@ -32,6 +48,8 @@ dependencies:
   - cuda-version=12.5=3
   - cycler=0.12.1=pyhd8ed1ab_0
   - dav1d=1.2.1=hd590300_0
+  - distro=1.8.0=pyhd8ed1ab_0
+  - docutils=0.19=py310hff52083_1
   - expat=2.6.2=h59595ed_0
   - ffmpeg=7.0.1=gpl_hb399a10_100
   - font-ttf-dejavu-sans-mono=2.37=hab24e00_0
@@ -55,6 +73,7 @@ dependencies:
   - harfbuzz=8.5.0=hfac3d4d_0
   - icu=73.2=h59595ed_0
   - idna=3.7=pyhd8ed1ab_0
+  - jmespath=1.0.1=pyhd8ed1ab_0
   - kiwisolver=1.4.5=py310hd41b1e2_1
   - lame=3.100=h166bdaf_1003
   - lcms2=2.16=hb7c19ff_0
@@ -131,6 +150,7 @@ dependencies:
   - libzlib=1.2.13=hd590300_5
   - llvm-openmp=15.0.7=h0cdce71_0
   - markupsafe=2.1.5=py310h2372a71_0
+  - matplotlib-base=3.9.1=py310h0b1de36_0
   - mkl=2022.1.0=h84fe81f_915
   - mkl-devel=2022.1.0=ha770c72_916
   - mkl-include=2022.1.0=h84fe81f_915
@@ -151,9 +171,12 @@ dependencies:
   - perl=5.32.1=7_hd590300_perl5
   - pip=24.0=pyhd8ed1ab_0
   - pixman=0.43.2=h59595ed_0
+  - prompt_toolkit=3.0.38=hd8ed1ab_0
   - pthread-stubs=0.4=h36c2ea0_1001
   - pugixml=1.14=h59595ed_0
   - pycairo=1.26.0=py310hda9f760_0
+  - pycparser=2.22=pyhd8ed1ab_0
+  - pyopenssl=23.1.1=pyhd8ed1ab_0
   - pyparsing=3.1.2=pyhd8ed1ab_0
   - pysocks=1.7.1=pyha2e5f31_6
   - python=3.10.14=hd12c33a_0_cpython
@@ -164,10 +187,14 @@ dependencies:
   - pytorch-mutex=1.0=cuda
   - pytz=2024.1=pyhd8ed1ab_0
   - pyyaml=6.0.1=py310h2372a71_1
-  - rdkit=2024.03.2=py310h6f17f40_0
+  - qhull=2020.2=h434a139_5
+  - rdkit=2024.03.4=py310h5dbf55c_1
   - readline=8.2=h8228510_1
   - reportlab=4.1.0=py310h2372a71_0
   - rlpycairo=0.2.0=pyhd8ed1ab_0
+  - ruamel.yaml=0.17.21=py310h1fa729e_3
+  - ruamel.yaml.clib=0.2.7=py310h2372a71_2
+  - s2n=1.4.16=he19d79f_0
   - setuptools=70.0.0=pyhd8ed1ab_0
   - six=1.16.0=pyh6c4a22f_0
   - snappy=1.2.0=hdb0a2a9_1
@@ -180,7 +207,8 @@ dependencies:
   - torchvision=0.18.1=py310_cu118
   - tzdata=2024a=h0c530f3_0
   - unicodedata2=15.1.0=py310h2372a71_0
-  - urllib3=2.2.1=pyhd8ed1ab_0
+  - urllib3=1.26.19=pyhd8ed1ab_0
+  - wcwidth=0.2.13=pyhd8ed1ab_0
   - wheel=0.43.0=pyhd8ed1ab_1
   - x264=1!164.3095=h166bdaf_2
   - x265=3.5=h924138e_3
@@ -223,7 +251,6 @@ dependencies:
       - cliff==4.7.0
       - cmaes==0.10.0
       - cmd2==2.4.3
-      - colorama==0.4.6
       - colorlog==6.8.2
       - colt5-attention==0.11.0
       - comm==0.2.2
@@ -337,7 +364,6 @@ dependencies:
       - typing-extensions==4.9.0
       - url-normalize==1.4.3
       - virtualenv==20.26.2
-      - wcwidth==0.2.13
       - wget==3.2
       - wrapt==1.16.0
       - xarray==2024.3.0
