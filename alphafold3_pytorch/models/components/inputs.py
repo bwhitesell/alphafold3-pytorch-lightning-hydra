@@ -13,7 +13,9 @@ import torch
 import torch.nn.functional as F
 from pdbeccdutils.core import ccd_reader
 from rdkit import Chem
+from rdkit.Chem import AllChem, rdDetermineBonds
 from rdkit.Chem.rdchem import Atom, Mol
+from rdkit.Geometry import Point3D
 from torch import tensor
 
 from alphafold3_pytorch.common.biomolecule import (
@@ -986,33 +988,69 @@ def add_atom_positions_to_mol(
     atom_positions: np.ndarray,
     missing_atom_indices: Set[int],
 ) -> Mol:
-    """Add atom positions to an RDKit molecule's first conformer."""
+    """Add atom positions to an RDKit molecule's first conformer while accounting for missing atoms."""
     assert len(missing_atom_indices) <= mol.GetNumAtoms(), (
         f"The number of missing atom positions ({len(missing_atom_indices)}) and atoms in the RDKit molecule ({mol.GetNumAtoms()}) are not reconcilable. "
         "Please ensure that these input features are all correctly paired."
     )
 
-    atoms_to_remove = []
+    # set missing atom positions to (0, 0, 0) while preserving the order of the remaining atoms
+
     missing_atom_counter = 0
     conf = mol.GetConformer()
     for atom_idx in range(mol.GetNumAtoms()):
         if atom_idx in missing_atom_indices:
             conf.SetAtomPosition(atom_idx, (0.0, 0.0, 0.0))
-            atoms_to_remove.append(atom_idx)
             missing_atom_counter += 1
         else:
             conf.SetAtomPosition(atom_idx, atom_positions[atom_idx - missing_atom_counter])
 
-    # remove atoms (and their bonds) that do not have a valid position
-    rw_mol = Chem.RWMol(mol)
-    atoms_to_remove = sorted(atoms_to_remove, reverse=True)
-    for idx in atoms_to_remove:
-        atom = rw_mol.GetAtomWithIdx(idx)
-        bonds = list(atom.GetBonds())
-        for bond in bonds:
-            rw_mol.RemoveBond(bond.GetBeginAtomIdx(), bond.GetEndAtomIdx())
-        rw_mol.RemoveAtom(idx)
-    mol = rw_mol.GetMol()
+    # set a property to indicate the atom positions that are missing
+
+    mol.SetProp("missing_atom_indices", ",".join(map(str, sorted(missing_atom_indices))))
+
+    return mol
+
+
+def create_mol_from_atom_positions_and_types(
+    atom_positions: np.ndarray, element_types: List[str], missing_atom_indices: Set[int]
+) -> Mol:
+    """
+    Create an RDKit molecule from a NumPy array of atom positions and a list of their element types.
+
+    :param atom_positions: A NumPy array of shape (num_atoms, 3) containing the 3D coordinates of each atom.
+    :param element_types: A list of element symbols for each atom in the molecule.
+    :param missing_atom_indices: A set of atom indices that are missing from the atom_positions array.
+    :return: An RDKit molecule with the specified atom positions and element types.
+    """
+    if len(atom_positions) != len(element_types):
+        raise ValueError("The length of atom_elements and xyz_coordinates must be the same.")
+
+    # populate an empty editable molecule
+
+    mol = Chem.RWMol()
+
+    for element_type in element_types:
+        atom = Chem.Atom(element_type)
+        mol.AddAtom(atom)
+
+    # set 3D coordinates
+
+    conf = Chem.Conformer(mol.GetNumAtoms())
+    for i, (x, y, z) in enumerate(atom_positions):
+        conf.SetAtomPosition(i, Point3D(x, y, z))
+
+    mol.AddConformer(conf)
+
+    # finalize molecule
+
+    for atom in mol.GetAtoms():
+        atom.SetFormalCharge(0)
+    rdDetermineBonds.DetermineBonds(mol, charge=0)
+
+    # set a property to indicate the atom positions that are missing
+
+    mol.SetProp("missing_atom_indices", ",".join(map(str, sorted(missing_atom_indices))))
 
     return mol
 
@@ -1021,18 +1059,25 @@ def add_atom_positions_to_mol(
 def extract_template_molecules_from_chains(
     chain_seqs: List[str],
     chain_chem_types: List[RESIDUE_MOLECULE_TYPE],
+    chain_index: np.ndarray,
+    residue_index: np.ndarray,
     residue_types: np.ndarray,
     atom_positions: np.ndarray,
     atom_mask: np.ndarray,
     mol_keyname: str = "rdchem_mol",
 ) -> List[Mol]:
-    """Extract RDKit template molecules for the residues of each chain."""
+    """
+    Extract RDKit template molecules for the residues of each chain.
+
+    NOTE: Missing atom indices are marked as a comma-separated property string for each RDKit molecule
+    and can be retrieved via `mol.GetProp('missing_atom_indices')`.
+    """
     assert len(chain_seqs) == len(chain_chem_types), (
         f"The number of chain sequences ({len(chain_seqs)}) and chain chemical types ({len(chain_chem_types)}) do not match. "
         "Please ensure that these input features are all correctly paired."
     )
-    assert len(residue_types) == len(atom_positions), (
-        f"The number of residue types ({len(residue_types)}) and atom positions ({len(atom_positions)}) do not match. "
+    assert len(chain_index) == len(residue_index) == len(residue_types) == len(atom_positions), (
+        f"The number of chain indices ({len(chain_index)}), residue indices ({len(residue_index)}), residue types ({len(residue_types)}), and atom positions ({len(atom_positions)}) do not match. "
         "Please ensure that these input features are correctly paired."
     )
     assert atom_positions.shape[:-1] == atom_mask.shape, (
@@ -1068,26 +1113,47 @@ def extract_template_molecules_from_chains(
 
         mol_seq = []
         for res in seq:
+            # Ligand residues
             if chem_type == "ligand":
                 if seq not in seq_mapping:
                     raise ValueError(
                         f"Could not locate the PDB CCD's SMILES string for ligand residue: {seq}"
                     )
-                mol = mol_from_smile(seq_mapping[seq])
-                res_type = residue_types[res_index : res_index + mol.GetNumAtoms()]
-                res_atom_mapping = atom_mapping[res_type - res_constants.min_restype_num]
-                res_atom_positions = atom_positions[res_index : res_index + mol.GetNumAtoms()][
-                    res_atom_mapping
-                ]
-                res_atom_mask = atom_mask[res_index : res_index + mol.GetNumAtoms()][
-                    res_atom_mapping
-                ]
-                mol = add_atom_positions_to_mol(
-                    mol,
-                    res_atom_positions.reshape(-1, 3),
-                    res_atom_mask.reshape(-1),
+
+                # construct template ligand molecule for post-mapping bond orders
+
+                smile = seq_mapping[seq]
+                template_mol = mol_from_smile(smile)
+
+                # find all atom positions and masks for the current ligand residue
+
+                res_residue_index = residue_index[res_index]
+                res_chain_index = chain_index[res_index]
+                res_ligand_atom_mask = (residue_index == res_residue_index) & (
+                    chain_index == res_chain_index
                 )
+                res_atom_positions = atom_positions[res_ligand_atom_mask]
+                res_atom_mask = atom_mask[res_ligand_atom_mask]
+
+                # manually construct an RDKit molecule from the ligand residue's atom positions and types
+
+                res_atom_type_indices = np.where(res_atom_positions.all(axis=-1))[1]
+                res_atom_elements = [
+                    # NOTE: here, we treat the first character of each atom type as its element symbol
+                    res_constants.atom_types[idx][0]
+                    for idx in res_atom_type_indices
+                ]
+                input_mol = create_mol_from_atom_positions_and_types(
+                    # NOTE: for now, we construct molecules without referencing the canonical
+                    # ligand SMILES strings, which means there are no missing ligand atoms by design
+                    res_atom_positions[res_atom_mask],
+                    res_atom_elements,
+                    missing_atom_indices=set(),
+                )
+                mol = AllChem.AssignBondOrdersFromTemplate(template_mol, input_mol)
                 res_index += mol.GetNumAtoms()
+
+            # Polymer residues
             else:
                 mol = copy.deepcopy(seq_mapping[res][mol_keyname])
 
@@ -1143,6 +1209,7 @@ def extract_template_molecules_from_chains(
                     missing_atom_indices,
                 )
                 res_index += 1
+
             mol_seq.append(mol)
         molecules.extend(mol_seq)
 
@@ -1208,6 +1275,8 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
     molecules = extract_template_molecules_from_chains(
         chain_seqs,
         chain_chem_types,
+        biomol.chain_index,
+        biomol.residue_index,
         biomol.restype,
         biomol.atom_positions,
         atom_mask,

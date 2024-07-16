@@ -258,13 +258,18 @@ def get_ligand_atom_name(atom_name: str, atom_types_set: Set[str]) -> str:
     elif len(atom_name) == 2:
         return atom_name if atom_name in atom_types_set else atom_name[0]
     elif len(atom_name) == 3:
-        return (
-            atom_name
-            if atom_name in atom_types_set
-            else (
-                atom_name[:2] if atom_name[:2] in atom_types_set else atom_name[0] + atom_name[2]
-            )
-        )
+        if atom_name in atom_types_set:
+            return atom_name
+        elif atom_name[:2] in atom_types_set:
+            return atom_name[:2]
+        elif atom_name[1:] in atom_types_set:
+            return atom_name[1:]
+        elif atom_name[0] + atom_name[2] in atom_types_set:
+            return atom_name[0] + atom_name[2]
+        elif atom_name.split("H")[0] in atom_types_set:
+            return atom_name.split("H")[0]
+        else:
+            return atom_name
     else:
         return atom_name
 
