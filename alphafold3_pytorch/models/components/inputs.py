@@ -1361,6 +1361,25 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
         atom_mask,
     )
 
+    # handle missing atom indices
+
+    missing_atom_indices = None
+    molecules_missing_atom_indices = [
+        [int(idx) for idx in mol.GetProp("missing_atom_indices").split(",") if idx]
+        for mol in molecules
+    ]
+
+    if any(molecules_missing_atom_indices):
+        missing_atom_indices = []
+
+        for mol_miss_atom_indices in molecules_missing_atom_indices:
+            mol_miss_atom_indices = default(mol_miss_atom_indices, [])
+            mol_miss_atom_indices = tensor(mol_miss_atom_indices, dtype=torch.long)
+
+            missing_atom_indices.append(mol_miss_atom_indices)
+
+        assert len(molecules) == len(missing_atom_indices)
+
     # TODO: reference bonds from `biomol` instead of instantiating them within `Alphafold3Input`
 
     # TODO: ensure only polymer-ligand (e.g., protein/RNA/DNA-ligand) and ligand-ligand bonds
@@ -1388,6 +1407,7 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
         additional_molecule_feats=additional_molecule_feats,
         additional_token_feats=default(additional_token_feats, torch.zeros(num_tokens, 2)),
         is_molecule_types=is_molecule_types,
+        missing_atom_indices=missing_atom_indices,
         atom_pos=atom_pos,
         templates=templates,
         msa=msa,
