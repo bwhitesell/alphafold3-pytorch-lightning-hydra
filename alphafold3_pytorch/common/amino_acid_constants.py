@@ -111,6 +111,7 @@ restype_1to3 = {
     "W": "TRP",
     "Y": "TYR",
     "V": "VAL",
+    "X": "UNK",
 }
 
 BIOMOLECULE_CHAIN: Final[str] = "polypeptide(L)"

@@ -72,7 +72,7 @@ restype_order = {restype: min_restype_num + i for i, restype in enumerate(restyp
 restype_num = min_restype_num + len(restypes)  # := 21 + 4 := 25.
 
 
-restype_1to3 = {"A": "A", "C": "C", "G": "G", "U": "U"}
+restype_1to3 = {"A": "A", "C": "C", "G": "G", "U": "U", "X": "N"}
 
 BIOMOLECULE_CHAIN: Final[str] = "polyribonucleotide"
 POLYMER_CHAIN: Final[str] = "polymer"

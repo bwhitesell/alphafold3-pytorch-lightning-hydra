@@ -79,6 +79,7 @@ restype_1to3 = {
     "C": "DC",
     "G": "DG",
     "T": "DT",
+    "X": "DN",
 }
 
 BIOMOLECULE_CHAIN: Final[str] = "polydeoxyribonucleotide"
