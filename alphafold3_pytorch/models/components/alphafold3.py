@@ -3880,6 +3880,8 @@ class Alphafold3(Module):
                 sampled_atom_pos = einx.where(
                     "b m, b m c, -> b m c", atom_mask, sampled_atom_pos, 0.0
                 )
+            if exists(missing_atom_mask):
+                sampled_atom_pos = sampled_atom_pos[~missing_atom_mask]
 
             return sampled_atom_pos
 

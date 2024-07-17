@@ -212,6 +212,7 @@ class MoleculeInput:
     molecule_atom_indices: List[int | None] | None = None  # type: ignore
     distogram_atom_indices: List[int | None] | None = None  # type: ignore
     missing_atom_indices: List[Int[" _"] | None] | None = None  # type: ignore
+    missing_token_indices: List[Int[" _"] | None] | None = None  # type: ignore
     atom_parent_ids: Int[" m"] | None = None  # type: ignore
     additional_token_feats: Float["n dtf"] | None = None  # type: ignore
     templates: Float["t n n dt"] | None = None  # type: ignore
@@ -292,11 +293,20 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
 
     missing_atom_mask = None
     missing_atom_indices = None
+    missing_token_indices = None
 
     if exists(i.missing_atom_indices) and len(i.missing_atom_indices) > 0:
+        assert len(molecules) == len(
+            i.missing_atom_indices
+        ), f"{len(i.missing_atom_indices)} missing atom indices does not match the number of molecules given ({len(molecules)})"
+
         missing_atom_indices: List[Int[" _"]] = [  # type: ignore
             default(indices, torch.empty((0,), dtype=torch.long))
             for indices in i.missing_atom_indices
+        ]
+        missing_token_indices: List[Int[" _"]] = [  # type: ignore
+            default(indices, torch.empty((0,), dtype=torch.long))
+            for indices in i.missing_token_indices
         ]
 
         missing_atom_mask: List[Bool[" _"]] = []  # type: ignore
@@ -311,8 +321,13 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
 
         missing_atom_mask = torch.cat(missing_atom_mask)
 
-        missing_atom_indices = pad_sequence(
-            missing_atom_indices, batch_first=True, padding_value=-1
+        missing_token_indices = pad_sequence(
+            # NOTE: padding value must be any negative integer besides -1,
+            # to not erroneously detect "missing" token center/distogram atoms
+            # within ligands
+            missing_token_indices,
+            batch_first=True,
+            padding_value=-2,
         )
 
     # handle maybe atompair embeds
@@ -343,20 +358,18 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
         prev_mol = None
         prev_src_tgt_atom_indices = None
 
-        for idx, (
+        for (
             mol,
             is_first_mol_in_chain,
             is_chainable_biomolecule,
             src_tgt_atom_indices,
             offset,
-        ) in enumerate(
-            zip(
-                molecules,
-                is_first_mol_in_chains,
-                is_chainable_biomolecules,
-                i.src_tgt_atom_indices,
-                offsets,
-            )
+        ) in zip(
+            molecules,
+            is_first_mol_in_chains,
+            is_chainable_biomolecules,
+            i.src_tgt_atom_indices,
+            offsets,
         ):
             coordinates = []
             updates = []
@@ -451,12 +464,12 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
     molecule_atom_indices = i.molecule_atom_indices
     distogram_atom_indices = i.distogram_atom_indices
 
-    if exists(missing_atom_indices):
+    if exists(missing_token_indices):
         is_missing_molecule_atom = einx.equal(
-            "n missing, n -> n missing", missing_atom_indices, molecule_atom_indices
+            "n missing, n -> n missing", missing_token_indices, molecule_atom_indices
         ).any(dim=-1)
         is_missing_distogram_atom = einx.equal(
-            "n missing, n -> n missing", missing_atom_indices, distogram_atom_indices
+            "n missing, n -> n missing", missing_token_indices, distogram_atom_indices
         ).any(dim=-1)
 
         molecule_atom_indices = molecule_atom_indices.masked_fill(is_missing_molecule_atom, -1)
@@ -751,12 +764,15 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
     molecule_types_lens_cumsum = tensor([0, *molecule_type_token_lens]).cumsum(dim=-1)
     left, right = molecule_types_lens_cumsum[:-1], molecule_types_lens_cumsum[1:]
 
+    # TODO: fix bug that may leave molecules with no assigned type
     is_molecule_types = (arange >= left) & (arange < right)
 
     # all molecules, layout is
     # proteins | ss rna | ss dna | ligands | metal ions
 
     molecules = [*molecules_without_ligands, *mol_ligands, *mol_metal_ions]
+    for mol in molecules:
+        Chem.SanitizeMol(mol)
 
     token_pool_lens = [
         *molecule_token_pool_lens_without_ligands,
@@ -811,6 +827,7 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
     # handle molecule ids
 
     molecule_ids = torch.cat(molecule_ids).long()
+    # TODO: do not pad this with zeros anymore, as it will mistakenly treat padded tokens as `ALA`
     molecule_ids = pad_to_len(molecule_ids, num_tokens)
 
     # handle atom_parent_ids
@@ -934,17 +951,29 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
     # handle missing atom indices
 
     missing_atom_indices = None
+    missing_token_indices = None
 
     if exists(i.missing_atom_indices) and len(i.missing_atom_indices) > 0:
         missing_atom_indices = []
+        missing_token_indices = []
 
-        for mol_miss_atom_indices in i.missing_atom_indices:
+        for mol_index, (mol_miss_atom_indices, mol) in enumerate(
+            zip(i.missing_atom_indices, molecules)
+        ):
+            is_ligand_residue = is_molecule_types[mol_index, -1].item()
             mol_miss_atom_indices = default(mol_miss_atom_indices, [])
             mol_miss_atom_indices = tensor(mol_miss_atom_indices, dtype=torch.long)
 
             missing_atom_indices.append(mol_miss_atom_indices)
+            if is_ligand_residue:
+                missing_token_indices.extend(
+                    [mol_miss_atom_indices for _ in range(mol.GetNumAtoms())]
+                )
+            else:
+                missing_token_indices.append(mol_miss_atom_indices)
 
         assert len(molecules) == len(missing_atom_indices)
+        assert len(missing_token_indices) == num_tokens
 
     # create molecule input
 
@@ -959,6 +988,7 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
         additional_token_feats=default(i.additional_token_feats, torch.zeros(num_tokens, 2)),
         is_molecule_types=is_molecule_types,
         missing_atom_indices=missing_atom_indices,
+        missing_token_indices=missing_token_indices,
         src_tgt_atom_indices=src_tgt_atom_indices,
         atom_pos=atom_pos,
         templates=i.templates,
@@ -1373,7 +1403,7 @@ def get_token_index_from_composite_atom_id(
 
 
 @typecheck
-def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
+def pdb_input_to_molecule_input(pdb_input: PDBInput, training: bool = True) -> MoleculeInput:
     """Convert a PDBInput to a MoleculeInput."""
     i = pdb_input
 
@@ -1410,7 +1440,8 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
     # retrieve is_molecule_types from the `Biomolecule` object, which is a boolean tensor of shape [*, 4]
     # is_protein | is_rna | is_dna | is_ligand
     # this is needed for their special diffusion loss
-    is_molecule_types = F.one_hot(torch.from_numpy(biomol.chemtype), num_classes=4).bool()
+    n_one_hot = 4
+    is_molecule_types = F.one_hot(torch.from_numpy(biomol.chemtype), num_classes=n_one_hot).bool()
 
     # manually derive remaining features using the `Biomolecule` object
 
@@ -1442,6 +1473,10 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
             # NOTE: in the paper, they treat each atom of the ligands as a token
             token_pool_lens.extend([1] * num_atoms)
             molecule_atom_types.extend([mol_type] * num_atoms)
+            # ensure modified polymer residues are one-hot encoded as ligands
+            # TODO: double-check whether this handling of modified polymer residues makes sense
+            is_molecule_types[molecule_idx : molecule_idx + num_atoms, : n_one_hot - 1] = False
+            is_molecule_types[molecule_idx : molecule_idx + num_atoms, n_one_hot - 1] = True
             if num_atoms == 1:
                 # NOTE: we manually set the molecule ID of ions to the `gap` ID
                 molecule_ids[molecule_idx] = gap_id
@@ -1537,10 +1572,13 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
             ligand_offset += chain_len
 
     # ensure mmCIF polymer-ligand (i.e., protein/RNA/DNA-ligand) and ligand-ligand bonds
-    # (and bonds less than 2.4 Å) are installed in `MoleculeInput` during training only
+    # (and bonds less than 2.4 Å) are installed in `MoleculeInput` during training onlytraining
     # per the AF3 supplement (Table 5, `token_bonds`)
     bond_atom_indices = defaultdict(int)
     for bond in biomol.bonds:
+        if not training:
+            continue
+
         # determine bond type
 
         ptnr1_is_polymer = any(
@@ -1664,6 +1702,7 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
 
     # handle missing atom indices
     missing_atom_indices = None
+    missing_token_indices = None
     molecules_missing_atom_indices = [
         [int(idx) for idx in mol.GetProp("missing_atom_indices").split(",") if idx]
         for mol in molecules
@@ -1671,12 +1710,21 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
 
     if any(molecules_missing_atom_indices):
         missing_atom_indices = []
+        missing_token_indices = []
 
-        for mol_miss_atom_indices in molecules_missing_atom_indices:
+        for mol_miss_atom_indices, mol, mol_type in zip(
+            molecules_missing_atom_indices, molecules, molecule_types
+        ):
             mol_miss_atom_indices = default(mol_miss_atom_indices, [])
             mol_miss_atom_indices = tensor(mol_miss_atom_indices, dtype=torch.long)
 
             missing_atom_indices.append(mol_miss_atom_indices)
+            if mol_type == "ligand":
+                missing_token_indices.extend(
+                    [mol_miss_atom_indices for _ in range(mol.GetNumAtoms())]
+                )
+            else:
+                missing_token_indices.append(mol_miss_atom_indices)
 
         assert len(molecules) == len(missing_atom_indices)
 
@@ -1721,6 +1769,7 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
         additional_token_feats=default(additional_token_feats, torch.zeros(num_tokens, 2)),
         is_molecule_types=is_molecule_types,
         missing_atom_indices=missing_atom_indices,
+        missing_token_indices=missing_token_indices,
         src_tgt_atom_indices=src_tgt_atom_indices,
         atom_pos=atom_pos,
         templates=templates,

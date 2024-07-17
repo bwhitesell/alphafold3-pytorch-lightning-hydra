@@ -18,7 +18,7 @@ from alphafold3_pytorch.models.components.inputs import (
     PDBInput,
     maybe_transform_to_atom_inputs,
 )
-from alphafold3_pytorch.utils.model_utils import pad_at_dim, pad_or_slice_to
+from alphafold3_pytorch.utils.model_utils import pad_at_dim
 from alphafold3_pytorch.utils.tensor_typing import typecheck
 from alphafold3_pytorch.utils.utils import exists
 

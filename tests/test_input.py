@@ -12,129 +12,120 @@ from alphafold3_pytorch.data.life import reverse_complement, reverse_complement_
 from alphafold3_pytorch.models.components.alphafold3 import Alphafold3
 from alphafold3_pytorch.models.components.inputs import Alphafold3Input, PDBInput
 
-
-def test_string_reverse_complement():
-    """Test the reverse complement function."""
-    pytest.skip()
-    assert reverse_complement("ATCG") == "CGAT"
-    assert reverse_complement("AUCG", "rna") == "CGAU"
+# def test_string_reverse_complement():
+#     """Test the reverse complement function."""
+#     assert reverse_complement("ATCG") == "CGAT"
+#     assert reverse_complement("AUCG", "rna") == "CGAU"
 
 
-def test_tensor_reverse_complement():
-    """Test the reverse complement tensor function."""
-    pytest.skip()
-    seq = torch.randint(0, 5, (100,))
-    rc = reverse_complement_tensor(seq)
-    assert torch.allclose(reverse_complement_tensor(rc), seq)
+# def test_tensor_reverse_complement():
+#     """Test the reverse complement tensor function."""
+#     seq = torch.randint(0, 5, (100,))
+#     rc = reverse_complement_tensor(seq)
+#     assert torch.allclose(reverse_complement_tensor(rc), seq)
 
 
-@pytest.mark.parametrize("directed_bonds", (False, True))
-def test_alphafold3_input(directed_bonds):
-    """Test the Alphafold3Input class, particularly its input transformations."""
-    pytest.skip()
-    alphafold3_input = Alphafold3Input(
-        proteins=[
-            "MLEICLKLVGCKSKKGLSSSSSCYLEEALQRPVASDF",
-            "MGKCRGLRTARKLRSHRRDQKWHDKQYKKAHLGTALKANPFGGASHAKGIVLEKVGVEAKQPNSAIRKCVRVQLIKNGKKITAFVPNDGCLNFIEENDEVLVAGFGRKGHAVGDIPGVRFKVVKVANVSLLALYKGKKERPRS",
-        ],
-        ds_dna=["ACGTT"],
-        ds_rna=["GCCAU", "CCAGU"],
-        ss_dna=["GCCTA"],
-        ss_rna=["CGCAUA"],
-        metal_ions=["Na", "Na", "Fe"],
-        misc_molecule_ids=["Phospholipid"],
-        ligands=["CC1=C(C=C(C=C1)NC(=O)C2=CC=C(C=C2)CN3CCN(CC3)C)NC4=NC=CC(=N4)C5=CN=CC=C5"],
-        add_atom_ids=True,
-        add_atompair_ids=True,
-        directed_bonds=directed_bonds,
-    )
+# @pytest.mark.parametrize("directed_bonds", (False, True))
+# def test_alphafold3_input(directed_bonds):
+#     """Test the Alphafold3Input class, particularly its input transformations."""
+#     alphafold3_input = Alphafold3Input(
+#         proteins=[
+#             "MLEICLKLVGCKSKKGLSSSSSCYLEEALQRPVASDF",
+#             "MGKCRGLRTARKLRSHRRDQKWHDKQYKKAHLGTALKANPFGGASHAKGIVLEKVGVEAKQPNSAIRKCVRVQLIKNGKKITAFVPNDGCLNFIEENDEVLVAGFGRKGHAVGDIPGVRFKVVKVANVSLLALYKGKKERPRS",
+#         ],
+#         ds_dna=["ACGTT"],
+#         ds_rna=["GCCAU", "CCAGU"],
+#         ss_dna=["GCCTA"],
+#         ss_rna=["CGCAUA"],
+#         metal_ions=["Na", "Na", "Fe"],
+#         misc_molecule_ids=["Phospholipid"],
+#         ligands=["CC1=C(C=C(C=C1)NC(=O)C2=CC=C(C=C2)CN3CCN(CC3)C)NC4=NC=CC(=N4)C5=CN=CC=C5"],
+#         add_atom_ids=True,
+#         add_atompair_ids=True,
+#         directed_bonds=directed_bonds,
+#     )
 
-    batched_atom_input = alphafold3_inputs_to_batched_atom_input(alphafold3_input)
+#     batched_atom_input = alphafold3_inputs_to_batched_atom_input(alphafold3_input)
 
-    # feed it into alphafold3
+#     # feed it into alphafold3
 
-    num_atom_bond_types = 6 * (2 if directed_bonds else 1)
+#     num_atom_bond_types = 6 * (2 if directed_bonds else 1)
 
-    alphafold3 = Alphafold3(
-        dim_atom_inputs=3,
-        dim_atompair_inputs=1,
-        num_atom_embeds=47,
-        num_atompair_embeds=num_atom_bond_types + 1,  # 0 is for no bond
-        atoms_per_window=27,
-        dim_template_feats=44,
-        num_dist_bins=38,
-        confidence_head_kwargs=dict(pairformer_depth=1),
-        template_embedder_kwargs=dict(pairformer_stack_depth=1),
-        msa_module_kwargs=dict(depth=1),
-        pairformer_stack=dict(depth=2),
-        diffusion_module_kwargs=dict(
-            atom_encoder_depth=1,
-            token_transformer_depth=1,
-            atom_decoder_depth=1,
-        ),
-    )
+#     alphafold3 = Alphafold3(
+#         dim_atom_inputs=3,
+#         dim_atompair_inputs=1,
+#         num_atom_embeds=47,
+#         num_atompair_embeds=num_atom_bond_types + 1,  # 0 is for no bond
+#         atoms_per_window=27,
+#         dim_template_feats=44,
+#         num_dist_bins=38,
+#         confidence_head_kwargs=dict(pairformer_depth=1),
+#         template_embedder_kwargs=dict(pairformer_stack_depth=1),
+#         msa_module_kwargs=dict(depth=1),
+#         pairformer_stack=dict(depth=2),
+#         diffusion_module_kwargs=dict(
+#             atom_encoder_depth=1,
+#             token_transformer_depth=1,
+#             atom_decoder_depth=1,
+#         ),
+#     )
 
-    alphafold3(**batched_atom_input.dict(), num_sample_steps=1)
+#     alphafold3(**batched_atom_input.dict(), num_sample_steps=1)
 
 
-def test_alphafold3_atompos_input():
-    """Test the Alphafold3Input class, particularly its input transformations with atom positions."""
-    pytest.skip()
-    contrived_protein = "AG"
+# def test_alphafold3_atompos_input():
+#     """Test the Alphafold3Input class, particularly its input transformations with atom positions."""
+#     contrived_protein = "AG"
 
-    mock_atompos = [
-        torch.randn(5, 3),  # alanine has 5 non-hydrogen atoms
-        torch.randn(4, 3),  # glycine has 4 non-hydrogen atoms
-    ]
+#     mock_atompos = [
+#         torch.randn(5, 3),  # alanine has 5 non-hydrogen atoms
+#         torch.randn(4, 3),  # glycine has 4 non-hydrogen atoms
+#     ]
 
-    train_alphafold3_input = Alphafold3Input(proteins=[contrived_protein], atom_pos=mock_atompos)
+#     train_alphafold3_input = Alphafold3Input(proteins=[contrived_protein], atom_pos=mock_atompos)
 
-    eval_alphafold3_input = Alphafold3Input(proteins=[contrived_protein])
+#     eval_alphafold3_input = Alphafold3Input(proteins=[contrived_protein])
 
-    batched_atom_input = alphafold3_inputs_to_batched_atom_input(
-        train_alphafold3_input, atoms_per_window=27
-    )
+#     batched_atom_input = alphafold3_inputs_to_batched_atom_input(
+#         train_alphafold3_input, atoms_per_window=27
+#     )
 
-    # training
+#     # training
 
-    alphafold3 = Alphafold3(
-        dim_atom_inputs=3,
-        dim_atompair_inputs=1,
-        atoms_per_window=27,
-        dim_template_feats=44,
-        num_dist_bins=38,
-        confidence_head_kwargs=dict(pairformer_depth=1),
-        template_embedder_kwargs=dict(pairformer_stack_depth=1),
-        msa_module_kwargs=dict(depth=1),
-        pairformer_stack=dict(depth=2),
-        diffusion_module_kwargs=dict(
-            atom_encoder_depth=1,
-            token_transformer_depth=1,
-            atom_decoder_depth=1,
-        ),
-    )
+#     alphafold3 = Alphafold3(
+#         dim_atom_inputs=3,
+#         dim_atompair_inputs=1,
+#         atoms_per_window=27,
+#         dim_template_feats=44,
+#         num_dist_bins=38,
+#         confidence_head_kwargs=dict(pairformer_depth=1),
+#         template_embedder_kwargs=dict(pairformer_stack_depth=1),
+#         msa_module_kwargs=dict(depth=1),
+#         pairformer_stack=dict(depth=2),
+#         diffusion_module_kwargs=dict(
+#             atom_encoder_depth=1,
+#             token_transformer_depth=1,
+#             atom_decoder_depth=1,
+#         ),
+#     )
 
-    loss = alphafold3(**batched_atom_input.dict())
-    loss.backward()
+#     loss = alphafold3(**batched_atom_input.dict())
+#     loss.backward()
 
-    # sampling
+#     # sampling
 
-    batched_eval_atom_input = alphafold3_inputs_to_batched_atom_input(
-        eval_alphafold3_input, atoms_per_window=27
-    )
+#     batched_eval_atom_input = alphafold3_inputs_to_batched_atom_input(
+#         eval_alphafold3_input, atoms_per_window=27
+#     )
 
-    alphafold3.eval()
-    sampled_atom_pos = alphafold3(**batched_eval_atom_input.dict())
+#     alphafold3.eval()
+#     sampled_atom_pos = alphafold3(**batched_eval_atom_input.dict(), return_loss=False)
 
-    assert sampled_atom_pos.shape == (1, (5 + 4), 3)
+#     assert sampled_atom_pos.shape == (1, (5 + 4), 3)
 
 
 def test_pdbinput_input():
-    # """Test the PDBInput class, particularly its input transformations for mmCIF files."""
-    # pytest.skip(
-    #     "This unit test is currently disabled while the PDB featurization pipeline is under development."
-    # )
-
+    """Test the PDBInput class, particularly its input transformations for mmCIF files."""
     filepath = os.path.join("data", "test", "7a4d-assembly1.cif")
     file_id = os.path.splitext(os.path.basename(filepath))[0]
     assert os.path.exists(filepath)
@@ -175,7 +166,7 @@ def test_pdbinput_input():
     batched_eval_atom_input = pdb_inputs_to_batched_atom_input(eval_pdb_input, atoms_per_window=27)
 
     alphafold3.eval()
-    sampled_atom_pos = alphafold3(**batched_eval_atom_input.dict())
+    sampled_atom_pos = alphafold3(**batched_eval_atom_input.dict(), return_loss=False)
 
     assert sampled_atom_pos.shape == (1, 4155, 3)
 
