@@ -841,11 +841,11 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
     # which is in turn used to derive relative positions
     # (todo) offer a way to precompute relative positions at data prep
 
-    # residue_index - reuse molecular_ids here
+    # residue_index - an arange that restarts at 1 for each chain
     # token_index   - just an arange
-    # asym_id       - unique id for each chain of a biomolecule type
-    # entity_id     - unique id for each biomolecule - multimeric protein, ds dna
-    # sym_id        - unique id for each chain within each biomolecule
+    # asym_id       - unique id for each chain of a biomolecule
+    # entity_id     - unique id for each biomolecule sequence
+    # sym_id        - unique id for each chain of the same biomolecule sequence
 
     num_protein_tokens = [len(protein) for protein in proteins]
     num_ss_rna_tokens = [len(rna) for rna in ss_rnas]
@@ -862,62 +862,50 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
         ]
     )
 
+    # residue ids
+
+    residue_index = torch.cat([torch.arange(i) for i in token_repeats])
+
+    # asym ids
+
     asym_ids = torch.repeat_interleave(torch.arange(len(token_repeats)), token_repeats)
 
     # entity ids
 
-    unrepeated_entity_ids = tensor(
-        [
-            0,
-            *[*range(len(i.ss_rna))],
-            *[*range(len(i.ds_rna))],
-            *[*range(len(i.ss_dna))],
-            *[*range(len(i.ds_dna))],
-            *([1] * len(mol_ligands)),
-            1,
-        ]
-    ).cumsum(dim=-1)
+    unrepeated_entity_sequences = defaultdict(int)
+    for entity_sequence in (*proteins, *ss_rnas, *ss_dnas, *ligands, *metal_ions):
+        if entity_sequence in unrepeated_entity_sequences:
+            continue
+        unrepeated_entity_sequences[entity_sequence] = len(unrepeated_entity_sequences)
+    unrepeated_entity_ids = list(unrepeated_entity_sequences.values())
 
     entity_id_counts = [
-        sum(num_protein_tokens),
-        *[len(rna) for rna in i.ss_rna],
-        *[len(rna) * 2 for rna in i.ds_rna],
-        *[len(dna) for dna in i.ss_dna],
-        *[len(dna) * 2 for dna in i.ds_dna],
-        *num_ligand_tokens,
-        num_metal_ions,
-    ]
-
-    entity_ids = torch.repeat_interleave(unrepeated_entity_ids, tensor(entity_id_counts))
-
-    # sym_id
-
-    unrepeated_sym_ids = [
-        *[*range(len(i.proteins))],
-        *[*range(len(i.ss_rna))],
-        *[i for _ in i.ds_rna for i in range(2)],
-        *[*range(len(i.ss_dna))],
-        *[i for _ in i.ds_dna for i in range(2)],
-        *([0] * len(mol_ligands)),
-        0,
-    ]
-
-    sym_id_counts = [
         *num_protein_tokens,
         *[len(rna) for rna in i.ss_rna],
-        *flatten([((len(rna),) * 2) for rna in i.ds_rna]),
+        *[len(rna) for rna in i.ds_rna for _ in range(2)],
         *[len(dna) for dna in i.ss_dna],
-        *flatten([((len(dna),) * 2) for dna in i.ds_dna]),
+        *[len(dna) for dna in i.ds_dna for _ in range(2)],
         *num_ligand_tokens,
-        num_metal_ions,
+        *[1 for _ in metal_ions],
     ]
 
-    sym_ids = torch.repeat_interleave(tensor(unrepeated_sym_ids), tensor(sym_id_counts))
+    entity_ids = torch.repeat_interleave(tensor(unrepeated_entity_ids), tensor(entity_id_counts))
+
+    # sym ids
+
+    unrepeated_sym_ids = []
+    unrepeated_sym_sequences = defaultdict(int)
+    for entity_sequence in (*proteins, *ss_rnas, *ss_dnas, *ligands, *metal_ions):
+        unrepeated_sym_ids.append(unrepeated_sym_sequences[entity_sequence])
+        if entity_sequence in unrepeated_sym_sequences:
+            unrepeated_sym_sequences[entity_sequence] += 1
+
+    sym_ids = torch.repeat_interleave(tensor(unrepeated_sym_ids), tensor(entity_id_counts))
 
     # concat for all of additional_molecule_feats
 
     additional_molecule_feats = torch.stack(
-        (molecule_ids, torch.arange(num_tokens), asym_ids, entity_ids, sym_ids), dim=-1
+        (residue_index, torch.arange(num_tokens), asym_ids, entity_ids, sym_ids), dim=-1
     )
 
     # distogram and token centre atom indices
@@ -1590,6 +1578,64 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
             token_bonds[col_idx, row_idx] = True
             bond_atom_indices[ptnr1_atom_id] += 1
             bond_atom_indices[ptnr2_atom_id] += 1
+
+    # constructing the additional_molecule_feats
+    # which is in turn used to derive relative positions
+
+    # residue_index - an arange that restarts at 1 for each chain - reuse biomol.residue_index here
+    # token_index   - just an arange
+    # asym_id       - unique id for each chain of a biomolecule - reuse chain_index here
+    # entity_id     - unique id for each biomolecule sequence
+    # sym_id        - unique id for each chain of the same biomolecule sequence
+
+    # entity ids
+
+    unrepeated_entity_sequences = defaultdict(int)
+    for entity_sequence in chain_seqs:
+        if entity_sequence in unrepeated_entity_sequences:
+            continue
+        unrepeated_entity_sequences[entity_sequence] = len(unrepeated_entity_sequences)
+
+    entity_idx = 0
+    entity_id_counts = []
+    unrepeated_entity_ids = []
+    for entity_sequence, chain_chem_type in zip(chain_seqs, chain_chem_types):
+        entity_mol = molecules[entity_idx]
+        entity_len = (
+            entity_mol.GetNumAtoms() if chain_chem_type == "ligand" else len(entity_sequence)
+        )
+        entity_idx += 1 if chain_chem_type == "ligand" else len(entity_sequence)
+
+        entity_id_counts.append(entity_len)
+        unrepeated_entity_ids.append(unrepeated_entity_sequences[entity_sequence])
+
+    entity_ids = torch.repeat_interleave(tensor(unrepeated_entity_ids), tensor(entity_id_counts))
+
+    # sym ids
+
+    unrepeated_sym_ids = []
+    unrepeated_sym_sequences = defaultdict(int)
+    for entity_sequence in chain_seqs:
+        unrepeated_sym_ids.append(unrepeated_sym_sequences[entity_sequence])
+        if entity_sequence in unrepeated_sym_sequences:
+            unrepeated_sym_sequences[entity_sequence] += 1
+    unrepeated_sym_ids = tensor(unrepeated_sym_ids)
+
+    sym_ids = torch.repeat_interleave(tensor(unrepeated_sym_ids), tensor(entity_id_counts))
+
+    # concat for all of additional_molecule_feats
+
+    additional_molecule_feats = torch.stack(
+        (
+            # NOTE: `Biomolecule.residue_index` is 1-based originally
+            torch.from_numpy(biomol.residue_index) - 1,
+            torch.arange(num_tokens),
+            torch.from_numpy(biomol.chain_index),
+            entity_ids,
+            sym_ids,
+        ),
+        dim=-1,
+    )
 
     # handle missing atom indices
     missing_atom_indices = None
