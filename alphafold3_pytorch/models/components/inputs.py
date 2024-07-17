@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from functools import partial
 from typing import Any, Callable, List, Set, Tuple, Type
@@ -19,7 +20,9 @@ from rdkit.Geometry import Point3D
 from torch import tensor
 from torch.nn.utils.rnn import pad_sequence
 
+from alphafold3_pytorch.common import amino_acid_constants, dna_constants, rna_constants
 from alphafold3_pytorch.common.biomolecule import (
+    Biomolecule,
     _from_mmcif_object,
     get_residue_constants,
 )
@@ -1334,6 +1337,26 @@ def extract_template_molecules_from_chains(
 
 
 @typecheck
+def get_token_index_from_composite_atom_id(
+    biomol: Biomolecule,
+    chain_id: str,
+    res_id: int,
+    atom_name: str,
+    atom_index: int,
+    is_polymer_residue: bool,
+) -> np.int64:
+    """Get the token index (indices) of an atom (residue) in a biomolecule from its chain ID, residue ID, and atom name."""
+    chain_mask = biomol.chain_id == chain_id
+    res_mask = biomol.residue_index == res_id
+    atom_mask = biomol.atom_name == atom_name
+
+    if is_polymer_residue:
+        return np.where(chain_mask & res_mask)[0][atom_index]
+    else:
+        return np.where(chain_mask & res_mask & atom_mask)[0][atom_index]
+
+
+@typecheck
 def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
     """Convert a PDBInput to a MoleculeInput."""
     i = pdb_input
@@ -1359,10 +1382,6 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
 
     num_tokens = len(biomol.atom_mask)
 
-    # retrieve atom positions
-    atom_mask = biomol.atom_mask.astype(bool)
-    atom_pos = torch.from_numpy(biomol.atom_positions[atom_mask].astype("float32"))
-
     # create unique chain-residue index pairs to identify the first atom of each residue
     chain_residue_index = np.array(list(zip(biomol.chain_index, biomol.residue_index)))
     _, unique_chain_residue_indices = np.unique(chain_residue_index, axis=0, return_index=True)
@@ -1380,6 +1399,7 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
     # manually derive remaining features using the `Biomolecule` object
 
     # extract chain sequences and chemical types from the `Biomolecule` object
+    # TODO: treat modified polymer residues as N-atom ligands
     chem_comp_table = {comp.id: comp for comp in biomol.chem_comp_table}
     chem_comp_details = [chem_comp_table[chemid] for chemid in biomol.chemid]
     chain_seqs, chain_chem_types = extract_chain_sequences_from_chemical_components(
@@ -1397,7 +1417,7 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
         biomol.residue_index,
         biomol.restype,
         biomol.atom_positions,
-        atom_mask,
+        biomol.atom_mask.astype(bool),
     )
 
     # collect pooling lengths for each molecule
@@ -1409,18 +1429,15 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
         else:
             token_pool_lens.append(mol.GetNumAtoms())
 
-    # collect token center, distogram, and source-target atom indices for each token,
-    # and construct token bonds concurrently, which will be linearly connected for proteins
-    # and nucleic acids but for ligands, will have their atomic bond matrix (as ligands
-    # are atom resolution)
-    offset = 0
-    num_tokens = len(biomol.chemtype)
-    token_bonds = torch.zeros(num_tokens, num_tokens).bool()
-
+    # collect token center, distogram, and source-target atom indices for each token
     molecule_atom_indices = []
     distogram_atom_indices = []
     src_tgt_atom_indices = []
-    for chemtype, chemid in zip(biomol.chemtype, biomol.chemid):
+
+    for chemtype, chemid in zip(
+        biomol.chemtype[unique_chain_residue_indices],
+        biomol.chemid[unique_chain_residue_indices],
+    ):
         residue_constants = get_residue_constants(res_chem_index=chemtype)
 
         if chemtype == 0:
@@ -1432,29 +1449,38 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
         else:
             entry = None
 
-        if chemtype in {0, 1, 2}:
+        if chemtype == 3:
+            # collect indices for each ligand atom token
+            molecule_atom_indices.append(-1)
+            distogram_atom_indices.append(-1)
+            src_tgt_atom_indices.append([-1, -1])
+        else:
+            # collect indices for each polymer residue token
             molecule_atom_indices.append(entry["token_center_atom_idx"])
             distogram_atom_indices.append(entry["distogram_atom_idx"])
             src_tgt_atom_indices.append([entry["first_atom_idx"], entry["last_atom_idx"]])
 
-            # construct polymer token bonds
+    molecule_atom_indices = tensor(molecule_atom_indices)
+    distogram_atom_indices = tensor(distogram_atom_indices)
 
-            chain_len = len(biomolecule)
-            eye = torch.eye(chain_len)
+    # construct token bonds, which will be linearly connected for proteins
+    # and nucleic acids, but for ligands will have their atomic bond matrix
+    # (as ligands are atom resolution)
+    polymer_offset = 0
+    ligand_offset = 0
+    token_bonds = torch.zeros(num_tokens, num_tokens).bool()
 
-            row_col_slice = slice(offset, offset + chain_len - 1)
-            token_bonds[row_col_slice, row_col_slice] = (eye[1:, :-1] + eye[:-1, 1:]) > 0
-            offset += chain_len
-        else:
-            molecule_atom_indices.append(-1)
-            distogram_atom_indices.append(-1)
-            src_tgt_atom_indices.append([-1, -1])
-
-            # construct ligand token bonds
+    for chain_seq, chain_chem_type in zip(
+        chain_seqs,
+        chain_chem_types,
+    ):
+        if chain_chem_type == "ligand":
+            # construct ligand chain token bonds
 
             coordinates = []
             updates = []
 
+            ligand = molecules[ligand_offset]
             num_atoms = ligand.GetNumAtoms()
             has_bond = torch.zeros(num_atoms, num_atoms).bool()
 
@@ -1473,13 +1499,89 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
 
             has_bond = einx.set_at("[h w], c [2], c -> [h w]", has_bond, coordinates, updates)
 
-            row_col_slice = slice(offset, offset + num_atoms)
+            row_col_slice = slice(polymer_offset, polymer_offset + num_atoms)
             token_bonds[row_col_slice, row_col_slice] = has_bond
 
-            offset += num_atoms
+            polymer_offset += num_atoms
+            ligand_offset += 1
+        else:
+            # construct polymer chain token bonds
 
-    molecule_atom_indices = tensor(molecule_atom_indices)
-    distogram_atom_indices = tensor(distogram_atom_indices)
+            chain_len = len(chain_seq)
+            eye = torch.eye(chain_len)
+
+            row_col_slice = slice(polymer_offset, polymer_offset + chain_len - 1)
+            token_bonds[row_col_slice, row_col_slice] = (eye[1:, :-1] + eye[:-1, 1:]) > 0
+            polymer_offset += chain_len
+            ligand_offset += chain_len
+
+    # ensure mmCIF polymer-ligand (i.e., protein/RNA/DNA-ligand) and ligand-ligand bonds
+    # (and bonds less than 2.4 Å) are installed in `MoleculeInput` during training only
+    # per the AF3 supplement (Table 5, `token_bonds`)
+    bond_atom_indices = defaultdict(int)
+    for bond in biomol.bonds:
+        # determine bond type
+
+        ptnr1_is_polymer = any(
+            bond.ptnr1_auth_comp_id in rc.restype_3to1
+            for rc in {amino_acid_constants, rna_constants, dna_constants}
+        )
+        ptnr2_is_polymer = any(
+            bond.ptnr2_auth_comp_id in rc.restype_3to1
+            for rc in {amino_acid_constants, rna_constants, dna_constants}
+        )
+        ptnr1_is_ligand = not ptnr1_is_polymer
+        ptnr2_is_ligand = not ptnr2_is_polymer
+        is_polymer_ligand_bond = (ptnr1_is_polymer and ptnr2_is_ligand) or (
+            ptnr1_is_ligand and ptnr2_is_polymer
+        )
+        is_ligand_ligand_bond = ptnr1_is_ligand and ptnr2_is_ligand
+
+        # conditionally install bond
+
+        if (
+            is_polymer_ligand_bond
+            or is_ligand_ligand_bond
+            or (mmcif_parsing._is_set(bond.pdbx_dist_value) and float(bond.pdbx_dist_value) < 2.4)
+        ):
+            ptnr1_atom_id = (
+                f"{bond.ptnr1_auth_asym_id}:{bond.ptnr1_auth_seq_id}:{bond.ptnr1_label_atom_id}"
+            )
+            ptnr2_atom_id = (
+                f"{bond.ptnr2_auth_asym_id}:{bond.ptnr2_auth_seq_id}:{bond.ptnr2_label_atom_id}"
+            )
+            try:
+                row_idx = get_token_index_from_composite_atom_id(
+                    biomol,
+                    bond.ptnr1_auth_asym_id,
+                    int(bond.ptnr1_auth_seq_id),
+                    bond.ptnr1_label_atom_id,
+                    bond_atom_indices[ptnr1_atom_id],
+                    ptnr1_is_polymer,
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Could not find a matching token index for token1 {ptnr1_atom_id} due to: {e}. "
+                    "Skipping installing the current bond associated with this token."
+                )
+            try:
+                col_idx = get_token_index_from_composite_atom_id(
+                    biomol,
+                    bond.ptnr2_auth_asym_id,
+                    int(bond.ptnr2_auth_seq_id),
+                    bond.ptnr2_label_atom_id,
+                    bond_atom_indices[ptnr2_atom_id],
+                    ptnr2_is_polymer,
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Could not find a matching token index for token2 {ptnr1_atom_id} due to: {e}. "
+                    "Skipping installing the current bond associated with this token."
+                )
+            token_bonds[row_idx, col_idx] = True
+            token_bonds[col_idx, row_idx] = True
+            bond_atom_indices[ptnr1_atom_id] += 1
+            bond_atom_indices[ptnr2_atom_id] += 1
 
     # handle missing atom indices
     missing_atom_indices = None
@@ -1499,11 +1601,6 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
 
         assert len(molecules) == len(missing_atom_indices)
 
-    # TODO: reference bonds from `biomol` instead of instantiating them within `Alphafold3Input`
-
-    # TODO: ensure only polymer-ligand (e.g., protein/RNA/DNA-ligand) and ligand-ligand bonds
-    # (and bonds less than 2.4 Å) are referenced in `Alphafold3Input` (AF3 Supplement - Table 5, `token_bonds`)
-
     # TODO: install additional token features once MSAs are available
     # 0: f_profile
     # 1: f_deletion_mean
@@ -1514,6 +1611,11 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
     # templates, template_mask = load_templates_from_templates_dir(i.templates_dir)
     msa, msa_mask = None, None
     templates, template_mask = None, None
+
+    # construct atom positions from template molecules installing their 3D conformers
+    atom_pos = torch.from_numpy(
+        np.concatenate([mol.GetConformer().GetPositions() for mol in molecules]).astype(np.float32)
+    )
 
     # create atom_parent_ids using the `Biomolecule` object, which governs in the atom
     # encoder / decoder which atom attends to which, where a design choice is made such
@@ -1541,7 +1643,7 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
         is_molecule_types=is_molecule_types,
         missing_atom_indices=missing_atom_indices,
         src_tgt_atom_indices=src_tgt_atom_indices,
-        atom_pos=atom_pos,  # TODO: pad with zeros at indices of missing atoms
+        atom_pos=atom_pos,
         templates=templates,
         msa=msa,
         template_mask=template_mask,

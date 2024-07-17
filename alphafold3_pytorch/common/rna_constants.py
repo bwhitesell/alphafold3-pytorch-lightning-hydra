@@ -62,6 +62,7 @@ atom_types = [
 atom_types_set = set(atom_types)
 atom_order = {atom_type: i for i, atom_type in enumerate(atom_types)}
 atom_type_num = len(atom_types)  # := 28 + 19 null types := 47.
+res_rep_atom_index = 12  # The index of the atom used to represent the center of the residue.
 
 
 # This is the standard residue order when coding RNA type as a number.

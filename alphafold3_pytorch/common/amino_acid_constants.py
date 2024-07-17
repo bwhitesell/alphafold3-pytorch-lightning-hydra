@@ -59,6 +59,7 @@ atom_types = [
 atom_types_set = set(atom_types)
 atom_order = {atom_type: i for i, atom_type in enumerate(atom_types)}
 atom_type_num = len(atom_types)  # := 37 + 10 null types := 47.
+res_rep_atom_index = 1  # The index of the atom used to represent the center of the residue.
 
 
 # This is the standard residue order when coding AA type as a number.

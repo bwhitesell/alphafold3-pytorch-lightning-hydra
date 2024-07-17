@@ -111,6 +111,9 @@ element_types = [
 atom_types_set = set(atom_types)
 atom_order = {atom_type: i for i, atom_type in enumerate(atom_types)}
 atom_type_num = len(atom_types)  # := 47.
+res_rep_atom_index = (
+    len(atom_types) - 1
+)  # := 46  # The index of the atom used to represent the center of a ligand pseudoresidue.
 
 
 # All ligand residues are mapped to the unknown amino acid type index (:= 20).
