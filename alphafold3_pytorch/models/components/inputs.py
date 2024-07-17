@@ -994,12 +994,14 @@ class PDBInput:
 
 
 @typecheck
-def extract_chain_sequences_from_chemical_components(
+def extract_chain_sequences_from_biomolecule_chemical_components(
+    biomol: Biomolecule,
     chem_comps: List[mmcif_parsing.ChemComp],
-    chain_index: np.ndarray,
-    residue_index: np.ndarray,
 ) -> Tuple[List[str], List[RESIDUE_MOLECULE_TYPE]]:
-    """Extract paired chain sequences and chemical types from a biomolecule."""
+    """Extract paired chain sequences and chemical types from `Biomolecule` chemical components."""
+    chain_index = biomol.chain_index
+    residue_index = biomol.residue_index
+
     assert len(chem_comps) == len(chain_index), (
         f"The number of chemical components ({len(chem_comps)}), chain indices ({len(chain_index)}), and residue indices do not match. "
         "Please ensure that chain and residue indices are correctly assigned to each chemical component."
@@ -1022,9 +1024,14 @@ def extract_chain_sequences_from_chemical_components(
         residue_constants = get_residue_constants(comp_details.type)
         restype = residue_constants.restype_3to1.get(comp_details.id, "X")
 
-        # map chemical types to protein, DNA, RNA, or ligand
+        # map chemical types to protein, DNA, RNA, or ligand,
+        # treating modified polymer residues as ligands
 
-        res_chem_type = get_residue_molecule_type(comp_details.type)
+        res_chem_type = (
+            "ligand"
+            if comp_details.id not in {"UNK", "N", "DN"} and restype == "X"
+            else get_residue_molecule_type(comp_details.type)
+        )
 
         # aggregate the residue sequences of each chain
 
@@ -1036,9 +1043,15 @@ def extract_chain_sequences_from_chemical_components(
         # reset current_chain_seq if the next residue is either not part of the current chain or is a different molecule type
 
         chain_ending = idx + 1 < len(chain_index) and chain_index[idx] != chain_index[idx + 1]
-        chem_type_ending = idx + 1 < len(
-            chem_comps
-        ) and res_chem_type != get_residue_molecule_type(chem_comps[idx + 1].type)
+        chem_type_ending = idx + 1 < len(chem_comps) and res_chem_type != (
+            "ligand"
+            if chem_comps[idx + 1].id not in {"UNK", "N", "DN"}
+            and get_residue_constants(chem_comps[idx + 1].type).restype_3to1.get(
+                chem_comps[idx + 1].id, "X"
+            )
+            == "X"
+            else get_residue_molecule_type(chem_comps[idx + 1].type)
+        )
         if chain_ending or chem_type_ending:
             current_chain_seq = []
 
@@ -1056,7 +1069,7 @@ def extract_chain_sequences_from_chemical_components(
         if chain_chem_type == "ligand":
             for seq, chem_type in chain_seq:
                 # NOTE: there originally may have been multiple ligands in the same chain,
-                # so we need to aggregate their SMILES strings in order
+                # so we need to aggregate their CCD codes in order
                 mapped_chain_seqs.append(seq)
                 mapped_chain_chem_types.append(chem_type)
         else:
@@ -1157,22 +1170,24 @@ def create_mol_from_atom_positions_and_types(
 
 
 @typecheck
-def extract_template_molecules_from_chains(
+def extract_template_molecules_from_biomolecule_chains(
+    biomol: Biomolecule,
     chain_seqs: List[str],
     chain_chem_types: List[RESIDUE_MOLECULE_TYPE],
-    chain_index: np.ndarray,
-    residue_index: np.ndarray,
-    residue_types: np.ndarray,
-    atom_positions: np.ndarray,
-    atom_mask: np.ndarray,
     mol_keyname: str = "rdchem_mol",
 ) -> Tuple[List[Mol], List[RESIDUE_MOLECULE_TYPE]]:
     """
-    Extract RDKit template molecules and their types for the residues of each chain.
+    Extract RDKit template molecules and their types for the residues of each `Biomolecule` chain.
 
     NOTE: Missing atom indices are marked as a comma-separated property string for each RDKit molecule
     and can be retrieved via `mol.GetProp('missing_atom_indices')`.
     """
+    chain_index = biomol.chain_index
+    residue_index = biomol.residue_index
+    residue_types = biomol.restype
+    atom_positions = biomol.atom_positions
+    atom_mask = biomol.atom_mask.astype(bool)
+
     assert len(chain_seqs) == len(chain_chem_types), (
         f"The number of chain sequences ({len(chain_seqs)}) and chain chemical types ({len(chain_chem_types)}) do not match. "
         "Please ensure that these input features are all correctly paired."
@@ -1399,25 +1414,20 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
     # manually derive remaining features using the `Biomolecule` object
 
     # extract chain sequences and chemical types from the `Biomolecule` object
-    # TODO: treat modified polymer residues as N-atom ligands
+    # NOTE: modified polymer residues are treated as N-atom ligands from here on
     chem_comp_table = {comp.id: comp for comp in biomol.chem_comp_table}
     chem_comp_details = [chem_comp_table[chemid] for chemid in biomol.chemid]
-    chain_seqs, chain_chem_types = extract_chain_sequences_from_chemical_components(
+    chain_seqs, chain_chem_types = extract_chain_sequences_from_biomolecule_chemical_components(
+        biomol,
         chem_comp_details,
-        biomol.chain_index,
-        biomol.residue_index,
     )
 
     # retrieve RDKit template molecules for the residues of each chain,
     # and insert the input atom coordinates into the template molecules
-    molecules, molecule_types = extract_template_molecules_from_chains(
+    molecules, molecule_types = extract_template_molecules_from_biomolecule_chains(
+        biomol,
         chain_seqs,
         chain_chem_types,
-        biomol.chain_index,
-        biomol.residue_index,
-        biomol.restype,
-        biomol.atom_positions,
-        biomol.atom_mask.astype(bool),
     )
 
     # collect pooling lengths for each molecule
@@ -1434,22 +1444,20 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
     distogram_atom_indices = []
     src_tgt_atom_indices = []
 
-    for chemtype, chemid in zip(
-        biomol.chemtype[unique_chain_residue_indices],
+    for mol_type, chemid in zip(
+        molecule_types,
         biomol.chemid[unique_chain_residue_indices],
     ):
-        residue_constants = get_residue_constants(res_chem_index=chemtype)
+        residue_constants = get_residue_constants(mol_type.replace("protein", "peptide"))
 
-        if chemtype == 0:
+        if mol_type == "protein":
             entry = HUMAN_AMINO_ACIDS[residue_constants.restype_3to1.get(chemid, "X")]
-        elif chemtype == 1:
+        elif mol_type == "rna":
             entry = RNA_NUCLEOTIDES[residue_constants.restype_3to1.get(chemid, "X")]
-        elif chemtype == 2:
+        elif mol_type == "dna":
             entry = DNA_NUCLEOTIDES[residue_constants.restype_3to1.get(chemid, "X")]
-        else:
-            entry = None
 
-        if chemtype == 3:
+        if mol_type == "ligand":
             # collect indices for each ligand atom token
             molecule_atom_indices.append(-1)
             distogram_atom_indices.append(-1)
