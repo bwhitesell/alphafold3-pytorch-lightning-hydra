@@ -559,9 +559,11 @@ def map_int_or_string_indices_to_mol(
 
 @typecheck
 def maybe_string_to_int(
-    entries: dict, indices: Int[" _"] | List[str] | str, other_index: int = 0  # type: ignore
+    entries: dict, indices: Int[" _"] | List[str] | str  # type: ignore
 ) -> Int[" _"]:  # type: ignore
     """Convert string to int."""
+    unknown_index = len(entries) - 1
+
     if isinstance(indices, str):
         indices = list(indices)
 
@@ -570,7 +572,7 @@ def maybe_string_to_int(
 
     index = {symbol: i for i, symbol in enumerate(entries.keys())}
 
-    return tensor([index[c] for c in indices]).long()
+    return tensor([index.get(c, unknown_index) for c in indices]).long()
 
 
 @typecheck
@@ -605,11 +607,13 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
         ss_dnas.extend([seq, rc_seq])
 
     # keep track of molecule_ids - for now it is
-    # other(1) | proteins (20) | rna (4) | dna (4)
+    # proteins (21) | rna (5) | dna (5) | gap? (1) - unknown for each biomolecule is the very last, ligand is 20
 
-    protein_offset = 1
-    rna_offset = len(HUMAN_AMINO_ACIDS) + protein_offset
+    rna_offset = len(HUMAN_AMINO_ACIDS)
     dna_offset = len(RNA_NUCLEOTIDES) + rna_offset
+
+    ligand_id = len(HUMAN_AMINO_ACIDS) - 1
+    gap_id = len(DNA_NUCLEOTIDES) + dna_offset
 
     molecule_ids = []
 
@@ -638,7 +642,7 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
             [[entry["first_atom_idx"], entry["last_atom_idx"]] for entry in protein_entries]
         )
 
-        protein_ids = maybe_string_to_int(HUMAN_AMINO_ACIDS, protein) + protein_offset
+        protein_ids = maybe_string_to_int(HUMAN_AMINO_ACIDS, protein)
         molecule_ids.append(protein_ids)
 
         chainable_biomol_entries.append(protein_entries)
@@ -689,12 +693,16 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
     metal_ions = alphafold3_input.metal_ions
     mol_metal_ions = map_int_or_string_indices_to_mol(METALS, metal_ions)
 
+    molecule_ids.append(tensor([gap_id] * len(mol_metal_ions)))
+
     # convert ligands to rdchem.Mol
 
     ligands = list(alphafold3_input.ligands)
     mol_ligands = [
         (mol_from_smile(ligand) if isinstance(ligand, str) else ligand) for ligand in ligands
     ]
+
+    molecule_ids.append(tensor([ligand_id] * len(mol_ligands)))
 
     # create the molecule input
 
@@ -802,7 +810,7 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
 
     # handle molecule ids
 
-    molecule_ids = torch.cat(molecule_ids)
+    molecule_ids = torch.cat(molecule_ids).long()
     molecule_ids = pad_to_len(molecule_ids, num_tokens)
 
     # handle atom_parent_ids
@@ -877,7 +885,10 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
         if entity_sequence in unrepeated_entity_sequences:
             continue
         unrepeated_entity_sequences[entity_sequence] = len(unrepeated_entity_sequences)
-    unrepeated_entity_ids = list(unrepeated_entity_sequences.values())
+    unrepeated_entity_ids = [
+        unrepeated_entity_sequences[entity_sequence]
+        for entity_sequence in (*proteins, *ss_rnas, *ss_dnas, *ligands, *metal_ions)
+    ]
 
     entity_id_counts = [
         *num_protein_tokens,
@@ -1418,23 +1429,35 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
         chain_chem_types,
     )
 
-    # collect pooling lengths for each molecule
+    # collect pooling lengths and atom-wise molecule types for each molecule
+    molecule_idx = 0
     token_pool_lens = []
+    molecule_atom_types = []
+    gap_id = len(HUMAN_AMINO_ACIDS) + len(RNA_NUCLEOTIDES) + len(DNA_NUCLEOTIDES)
     for mol, mol_type in zip(molecules, molecule_types):
+        num_atoms = mol.GetNumAtoms()
         if mol_type == "ligand":
             # NOTE: in the paper, they treat each atom of the ligands as a token
-            token_pool_lens.extend([1] * mol.GetNumAtoms())
+            token_pool_lens.extend([1] * num_atoms)
+            molecule_atom_types.extend([mol_type] * num_atoms)
+            if num_atoms == 1:
+                # NOTE: we manually set the molecule ID of ions to the `gap` ID
+                molecule_ids[molecule_idx] = gap_id
+            molecule_idx += num_atoms
         else:
-            token_pool_lens.append(mol.GetNumAtoms())
+            token_pool_lens.append(num_atoms)
+            molecule_atom_types.append(mol_type)
+            molecule_idx += 1
 
     # collect token center, distogram, and source-target atom indices for each token
+    molecule_idx = 0
     molecule_atom_indices = []
     distogram_atom_indices = []
     src_tgt_atom_indices = []
 
     for mol_type, chemid in zip(
-        molecule_types,
-        biomol.chemid[unique_chain_residue_indices],
+        molecule_atom_types,
+        biomol.chemid,
     ):
         residue_constants = get_residue_constants(mol_type.replace("protein", "peptide"))
 
@@ -1449,7 +1472,7 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
             # collect indices for each ligand atom token
             molecule_atom_indices.append(-1)
             distogram_atom_indices.append(-1)
-            src_tgt_atom_indices.append([-1, -1])
+            # NOTE: ligand tokens do not have source-target atom indices
         else:
             # collect indices for each polymer residue token
             molecule_atom_indices.append(entry["token_center_atom_idx"])

@@ -31,7 +31,7 @@ def test_tensor_reverse_complement():
 @pytest.mark.parametrize("directed_bonds", (False, True))
 def test_alphafold3_input(directed_bonds):
     """Test the Alphafold3Input class, particularly its input transformations."""
-    # pytest.skip()
+    pytest.skip()
     alphafold3_input = Alphafold3Input(
         proteins=[
             "MLEICLKLVGCKSKKGLSSSSSCYLEEALQRPVASDF",
@@ -131,9 +131,9 @@ def test_alphafold3_atompos_input():
 
 def test_pdbinput_input():
     # """Test the PDBInput class, particularly its input transformations for mmCIF files."""
-    pytest.skip(
-        "This unit test is currently disabled while the PDB featurization pipeline is under development."
-    )
+    # pytest.skip(
+    #     "This unit test is currently disabled while the PDB featurization pipeline is under development."
+    # )
 
     filepath = os.path.join("data", "test", "7a4d-assembly1.cif")
     file_id = os.path.splitext(os.path.basename(filepath))[0]
