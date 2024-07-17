@@ -1105,6 +1105,8 @@ def add_atom_positions_to_mol(
         else:
             conf.SetAtomPosition(atom_idx, atom_positions[atom_idx - missing_atom_counter])
 
+    Chem.SanitizeMol(mol)
+
     # set a property to indicate the atom positions that are missing
 
     mol.SetProp("missing_atom_indices", ",".join(map(str, sorted(missing_atom_indices))))
