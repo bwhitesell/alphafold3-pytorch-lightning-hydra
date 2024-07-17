@@ -17,6 +17,7 @@ from rdkit.Chem import AllChem, rdDetermineBonds
 from rdkit.Chem.rdchem import Atom, Mol
 from rdkit.Geometry import Point3D
 from torch import tensor
+from torch.nn.utils.rnn import pad_sequence
 
 from alphafold3_pytorch.common.biomolecule import (
     _from_mmcif_object,
@@ -287,19 +288,29 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
     # handle maybe missing atom indices
 
     missing_atom_mask = None
+    missing_atom_indices = None
 
     if exists(i.missing_atom_indices) and len(i.missing_atom_indices) > 0:
-        missing_atom_mask = []
+        missing_atom_indices: List[Int[" _"]] = [
+            default(indices, torch.empty((0,), dtype=torch.long))
+            for indices in i.missing_atom_indices
+        ]
 
-        for num_atoms, mol_missing_atom_indices in zip(all_num_atoms, i.missing_atom_indices):
+        missing_atom_mask: List[Bool[" _"]] = []
+
+        for num_atoms, mol_missing_atom_indices in zip(all_num_atoms, missing_atom_indices):
             mol_miss_atom_mask = torch.zeros(num_atoms, dtype=torch.bool)
 
-            if exists(mol_missing_atom_indices) and mol_missing_atom_indices.numel() > 0:
+            if mol_missing_atom_indices.numel() > 0:
                 mol_miss_atom_mask.scatter_(-1, mol_missing_atom_indices, True)
 
             missing_atom_mask.append(mol_miss_atom_mask)
 
         missing_atom_mask = torch.cat(missing_atom_mask)
+
+        missing_atom_indices = pad_sequence(
+            missing_atom_indices, batch_first=True, padding_value=-1
+        )
 
     # handle maybe atompair embeds
 
@@ -432,12 +443,30 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
         row_col_slice = slice(offset, offset + num_atoms)
         atompair_inputs[row_col_slice, row_col_slice] = atompair_feat
 
+    # mask out molecule atom indices and distogram atom indices where it is in the missing atom indices list
+
+    molecule_atom_indices = i.molecule_atom_indices
+    distogram_atom_indices = i.distogram_atom_indices
+
+    if exists(missing_atom_indices):
+        is_missing_molecule_atom = einx.equal(
+            "n missing, n -> n missing", missing_atom_indices, molecule_atom_indices
+        ).any(dim=-1)
+        is_missing_distogram_atom = einx.equal(
+            "n missing, n -> n missing", missing_atom_indices, distogram_atom_indices
+        ).any(dim=-1)
+
+        molecule_atom_indices = molecule_atom_indices.masked_fill(is_missing_molecule_atom, -1)
+        distogram_atom_indices = distogram_atom_indices.masked_fill(is_missing_distogram_atom, -1)
+
     # handle atom positions
 
     atom_pos = i.atom_pos
 
     if exists(atom_pos) and isinstance(atom_pos, list):
         atom_pos = torch.cat(atom_pos, dim=-2)
+
+    # atom input
 
     atom_input = AtomInput(
         atom_inputs=atom_inputs_tensor,
