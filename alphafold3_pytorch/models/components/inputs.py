@@ -291,12 +291,12 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
     missing_atom_indices = None
 
     if exists(i.missing_atom_indices) and len(i.missing_atom_indices) > 0:
-        missing_atom_indices: List[Int[" _"]] = [
+        missing_atom_indices: List[Int[" _"]] = [  # type: ignore
             default(indices, torch.empty((0,), dtype=torch.long))
             for indices in i.missing_atom_indices
         ]
 
-        missing_atom_mask: List[Bool[" _"]] = []
+        missing_atom_mask: List[Bool[" _"]] = []  # type: ignore
 
         for num_atoms, mol_missing_atom_indices in zip(all_num_atoms, missing_atom_indices):
             mol_miss_atom_mask = torch.zeros(num_atoms, dtype=torch.bool)
