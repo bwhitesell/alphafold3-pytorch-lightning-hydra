@@ -49,7 +49,16 @@ logger = RankedLogger(__name__, rank_zero_only=False)
 
 # constants
 
-IS_MOLECULE_TYPES = 4
+IS_MOLECULE_TYPES = 5
+IS_PROTEIN_INDEX = 0
+IS_LIGAND_INDEX = -2
+IS_METAL_ION_INDEX = -1
+IS_BIOMOLECULE_INDICES = slice(0, 3)
+
+MOLECULE_GAP_ID = len(HUMAN_AMINO_ACIDS) + len(RNA_NUCLEOTIDES) + len(DNA_NUCLEOTIDES)
+MOLECULE_METAL_ION_ID = MOLECULE_GAP_ID + 1
+NUM_MOLECULE_IDS = len(HUMAN_AMINO_ACIDS) + len(RNA_NUCLEOTIDES) + len(DNA_NUCLEOTIDES) + 2
+
 ADDITIONAL_MOLECULE_FEATS = 5
 
 CCD_COMPONENTS_FILEPATH = os.path.join("data", "ccd_data", "components.cif")
@@ -246,7 +255,7 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
     if not exists(atom_lens):
         atom_lens = []
 
-        for mol, is_ligand in zip(molecules, i.is_molecule_types[:, -1]):
+        for mol, is_ligand in zip(molecules, i.is_molecule_types[:, IS_LIGAND_INDEX]):
             num_atoms = mol.GetNumAtoms()
 
             if is_ligand:
@@ -350,7 +359,7 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
         asym_ids = F.pad(asym_ids, (1, 0), value=-1)
         is_first_mol_in_chains = (asym_ids[1:] - asym_ids[:-1]) == 1
 
-        is_chainable_biomolecules = i.is_molecule_types[..., :3].any(dim=-1)
+        is_chainable_biomolecules = i.is_molecule_types[..., IS_BIOMOLECULE_INDICES].any(dim=-1)
 
         # for every molecule, build the bonds id matrix and add to `atompair_ids`
 
@@ -623,9 +632,7 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
 
     rna_offset = len(HUMAN_AMINO_ACIDS)
     dna_offset = len(RNA_NUCLEOTIDES) + rna_offset
-
     ligand_id = len(HUMAN_AMINO_ACIDS) - 1
-    gap_id = len(DNA_NUCLEOTIDES) + dna_offset
 
     molecule_ids = []
 
@@ -705,7 +712,7 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
     metal_ions = alphafold3_input.metal_ions
     mol_metal_ions = map_int_or_string_indices_to_mol(METALS, metal_ions)
 
-    molecule_ids.append(tensor([gap_id] * len(mol_metal_ions)))
+    molecule_ids.append(tensor([MOLECULE_METAL_ION_ID] * len(mol_metal_ions)))
 
     # convert ligands to rdchem.Mol
 
@@ -753,9 +760,10 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
         len(all_rna_mols),
         len(all_dna_mols),
         total_ligand_tokens,
+        num_metal_ions,
     ]
 
-    num_tokens = sum(molecule_type_token_lens) + num_metal_ions
+    num_tokens = sum(molecule_type_token_lens)
 
     assert num_tokens > 0, "you have an empty alphafold3 input"
 
@@ -764,7 +772,6 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
     molecule_types_lens_cumsum = tensor([0, *molecule_type_token_lens]).cumsum(dim=-1)
     left, right = molecule_types_lens_cumsum[:-1], molecule_types_lens_cumsum[1:]
 
-    # TODO: fix bug that may leave molecules with no assigned type
     is_molecule_types = (arange >= left) & (arange < right)
 
     # all molecules, layout is
@@ -958,7 +965,7 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
         for mol_index, (mol_miss_atom_indices, mol) in enumerate(
             zip(i.missing_atom_indices, molecules)
         ):
-            is_ligand_residue = is_molecule_types[mol_index, -1].item()
+            is_ligand_residue = is_molecule_types[mol_index, IS_LIGAND_INDEX].item()
             mol_miss_atom_indices = default(mol_miss_atom_indices, [])
             mol_miss_atom_indices = tensor(mol_miss_atom_indices, dtype=torch.long)
 
@@ -1438,7 +1445,7 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput, training: bool = True) -> M
     # retrieve is_molecule_types from the `Biomolecule` object, which is a boolean tensor of shape [*, 4]
     # is_protein | is_rna | is_dna | is_ligand
     # this is needed for their special diffusion loss
-    n_one_hot = 4
+    n_one_hot = IS_MOLECULE_TYPES
     is_molecule_types = F.one_hot(torch.from_numpy(biomol.chemtype), num_classes=n_one_hot).bool()
 
     # manually derive remaining features using the `Biomolecule` object
@@ -1464,20 +1471,30 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput, training: bool = True) -> M
     molecule_idx = 0
     token_pool_lens = []
     molecule_atom_types = []
-    gap_id = len(HUMAN_AMINO_ACIDS) + len(RNA_NUCLEOTIDES) + len(DNA_NUCLEOTIDES)
     for mol, mol_type in zip(molecules, molecule_types):
         num_atoms = mol.GetNumAtoms()
         if mol_type == "ligand":
             # NOTE: in the paper, they treat each atom of the ligands as a token
             token_pool_lens.extend([1] * num_atoms)
             molecule_atom_types.extend([mol_type] * num_atoms)
+
             # ensure modified polymer residues are one-hot encoded as ligands
             # TODO: double-check whether this handling of modified polymer residues makes sense
-            is_molecule_types[molecule_idx : molecule_idx + num_atoms, : n_one_hot - 1] = False
-            is_molecule_types[molecule_idx : molecule_idx + num_atoms, n_one_hot - 1] = True
+
+            molecule_type_row_idx = slice(molecule_idx, molecule_idx + num_atoms)
+
+            # NOTE: we reset all type annotations e.g., since ions are initially considered ligands
+            is_molecule_types[molecule_type_row_idx] = False
+
             if num_atoms == 1:
-                # NOTE: we manually set the molecule ID of ions to the `gap` ID
-                molecule_ids[molecule_idx] = gap_id
+                # NOTE: we manually set the molecule ID of ions to a dedicated category
+                molecule_ids[molecule_idx] = MOLECULE_METAL_ION_ID
+                is_mol_type_index = IS_METAL_ION_INDEX
+            else:
+                is_mol_type_index = IS_LIGAND_INDEX
+
+            is_molecule_types[molecule_type_row_idx, is_mol_type_index] = True
+
             molecule_idx += num_atoms
         else:
             token_pool_lens.append(num_atoms)
@@ -1570,7 +1587,7 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput, training: bool = True) -> M
             ligand_offset += chain_len
 
     # ensure mmCIF polymer-ligand (i.e., protein/RNA/DNA-ligand) and ligand-ligand bonds
-    # (and bonds less than 2.4 Å) are installed in `MoleculeInput` during training onlytraining
+    # (and bonds less than 2.4 Å) are installed in `MoleculeInput` during training only
     # per the AF3 supplement (Table 5, `token_bonds`)
     bond_atom_indices = defaultdict(int)
     for bond in biomol.bonds:
@@ -1621,6 +1638,7 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput, training: bool = True) -> M
                     f"Could not find a matching token index for token1 {ptnr1_atom_id} due to: {e}. "
                     "Skipping installing the current bond associated with this token."
                 )
+                continue
             try:
                 col_idx = get_token_index_from_composite_atom_id(
                     biomol,
@@ -1635,6 +1653,7 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput, training: bool = True) -> M
                     f"Could not find a matching token index for token2 {ptnr1_atom_id} due to: {e}. "
                     "Skipping installing the current bond associated with this token."
                 )
+                continue
             token_bonds[row_idx, col_idx] = True
             token_bonds[col_idx, row_idx] = True
             bond_atom_indices[ptnr1_atom_id] += 1

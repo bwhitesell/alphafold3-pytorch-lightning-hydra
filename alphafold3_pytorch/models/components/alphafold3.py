@@ -27,7 +27,10 @@ from alphafold3_pytorch.models.components.attention import (
 )
 from alphafold3_pytorch.models.components.inputs import (
     ADDITIONAL_MOLECULE_FEATS,
+    IS_BIOMOLECULE_INDICES,
     IS_MOLECULE_TYPES,
+    IS_PROTEIN_INDEX,
+    NUM_MOLECULE_IDS,
 )
 from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.model_utils import (
@@ -89,11 +92,12 @@ additional_molecule_feats: [*, 5]:
 """
 
 """
-is_molecule_types: [*, 4]
+is_molecule_types: [*, 5]
 0: is_protein
 1: is_rna
 2: is_dna
 3: is_ligand
+4: is_metal_ions_or_misc
 """
 
 # constants
@@ -229,11 +233,9 @@ class PreLayerNorm(Module):
     @typecheck
     def __init__(
         self,
-        fn: Attention
-        | Transition
-        | TriangleAttention
-        | TriangleMultiplication
-        | AttentionPairBias,
+        fn: (
+            Attention | Transition | TriangleAttention | TriangleMultiplication | AttentionPairBias
+        ),
         *,
         dim,
     ):
@@ -2342,7 +2344,7 @@ class ElucidatedAtomDiffusion(Module):
                 for t in is_nucleotide_or_ligand_fields
             )
 
-            _, atom_is_dna, atom_is_rna, atom_is_ligand = is_nucleotide_or_ligand_fields
+            _, atom_is_dna, atom_is_rna, atom_is_ligand, _ = is_nucleotide_or_ligand_fields
 
             # section 3.7.1 equation 4
 
@@ -2852,7 +2854,7 @@ class InputFeatureEmbedder(Module):
         dim_single=384,
         dim_pairwise=128,
         dim_additional_token_feats=2,
-        num_molecule_types=32,
+        num_molecule_types=NUM_MOLECULE_IDS,
         atom_transformer_blocks=3,
         atom_transformer_heads=4,
         atom_transformer_kwargs: dict = dict(),
@@ -3197,7 +3199,7 @@ class Alphafold3(Module):
         dim_pairwise=128,
         dim_token=768,
         dim_additional_token_feats=2,  # in paper, they include two meta information per token (f_profile, f_deletion_mean)
-        num_molecule_types: int = 32,  # restype in additional residue information, apparently 32 (must be human amino acids + nucleotides + something else)
+        num_molecule_types: int = NUM_MOLECULE_IDS,  # restype in additional residue information, apparently 32. will do 33 to account for metal ions
         num_atom_embeds: int | None = None,
         num_atompair_embeds: int | None = None,
         num_molecule_mods: int | None = None,
@@ -3329,6 +3331,7 @@ class Alphafold3(Module):
         # input feature embedder
 
         self.input_embedder = InputFeatureEmbedder(
+            num_molecule_types=num_molecule_types,
             dim_atom_inputs=dim_atom_inputs,
             dim_atompair_inputs=dim_atompair_inputs,
             atoms_per_window=atoms_per_window,
@@ -3744,7 +3747,7 @@ class Alphafold3(Module):
         # only apply relative positional encodings to biomolecules that are chained
         # not to ligands + metal ions
 
-        is_chained_biomol = is_molecule_types[..., :3].any(
+        is_chained_biomol = is_molecule_types[..., IS_BIOMOLECULE_INDICES].any(
             dim=-1
         )  # first three types are chained biomolecules (protein, rna, dna)
         paired_is_chained_biomol = einx.logical_and(
@@ -3786,7 +3789,7 @@ class Alphafold3(Module):
         # prepare mask for msa module and template embedder
         # which is equivalent to the `is_protein` of the `is_molecular_types` input
 
-        is_protein_mask = is_molecule_types[..., 0]
+        is_protein_mask = is_molecule_types[..., IS_PROTEIN_INDEX]
 
         # init recycled single and pairwise
 

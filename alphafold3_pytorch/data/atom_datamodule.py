@@ -12,6 +12,7 @@ from alphafold3_pytorch.models.components.attention import (
     full_pairwise_repr_to_windowed,
 )
 from alphafold3_pytorch.models.components.inputs import (
+    IS_MOLECULE_TYPES,
     Alphafold3Input,
     AtomInput,
     BatchedAtomInput,
@@ -240,7 +241,7 @@ class MockAtomDataset(Dataset):
         molecule_atom_lens = torch.randint(1, self.atoms_per_window, (seq_len,))
         additional_molecule_feats = torch.randint(0, 2, (seq_len, 5))
         additional_token_feats = torch.randn(seq_len, 2)
-        is_molecule_types = torch.randint(0, 2, (seq_len, 4)).bool()
+        is_molecule_types = torch.randint(0, 2, (seq_len, IS_MOLECULE_TYPES)).bool()
         molecule_ids = torch.randint(0, 32, (seq_len,))
         token_bonds = torch.randint(0, 2, (seq_len, seq_len)).bool()
 
