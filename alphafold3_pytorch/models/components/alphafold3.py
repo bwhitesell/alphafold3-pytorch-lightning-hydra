@@ -3581,7 +3581,7 @@ class Alphafold3(Module):
         return_present_sampled_atoms: bool = True,
         num_rollout_steps: int = 20,
         rollout_show_tqdm_pbar: bool = False,
-    ) -> Float["b m 3"] | Float["b l 3"] | Float[""] | Tuple[Float[""], LossBreakdown]:  # type: ignore
+    ) -> Float["b m 3"] | Float["l 3"] | Float[""] | Tuple[Float[""], LossBreakdown]:  # type: ignore
         """
         Run the forward pass of AlphaFold 3.
 
