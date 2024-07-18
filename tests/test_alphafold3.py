@@ -433,11 +433,13 @@ def test_distogram_head():
 
 @pytest.mark.parametrize("window_atompair_inputs", (True, False))
 @pytest.mark.parametrize("stochastic_frame_average", (True, False))
+@pytest.mark.parametrize("missing_atoms", (True, False))
 @pytest.mark.parametrize("atom_transformer_intramolecular_attn", (True, False))
 @pytest.mark.parametrize("num_molecule_mods", (0, 5))
 def test_alphafold3(
     window_atompair_inputs: bool,
     stochastic_frame_average: bool,
+    missing_atoms: bool,
     atom_transformer_intramolecular_attn: bool,
     num_molecule_mods: int,
 ):
@@ -467,6 +469,10 @@ def test_alphafold3(
     if num_molecule_mods > 0:
         is_molecule_mod = torch.zeros(2, seq_len, num_molecule_mods).uniform_(0, 1) < 0.1
 
+    missing_atom_mask = None
+    if missing_atoms:
+        missing_atom_mask = torch.randint(0, 2, (2, atom_seq_len)).bool()
+
     atom_parent_ids = None
 
     if atom_transformer_intramolecular_attn:
@@ -479,7 +485,7 @@ def test_alphafold3(
     msa_mask = torch.ones((2, 7)).bool()
 
     atom_pos = torch.randn(2, atom_seq_len, 3)
-    molecule_atom_indices = molecule_atom_lens - 1
+    distogram_atom_indices = molecule_atom_lens - 1
 
     pae_labels = torch.randint(0, 64, (2, seq_len, seq_len))
     pde_labels = torch.randint(0, 64, (2, seq_len, seq_len))
@@ -511,6 +517,7 @@ def test_alphafold3(
         molecule_atom_lens=molecule_atom_lens,
         atom_parent_ids=atom_parent_ids,
         atompair_inputs=atompair_inputs,
+        missing_atom_mask=missing_atom_mask,
         is_molecule_types=is_molecule_types,
         is_molecule_mod=is_molecule_mod,
         additional_molecule_feats=additional_molecule_feats,
@@ -521,7 +528,7 @@ def test_alphafold3(
         templates=template_feats,
         template_mask=template_mask,
         atom_pos=atom_pos,
-        molecule_atom_indices=molecule_atom_indices,
+        distogram_atom_indices=distogram_atom_indices,
         pae_labels=pae_labels,
         pde_labels=pde_labels,
         plddt_labels=plddt_labels,
@@ -564,7 +571,7 @@ def test_alphafold3_without_msa_and_templates():
     molecule_ids = torch.randint(0, 32, (2, seq_len))
 
     atom_pos = torch.randn(2, atom_seq_len, 3)
-    molecule_atom_indices = molecule_atom_lens - 1
+    distogram_atom_indices = molecule_atom_lens - 1
 
     distance_labels = torch.randint(0, 38, (2, seq_len, seq_len))
     pae_labels = torch.randint(0, 64, (2, seq_len, seq_len))
@@ -597,7 +604,7 @@ def test_alphafold3_without_msa_and_templates():
         additional_molecule_feats=additional_molecule_feats,
         additional_token_feats=additional_token_feats,
         atom_pos=atom_pos,
-        molecule_atom_indices=molecule_atom_indices,
+        distogram_atom_indices=distogram_atom_indices,
         distance_labels=distance_labels,
         pae_labels=pae_labels,
         pde_labels=pde_labels,
@@ -623,7 +630,7 @@ def test_alphafold3_force_return_loss():
     molecule_ids = torch.randint(0, 32, (2, seq_len))
 
     atom_pos = torch.randn(2, atom_seq_len, 3)
-    molecule_atom_indices = molecule_atom_lens - 1
+    distogram_atom_indices = molecule_atom_lens - 1
 
     distance_labels = torch.randint(0, 38, (2, seq_len, seq_len))
     pae_labels = torch.randint(0, 64, (2, seq_len, seq_len))
@@ -656,7 +663,7 @@ def test_alphafold3_force_return_loss():
         additional_molecule_feats=additional_molecule_feats,
         additional_token_feats=additional_token_feats,
         atom_pos=atom_pos,
-        molecule_atom_indices=molecule_atom_indices,
+        distogram_atom_indices=distogram_atom_indices,
         distance_labels=distance_labels,
         pae_labels=pae_labels,
         pde_labels=pde_labels,
@@ -717,7 +724,7 @@ def test_alphafold3_with_atom_and_bond_embeddings():
     # required for training, but omitted on inference
 
     atom_pos = torch.randn(2, atom_seq_len, 3)
-    molecule_atom_indices = molecule_atom_lens - 1  # last atom, as an example
+    distogram_atom_indices = molecule_atom_lens - 1  # last atom, as an example
 
     distance_labels = torch.randint(0, 37, (2, seq_len, seq_len))
     pae_labels = torch.randint(0, 64, (2, seq_len, seq_len))
@@ -743,7 +750,7 @@ def test_alphafold3_with_atom_and_bond_embeddings():
         templates=template_feats,
         template_mask=template_mask,
         atom_pos=atom_pos,
-        molecule_atom_indices=molecule_atom_indices,
+        distogram_atom_indices=distogram_atom_indices,
         distance_labels=distance_labels,
         pae_labels=pae_labels,
         pde_labels=pde_labels,

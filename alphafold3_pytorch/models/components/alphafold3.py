@@ -55,6 +55,7 @@ h - heads
 n - molecule sequence length
 i - molecule sequence length (source)
 j - molecule sequence length (target)
+l - present (i.e., non-missing) atom sequence length
 m - atom sequence length
 nw - windowed sequence length
 d - feature dimension
@@ -1657,6 +1658,8 @@ class DiffusionModule(Module):
 
         self.atom_pos_to_atom_feat = LinearNoBias(3, dim_atom)
 
+        self.missing_atom_feat = nn.Parameter(torch.zeros(dim_atom))
+
         self.single_repr_to_atom_feat_cond = nn.Sequential(
             nn.LayerNorm(dim_single), LinearNoBias(dim_single, dim_atom)
         )
@@ -1753,6 +1756,7 @@ class DiffusionModule(Module):
         pairwise_rel_pos_feats: Float["b n n dpr"],  # type: ignore
         molecule_atom_lens: Int["b n"],  # type: ignore
         atom_parent_ids: Int["b m"] | None = None,  # type: ignore
+        missing_atom_mask: Bool["b m"] | None = None,  # type: ignore
     ) -> Float["b m 3"]:  # type: ignore
         """
         Perform the forward pass.
@@ -1768,6 +1772,8 @@ class DiffusionModule(Module):
         :param pairwise_trunk: The pairwise trunk tensor.
         :param pairwise_rel_pos_feats: The pairwise relative position features tensor.
         :param molecule_atom_lens: The molecule atom lengths tensor.
+        :param atom_parent_ids: The atom parent IDs tensor.
+        :param missing_atom_mask: The missing atom mask tensor.
         :return: The output tensor.
         """
         w = self.atoms_per_window
@@ -1793,7 +1799,21 @@ class DiffusionModule(Module):
 
         # the most surprising part of the paper; no geometric biases!
 
-        atom_feats = self.atom_pos_to_atom_feat(noised_atom_pos) + atom_feats
+        noised_atom_pos_feats = self.atom_pos_to_atom_feat(noised_atom_pos)
+
+        # for missing atoms, replace the noise atom pos features with a missing embedding
+
+        if exists(missing_atom_mask):
+            noised_atom_pos_feats = einx.where(
+                "b m, d, b m d -> b m d",
+                missing_atom_mask,
+                self.missing_atom_feat,
+                noised_atom_pos_feats,
+            )
+
+        # sum the noised atom position features to the atom features
+
+        atom_feats = noised_atom_pos_feats + atom_feats
 
         # condition atom feats cond (cl) with single repr
 
@@ -2234,6 +2254,7 @@ class ElucidatedAtomDiffusion(Module):
         pairwise_trunk: Float["b n n dpt"],  # type: ignore
         pairwise_rel_pos_feats: Float["b n n dpr"],  # type: ignore
         molecule_atom_lens: Int["b n"],  # type: ignore
+        missing_atom_mask: Bool["b m"] | None = None,  # type: ignore
         atom_parent_ids: Int["b m"] | None = None,  # type: ignore
         return_denoised_pos=False,
         is_molecule_types: Bool[f"b n {IS_MOLECULE_TYPES}"] | None = None,  # type: ignore
@@ -2256,8 +2277,11 @@ class ElucidatedAtomDiffusion(Module):
         :param single_inputs_repr: The single inputs representation tensor.
         :param pairwise_trunk: The pairwise trunk tensor.
         :param pairwise_rel_pos_feats: The pairwise relative position features tensor.
-        :param return_denoised_pos: Whether to return the denoised position.
         :param molecule_atom_lens: The molecule atom lengths tensor.
+        :param missing_atom_mask: The missing atom mask tensor.
+        :param atom_parent_ids: The atom parent IDs tensor.
+        :param return_denoised_pos: Whether to return the denoised position.
+        :param is_molecule_types: The molecule types tensor.
         :param additional_molecule_feats: The additional molecule features tensor.
         :param add_smooth_lddt_loss: Whether to add the smooth lddt loss.
         :param add_bond_loss: Whether to add the bond loss.
@@ -2286,6 +2310,7 @@ class ElucidatedAtomDiffusion(Module):
             network_condition_kwargs=dict(
                 atom_feats=atom_feats,
                 atom_mask=atom_mask,
+                missing_atom_mask=missing_atom_mask,
                 atompair_feats=atompair_feats,
                 atom_parent_ids=atom_parent_ids,
                 mask=mask,
@@ -2355,6 +2380,11 @@ class ElucidatedAtomDiffusion(Module):
         loss_weights = self.loss_weight(padded_sigmas)
 
         losses = losses * loss_weights
+
+        # if there are missing atoms, update the atom mask to not include them in the loss
+
+        if exists(missing_atom_mask):
+            atom_mask = atom_mask & ~missing_atom_mask
 
         # account for atom mask
 
@@ -3527,6 +3557,7 @@ class Alphafold3(Module):
         atompair_ids: Int["b m m"] | Int["b nw {self.w} {self.w*2}"] | None = None,  # type: ignore
         is_molecule_mod: Bool["b n num_mods"] | None = None,  # type: ignore
         atom_mask: Bool["b m"] | None = None,  # type: ignore
+        missing_atom_mask: Bool["b m"] | None = None,  # type: ignore
         atom_parent_ids: Int["b m"] | None = None,  # type: ignore
         token_bonds: Bool["b n n"] | None = None,  # type: ignore
         msa: Float["b s n d"] | None = None,  # type: ignore
@@ -3536,10 +3567,10 @@ class Alphafold3(Module):
         num_recycling_steps: int = 1,
         diffusion_add_bond_loss: bool = False,
         diffusion_add_smooth_lddt_loss: bool = False,
-        molecule_atom_indices: Int["b n"] | None = None,  # type: ignore
+        distogram_atom_indices: Int["b n"] | None = None,  # type: ignore
+        molecule_atom_indices: Int["b n"] | None = None,  # type: ignore - the 'token centre atoms' mentioned in the paper, unsure where it is used in the architecture
         num_sample_steps: int | None = None,
         atom_pos: Float["b m 3"] | None = None,  # type: ignore
-        output_atompos_indices: Int["b m"] | None = None,  # type: ignore
         distance_labels: Int["b n n"] | None = None,  # type: ignore
         pae_labels: Int["b n n"] | None = None,  # type: ignore
         pde_labels: Int["b n n"] | None = None,  # type: ignore
@@ -3547,9 +3578,10 @@ class Alphafold3(Module):
         resolved_labels: Int["b n"] | None = None,  # type: ignore
         return_loss_breakdown=False,
         return_loss: bool = None,
+        return_present_sampled_atoms: bool = True,
         num_rollout_steps: int = 20,
         rollout_show_tqdm_pbar: bool = False,
-    ) -> Float["b m 3"] | Float[""] | Tuple[Float[""], LossBreakdown]:  # type: ignore
+    ) -> Float["b m 3"] | Float["l 3"] | Float[""] | Tuple[Float[""], LossBreakdown]:  # type: ignore
         """
         Run the forward pass of AlphaFold 3.
 
@@ -3558,6 +3590,7 @@ class Alphafold3(Module):
         :param additional_molecule_feats: The additional molecule features tensor.
         :param molecule_atom_lens: The molecule atom lengths tensor.
         :param atom_mask: The atom mask tensor.
+        :param missing_atom_mask: The missing atom mask tensor.
         :param token_bonds: The token bonds tensor.
         :param msa: The multiple sequence alignment tensor.
         :param msa_mask: The multiple sequence alignment mask tensor.
@@ -3569,7 +3602,6 @@ class Alphafold3(Module):
         :param molecule_atom_indices: The molecule atom indices tensor.
         :param num_sample_steps: The number of sample steps.
         :param atom_pos: The atom positions tensor.
-        :param output_atompos_indices: The output atom positions indices tensor.
         :param distance_labels: The distance labels tensor.
         :param pae_labels: The predicted aligned error (PAE) labels tensor.
         :param pde_labels: The predicted distance error (PDE) labels tensor.
@@ -3577,6 +3609,7 @@ class Alphafold3(Module):
         :param resolved_labels: The resolved labels tensor.
         :param return_loss_breakdown: Whether to return the loss breakdown.
         :param return_loss: Whether to return the loss.
+        :param return_present_sampled_atoms: Whether to return only non-missing sampled atoms.
         :param num_rollout_steps: The number of rollout steps.
         :param rollout_show_tqdm_pbar: Whether to show a tqdm progress bar during rollout.
         :return: The atomic coordinates or the loss.
@@ -3599,10 +3632,18 @@ class Alphafold3(Module):
         molecule_atom_lens = molecule_atom_lens.masked_fill(~valid_atom_len_mask, 0)
 
         if exists(molecule_atom_indices):
-            molecule_atom_indices = molecule_atom_indices.masked_fill(~valid_atom_len_mask, 0)
+            valid_molecule_atom_mask = molecule_atom_indices >= 0 & valid_atom_len_mask
+            molecule_atom_indices = molecule_atom_indices.masked_fill(~valid_molecule_atom_mask, 0)
             assert (molecule_atom_indices < molecule_atom_lens)[
-                valid_atom_len_mask
-            ].all(), "The argument `molecule_atom_indices` cannot have an index that exceeds the length of the atoms for that molecule as given by `molecule_atom_lens`."
+                valid_molecule_atom_mask
+            ].all(), "molecule_atom_indices cannot have an index that exceeds the length of the atoms for that molecule as given by molecule_atom_lens"
+
+        if exists(distogram_atom_indices):
+            valid_distogram_mask = distogram_atom_indices >= 0 & valid_atom_len_mask
+            distogram_atom_indices = distogram_atom_indices.masked_fill(~valid_distogram_mask, 0)
+            assert (distogram_atom_indices < molecule_atom_lens)[
+                valid_distogram_mask
+            ].all(), "distogram_atom_indices cannot have an index that exceeds the length of the atoms for that molecule as given by molecule_atom_lens"
 
         assert exists(molecule_atom_lens) or exists(
             atom_mask
@@ -3842,26 +3883,8 @@ class Alphafold3(Module):
                 sampled_atom_pos = einx.where(
                     "b m, b m c, -> b m c", atom_mask, sampled_atom_pos, 0.0
                 )
-
-            if not exists(output_atompos_indices):
-                return sampled_atom_pos
-
-            # in the case the atoms are passed in not ordered canonically
-
-            order_mask = (
-                output_atompos_indices >= 0
-            )  # -1 is padding, which means do not order (metal ions, ligands, or entire row if None was passed in)
-
-            output_atompos_indices = einx.where(
-                "b m, b m, m -> b m",
-                order_mask,
-                output_atompos_indices,
-                torch.arange(atom_seq_len, device=self.device),
-            )
-
-            sampled_atom_pos = einx.get_at(
-                "b [m] 3, b rm -> b rm 3", sampled_atom_pos, output_atompos_indices
-            )
+            if exists(missing_atom_mask) and return_present_sampled_atoms:
+                sampled_atom_pos = sampled_atom_pos[~missing_atom_mask]
 
             return sampled_atom_pos
 
@@ -3887,8 +3910,8 @@ class Alphafold3(Module):
 
         # distogram head
 
-        if not exists(distance_labels) and atom_pos_given and exists(molecule_atom_indices):
-            molecule_pos = einx.get_at("b [m] c, b n -> b n c", atom_pos, molecule_atom_indices)
+        if not exists(distance_labels) and atom_pos_given and exists(distogram_atom_indices):
+            molecule_pos = einx.get_at("b [m] c, b n -> b n c", atom_pos, distogram_atom_indices)
 
             molecule_dist = torch.cdist(molecule_pos, molecule_pos, p=2)
             dist_from_dist_bins = einx.subtract(
@@ -3897,6 +3920,13 @@ class Alphafold3(Module):
                 self.distance_bins,
             ).abs()
             distance_labels = dist_from_dist_bins.argmin(dim=-1)
+
+            # account for representative distogram atom missing from residue (-1 set on distogram_atom_indices field)
+
+            valid_distogram_mask = einx.logical_and(
+                "b i, b j -> b i j", valid_distogram_mask, valid_distogram_mask
+            )
+            distance_labels.masked_fill_(~valid_distogram_mask, ignore)
 
         if exists(distance_labels):
             distance_labels = torch.where(pairwise_mask, distance_labels, ignore)
@@ -3919,6 +3949,7 @@ class Alphafold3(Module):
                 (
                     atom_pos,
                     atom_mask,
+                    missing_atom_mask,
                     atom_feats,
                     atom_parent_ids,
                     atompair_feats,
@@ -3941,6 +3972,7 @@ class Alphafold3(Module):
                     for t in (
                         atom_pos,
                         atom_mask,
+                        missing_atom_mask,
                         atom_feats,
                         atom_parent_ids,
                         atompair_feats,
@@ -3994,6 +4026,7 @@ class Alphafold3(Module):
                 atom_feats=atom_feats,
                 atompair_feats=atompair_feats,
                 atom_parent_ids=atom_parent_ids,
+                missing_atom_mask=missing_atom_mask,
                 atom_mask=atom_mask,
                 mask=mask,
                 single_trunk_repr=single,
@@ -4009,7 +4042,7 @@ class Alphafold3(Module):
         should_call_confidence_head = any([*map(exists, confidence_head_labels)])
         return_pae_logits = exists(pae_labels)
 
-        if calc_diffusion_loss and should_call_confidence_head:
+        if calc_diffusion_loss and should_call_confidence_head and exists(molecule_atom_indices):
             # rollout
 
             denoised_atom_pos = self.edm.sample(

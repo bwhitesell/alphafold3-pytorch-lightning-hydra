@@ -79,11 +79,17 @@ def test_alphafold3_atompos_input():
     contrived_protein = "AG"
 
     mock_atompos = [
-        torch.randn(6, 3),  # alanine has 6 non-hydrogen atoms
-        torch.randn(5, 3),  # glycine has 5 non-hydrogen atoms
+        torch.randn(5, 3),  # alanine has 5 non-hydrogen atoms
+        torch.randn(4, 3),  # glycine has 4 non-hydrogen atoms
+        torch.randn(3, 3),  # ligand has 3 carbons
     ]
 
-    train_alphafold3_input = Alphafold3Input(proteins=[contrived_protein], atom_pos=mock_atompos)
+    train_alphafold3_input = Alphafold3Input(
+        proteins=[contrived_protein],
+        missing_atom_indices=[[1, 2], None, [0, 1]],
+        ligands=["CCC"],
+        atom_pos=mock_atompos,
+    )
 
     eval_alphafold3_input = Alphafold3Input(proteins=[contrived_protein])
 
@@ -120,17 +126,13 @@ def test_alphafold3_atompos_input():
     )
 
     alphafold3.eval()
-    sampled_atom_pos = alphafold3(**batched_eval_atom_input.dict())
+    sampled_atom_pos = alphafold3(**batched_eval_atom_input.dict(), return_loss=False)
 
-    assert sampled_atom_pos.shape == (1, (6 + 5), 3)
+    assert sampled_atom_pos.shape == (1, (5 + 4), 3)
 
 
 def test_pdbinput_input():
     """Test the PDBInput class, particularly its input transformations for mmCIF files."""
-    pytest.skip(
-        "This unit test is currently disabled while the PDB featurization pipeline is under development."
-    )
-
     filepath = os.path.join("data", "test", "7a4d-assembly1.cif")
     file_id = os.path.splitext(os.path.basename(filepath))[0]
     assert os.path.exists(filepath)
@@ -171,9 +173,9 @@ def test_pdbinput_input():
     batched_eval_atom_input = pdb_inputs_to_batched_atom_input(eval_pdb_input, atoms_per_window=27)
 
     alphafold3.eval()
-    sampled_atom_pos = alphafold3(**batched_eval_atom_input.dict())
+    sampled_atom_pos = alphafold3(**batched_eval_atom_input.dict(), return_loss=False)
 
-    assert sampled_atom_pos.shape == (1, 4155, 3)
+    assert sampled_atom_pos.shape == (4155, 3)
 
     # visualizing
 
