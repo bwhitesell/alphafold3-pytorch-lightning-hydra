@@ -212,6 +212,7 @@ class MoleculeInput:
     molecule_atom_indices: List[int | None] | None = None  # type: ignore
     distogram_atom_indices: List[int | None] | None = None  # type: ignore
     missing_atom_indices: List[Int[" _"] | None] | None = None  # type: ignore
+    missing_token_indices: List[Int[" _"] | None] | None = None  # type: ignore
     atom_parent_ids: Int[" m"] | None = None  # type: ignore
     additional_token_feats: Float["n dtf"] | None = None  # type: ignore
     templates: Float["t n n dt"] | None = None  # type: ignore
@@ -292,21 +293,25 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
 
     missing_atom_mask = None
     missing_atom_indices = None
+    missing_token_indices = None
 
     if exists(i.missing_atom_indices) and len(i.missing_atom_indices) > 0:
         assert len(molecules) == len(
             i.missing_atom_indices
         ), f"{len(i.missing_atom_indices)} missing atom indices does not match the number of molecules given ({len(molecules)})"
 
-        missing_atom_indices: List[Int[" _"]] = []  # type: ignore
+        missing_atom_indices: List[Int[" _"]] = [  # type: ignore
+            default(indices, torch.empty((0,), dtype=torch.long))
+            for indices in i.missing_atom_indices
+        ]
+        missing_token_indices: List[Int[" _"]] = [  # type: ignore
+            default(indices, torch.empty((0,), dtype=torch.long))
+            for indices in i.missing_token_indices
+        ]
+
         missing_atom_mask: List[Bool[" _"]] = []  # type: ignore
 
-        for num_atoms, mol_missing_atom_indices, is_ligand in zip(
-            all_num_atoms, i.missing_atom_indices, i.is_molecule_types[:, -1]
-        ):
-            mol_missing_atom_indices = default(
-                mol_missing_atom_indices, torch.empty((0,), dtype=torch.long)
-            )
+        for num_atoms, mol_missing_atom_indices in zip(all_num_atoms, missing_atom_indices):
             mol_miss_atom_mask = torch.zeros(num_atoms, dtype=torch.bool)
 
             if mol_missing_atom_indices.numel() > 0:
@@ -314,19 +319,12 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
 
             missing_atom_mask.append(mol_miss_atom_mask)
 
-            if is_ligand:
-                for is_missing_atom_in_ligand in mol_miss_atom_mask:
-                    index = tensor([0] if is_missing_atom_in_ligand else [], dtype=torch.long)
-                    missing_atom_indices.append(index)
-            else:
-                missing_atom_indices.append(mol_missing_atom_indices)
-
         missing_atom_mask = torch.cat(missing_atom_mask)
-        missing_atom_indices = pad_sequence(
+        missing_token_indices = pad_sequence(
             # NOTE: padding value must be any negative integer besides -1,
             # to not erroneously detect "missing" token center/distogram atoms
             # within ligands
-            missing_atom_indices,
+            missing_token_indices,
             batch_first=True,
             padding_value=-2,
         )
@@ -465,12 +463,12 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
     molecule_atom_indices = i.molecule_atom_indices
     distogram_atom_indices = i.distogram_atom_indices
 
-    if exists(missing_atom_indices):
+    if exists(missing_token_indices):
         is_missing_molecule_atom = einx.equal(
-            "n missing, n -> n missing", missing_atom_indices, molecule_atom_indices
+            "n missing, n -> n missing", missing_token_indices, molecule_atom_indices
         ).any(dim=-1)
         is_missing_distogram_atom = einx.equal(
-            "n missing, n -> n missing", missing_atom_indices, distogram_atom_indices
+            "n missing, n -> n missing", missing_token_indices, distogram_atom_indices
         ).any(dim=-1)
 
         molecule_atom_indices = molecule_atom_indices.masked_fill(is_missing_molecule_atom, -1)
@@ -952,17 +950,29 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
     # handle missing atom indices
 
     missing_atom_indices = None
+    missing_token_indices = None
 
     if exists(i.missing_atom_indices) and len(i.missing_atom_indices) > 0:
         missing_atom_indices = []
+        missing_token_indices = []
 
-        for mol_miss_atom_indices in i.missing_atom_indices:
+        for mol_index, (mol_miss_atom_indices, mol) in enumerate(
+            zip(i.missing_atom_indices, molecules)
+        ):
+            is_ligand_residue = is_molecule_types[mol_index, -1].item()
             mol_miss_atom_indices = default(mol_miss_atom_indices, [])
             mol_miss_atom_indices = tensor(mol_miss_atom_indices, dtype=torch.long)
 
             missing_atom_indices.append(mol_miss_atom_indices)
+            if is_ligand_residue:
+                missing_token_indices.extend(
+                    [mol_miss_atom_indices for _ in range(mol.GetNumAtoms())]
+                )
+            else:
+                missing_token_indices.append(mol_miss_atom_indices)
 
         assert len(molecules) == len(missing_atom_indices)
+        assert len(missing_token_indices) == num_tokens
 
     # create molecule input
 
@@ -977,6 +987,7 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
         additional_token_feats=default(i.additional_token_feats, torch.zeros(num_tokens, 2)),
         is_molecule_types=is_molecule_types,
         missing_atom_indices=missing_atom_indices,
+        missing_token_indices=missing_token_indices,
         src_tgt_atom_indices=src_tgt_atom_indices,
         atom_pos=atom_pos,
         templates=i.templates,
@@ -1690,6 +1701,7 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput, training: bool = True) -> M
 
     # handle missing atom indices
     missing_atom_indices = None
+    missing_token_indices = None
     molecules_missing_atom_indices = [
         [int(idx) for idx in mol.GetProp("missing_atom_indices").split(",") if idx]
         for mol in molecules
@@ -1697,14 +1709,24 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput, training: bool = True) -> M
 
     if any(molecules_missing_atom_indices):
         missing_atom_indices = []
+        missing_token_indices = []
 
-        for mol_miss_atom_indices in molecules_missing_atom_indices:
+        for mol_miss_atom_indices, mol, mol_type in zip(
+            molecules_missing_atom_indices, molecules, molecule_types
+        ):
             mol_miss_atom_indices = default(mol_miss_atom_indices, [])
             mol_miss_atom_indices = tensor(mol_miss_atom_indices, dtype=torch.long)
 
             missing_atom_indices.append(mol_miss_atom_indices)
+            if mol_type == "ligand":
+                missing_token_indices.extend(
+                    [mol_miss_atom_indices for _ in range(mol.GetNumAtoms())]
+                )
+            else:
+                missing_token_indices.append(mol_miss_atom_indices)
 
         assert len(molecules) == len(missing_atom_indices)
+        assert len(missing_token_indices) == num_tokens
 
     # TODO: install additional token features once MSAs are available
     # 0: f_profile
@@ -1747,6 +1769,7 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput, training: bool = True) -> M
         additional_token_feats=default(additional_token_feats, torch.zeros(num_tokens, 2)),
         is_molecule_types=is_molecule_types,
         missing_atom_indices=missing_atom_indices,
+        missing_token_indices=missing_token_indices,
         src_tgt_atom_indices=src_tgt_atom_indices,
         atom_pos=atom_pos,
         templates=templates,
