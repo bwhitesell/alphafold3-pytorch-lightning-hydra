@@ -55,6 +55,7 @@ h - heads
 n - molecule sequence length
 i - molecule sequence length (source)
 j - molecule sequence length (target)
+l - present (i.e., non-missing) atom sequence length
 m - atom sequence length
 nw - windowed sequence length
 d - feature dimension
@@ -3577,9 +3578,10 @@ class Alphafold3(Module):
         resolved_labels: Int["b n"] | None = None,  # type: ignore
         return_loss_breakdown=False,
         return_loss: bool = None,
+        return_present_sampled_atoms: bool = True,
         num_rollout_steps: int = 20,
         rollout_show_tqdm_pbar: bool = False,
-    ) -> Float["b m 3"] | Float[""] | Tuple[Float[""], LossBreakdown]:  # type: ignore
+    ) -> Float["b m 3"] | Float["b l 3"] | Float[""] | Tuple[Float[""], LossBreakdown]:  # type: ignore
         """
         Run the forward pass of AlphaFold 3.
 
@@ -3607,6 +3609,7 @@ class Alphafold3(Module):
         :param resolved_labels: The resolved labels tensor.
         :param return_loss_breakdown: Whether to return the loss breakdown.
         :param return_loss: Whether to return the loss.
+        :param return_present_sampled_atoms: Whether to return only non-missing sampled atoms.
         :param num_rollout_steps: The number of rollout steps.
         :param rollout_show_tqdm_pbar: Whether to show a tqdm progress bar during rollout.
         :return: The atomic coordinates or the loss.
@@ -3880,7 +3883,7 @@ class Alphafold3(Module):
                 sampled_atom_pos = einx.where(
                     "b m, b m c, -> b m c", atom_mask, sampled_atom_pos, 0.0
                 )
-            if exists(missing_atom_mask):
+            if exists(missing_atom_mask) and return_present_sampled_atoms:
                 sampled_atom_pos = sampled_atom_pos[~missing_atom_mask]
 
             return sampled_atom_pos
