@@ -39,6 +39,7 @@ MMCIF_PREFIXES_TO_DROP_POST_PARSING = [
     "_struct_conn.",
 ]
 MMCIF_PREFIXES_TO_DROP_POST_AF3 = MMCIF_PREFIXES_TO_DROP_POST_PARSING + [
+    "_audit_author.",
     "_citation.",
     "_citation_author.",
 ]
