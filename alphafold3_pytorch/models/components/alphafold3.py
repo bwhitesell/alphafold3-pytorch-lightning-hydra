@@ -3578,7 +3578,7 @@ class Alphafold3(Module):
         resolved_labels: Int["b n"] | None = None,  # type: ignore
         return_loss_breakdown=False,
         return_loss: bool = None,
-        return_present_sampled_atoms: bool = True,
+        return_present_sampled_atoms: bool = False,
         num_rollout_steps: int = 20,
         rollout_show_tqdm_pbar: bool = False,
     ) -> Float["b m 3"] | Float["l 3"] | Float[""] | Tuple[Float[""], LossBreakdown]:  # type: ignore

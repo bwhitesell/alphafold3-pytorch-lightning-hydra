@@ -173,7 +173,9 @@ def test_pdbinput_input():
     batched_eval_atom_input = pdb_inputs_to_batched_atom_input(eval_pdb_input, atoms_per_window=27)
 
     alphafold3.eval()
-    sampled_atom_pos = alphafold3(**batched_eval_atom_input.dict(), return_loss=False)
+    sampled_atom_pos = alphafold3(
+        **batched_eval_atom_input.dict(), return_loss=False, return_present_sampled_atoms=True
+    )
 
     assert sampled_atom_pos.shape == (4155, 3)
 
