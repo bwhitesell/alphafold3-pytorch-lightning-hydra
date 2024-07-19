@@ -35,14 +35,15 @@ import argparse
 import glob
 import os
 import random
+from datetime import datetime
 from operator import itemgetter
 from typing import Dict, List, Literal, Set, Tuple
 
 import numpy as np
-import pandas as pd
 import rootutils
 import timeout_decorator
 from Bio.PDB.NeighborSearch import NeighborSearch
+from dateutil import parser as date_parser
 from pdbeccdutils.core import ccd_reader
 from pdbeccdutils.core.ccd_reader import CCDReaderResult
 from tqdm.contrib.concurrent import process_map
@@ -134,15 +135,15 @@ def impute_missing_assembly_metadata(
 @typecheck
 def filter_pdb_release_date(
     mmcif_object: MmcifObject,
-    min_cutoff_date: pd.Timestamp = pd.to_datetime("1970-01-01"),
-    max_cutoff_date: pd.Timestamp = pd.to_datetime("2021-09-30"),
+    min_cutoff_date: datetime = datetime(1970, 1, 1),
+    max_cutoff_date: datetime = datetime(2021, 9, 30),
 ) -> bool:
     """Filter based on PDB release date."""
     return (
         "release_date" in mmcif_object.header
         and exists(mmcif_object.header["release_date"])
         and min_cutoff_date
-        <= pd.to_datetime(mmcif_object.header["release_date"])
+        <= date_parser.parse(mmcif_object.header["release_date"])
         <= max_cutoff_date
     )
 
@@ -205,8 +206,8 @@ def filter_resolved_chains(
 @typecheck
 def prefilter_target(
     mmcif_object: MmcifObject,
-    min_cutoff_date: pd.Timestamp = pd.to_datetime("1970-01-01"),
-    max_cutoff_date: pd.Timestamp = pd.to_datetime("2021-09-30"),
+    min_cutoff_date: datetime = datetime(1970, 1, 1),
+    max_cutoff_date: datetime = datetime(2021, 9, 30),
 ) -> MmcifObject | None:
     """Pre-filter a target based on various criteria."""
     target_passes_prefilters = (
@@ -699,8 +700,8 @@ def remove_crystallization_aids(
 def filter_structure_with_timeout(
     filepath: str,
     output_dir: str,
-    min_cutoff_date: pd.Timestamp = pd.to_datetime("1970-01-01"),
-    max_cutoff_date: pd.Timestamp = pd.to_datetime("2021-09-30"),
+    min_cutoff_date: datetime = datetime(1970, 1, 1),
+    max_cutoff_date: datetime = datetime(2021, 9, 30),
     split: Literal["train", "eval", "test"] = "train",
 ):
     """
@@ -764,7 +765,7 @@ def filter_structure_with_timeout(
 
 
 @typecheck
-def filter_structure(args: Tuple[str, str, pd.Timestamp, pd.Timestamp, str]):
+def filter_structure(args: Tuple[str, str, datetime, datetime, str]):
     """
     Given an input mmCIF file, create a new filtered mmCIF file
     using AlphaFold 3's PDB dataset filtering criteria.
@@ -830,15 +831,15 @@ if __name__ == "__main__":
     parser.add_argument(
         "-f",
         "--min_cutoff_date",
-        type=pd.Timestamp,
-        default=pd.to_datetime("1970-01-01"),
+        type=lambda t: datetime.strptime(t, "%Y-%m-%d"),
+        default=datetime(1970, 1, 1),
         help="Minimum cutoff date for filtering PDB release dates.",
     )
     parser.add_argument(
         "-l",
         "--max_cutoff_date",
-        type=pd.Timestamp,
-        default=pd.to_datetime("2021-09-30"),
+        type=lambda t: datetime.strptime(t, "%Y-%m-%d"),
+        default=datetime(2021, 9, 30),
         help="Maximum cutoff date for filtering PDB release dates.",
     )
     parser.add_argument(

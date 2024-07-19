@@ -176,7 +176,8 @@ cython_debug/
 
 # alphafold3-pytorch-lightning-hydra
 configs/local/default.yaml
-/data/
+/data/*
+!/data/test/
 /logs/
 .env
 
