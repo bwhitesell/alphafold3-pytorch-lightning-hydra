@@ -249,7 +249,7 @@ class Biomolecule:
         """
         chain_ids_and_lengths = list(collections.Counter(self.chain_id).items())
         random.shuffle(chain_ids_and_lengths)
-        crop_masks = create_contiguous_crop_mask(chain_ids_and_lengths, n_res)
+        crop_masks = create_contiguous_crop_masks(chain_ids_and_lengths, n_res)
         self.crop_chains_with_masks(chain_ids_and_lengths, crop_masks)
 
     def spatial_crop(self) -> "Biomolecule":
@@ -268,7 +268,7 @@ class Biomolecule:
 
 
 @typecheck
-def create_contiguous_crop_mask(
+def create_contiguous_crop_masks(
     chain_ids_and_lengths: List[Tuple[str, int]], n_res: int
 ) -> List[np.ndarray]:
     """
