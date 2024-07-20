@@ -236,7 +236,10 @@ class Biomolecule:
     def crop_chains_with_masks(
         self, chain_ids_and_lengths: List[Tuple[str, int]], crop_masks: List[np.ndarray]
     ):
-        """Crop the chains and metadata within a Biomolecule to only include the specified chain residues."""
+        """
+        Crop the chains and metadata within a Biomolecule
+        to only include the specified chain residues.
+        """
         assert len(chain_ids_and_lengths) == len(
             crop_masks
         ), "The number of chains and crop masks must be equal."
