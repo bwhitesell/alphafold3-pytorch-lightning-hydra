@@ -3105,7 +3105,8 @@ class ConfidenceHead(Module):
         single_inputs_repr: Float["b n dsi"],  # type: ignore
         single_repr: Float["b n ds"],  # type: ignore
         pairwise_repr: Float["b n n dp"],  # type: ignore
-        pred_atom_pos: Float["b n 3"],  # type: ignore
+        pred_atom_pos: Float["b n 3"] | Float["b m 3"],  # type: ignore
+        molecule_atom_indices: Int["b n"] | None = None,  # type: ignore
         mask: Bool["b n"] | None = None,  # type: ignore
         return_pae_logits=True,
     ) -> ConfidenceHeadLogits:
@@ -3116,12 +3117,24 @@ class ConfidenceHead(Module):
         :param single_repr: The single representation tensor.
         :param pairwise_repr: The pairwise representation tensor.
         :param pred_atom_pos: The predicted atom positions tensor.
+        :param molecule_atom_indices: The molecule atom indices tensor.
         :param mask: The mask tensor.
         :param return_pae_logits: Whether to return the predicted aligned error (PAE) logits.
         :return: The confidence head logits.
         """
 
         pairwise_repr = pairwise_repr + self.single_inputs_to_pairwise(single_inputs_repr)
+
+        # pluck out the representative atoms for non-atomic resolution confidence head
+
+        is_atom_seq = pred_atom_pos.shape[-2] > single_inputs_repr.shape[-2]
+
+        assert not is_atom_seq or exists(molecule_atom_indices)
+
+        if is_atom_seq:
+            pred_atom_pos = einx.get_at(
+                "b [m] c, b n -> b n c", pred_atom_pos, molecule_atom_indices
+            )
 
         # interatomic distances - embed and add to pairwise
 
@@ -3897,24 +3910,21 @@ class Alphafold3(Module):
                 )
 
             if return_confidence_head_logits:
-                assert exists(molecule_atom_indices)
-                pred_atom_pos = einx.get_at(
-                    "b [m] c, b n -> b n c", sampled_atom_pos, molecule_atom_indices
-                )
+                confidence_head_atom_pos_input = sampled_atom_pos.clone()
 
             if exists(missing_atom_mask) and return_present_sampled_atoms:
                 sampled_atom_pos = sampled_atom_pos[~missing_atom_mask]
-
             if not return_confidence_head_logits:
                 return sampled_atom_pos
-
             confidence_head_logits = self.confidence_head(
                 single_repr=single.detach(),
                 single_inputs_repr=single_inputs.detach(),
                 pairwise_repr=pairwise.detach(),
+                pred_atom_pos=confidence_head_atom_pos_input.detach(),
+                molecule_atom_indices=molecule_atom_indices,
+                mask=mask,
                 return_pae_logits=True,
             )
-
             return sampled_atom_pos, confidence_head_logits
 
         # if being forced to return loss, but do not have sufficient information to return losses, just return 0
@@ -4089,15 +4099,12 @@ class Alphafold3(Module):
                 tqdm_pbar_title="Training rollout",
             )
 
-            pred_atom_pos = einx.get_at(
-                "b [m] c, b n -> b n c", denoised_atom_pos, molecule_atom_indices
-            )
-
             ch_logits = self.confidence_head(
                 single_repr=single.detach(),
                 single_inputs_repr=single_inputs.detach(),
                 pairwise_repr=pairwise.detach(),
-                pred_atom_pos=pred_atom_pos.detach(),
+                pred_atom_pos=denoised_atom_pos.detach(),
+                molecule_atom_indices=molecule_atom_indices,
                 mask=mask,
                 return_pae_logits=return_pae_logits,
             )
