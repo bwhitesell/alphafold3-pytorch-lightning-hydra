@@ -7,6 +7,7 @@ from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from functools import partial
 from itertools import groupby
+from pathlib import Path
 from typing import Any, Callable, List, Set, Tuple, Type
 
 import einx
@@ -20,6 +21,7 @@ from rdkit.Chem.rdchem import Atom, Mol
 from rdkit.Geometry import Point3D
 from torch import tensor
 from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import Dataset
 
 from alphafold3_pytorch.common import amino_acid_constants, dna_constants, rna_constants
 from alphafold3_pytorch.common.biomolecule import (
@@ -1884,6 +1886,43 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
     )
 
     return molecule_input
+
+
+# PDB Dataset
+
+
+class PDBDataset(Dataset):
+    """A PyTorch Dataset for PDB mmCIF files."""
+
+    def __init__(
+        self,
+        folder: str | Path,
+        training: bool | None = None,  # extra training flag placed by Alex on PDBInput
+        **pdb_input_kwargs,
+    ):
+        if isinstance(folder, str):
+            folder = Path(folder)
+
+        assert folder.exists() and folder.is_dir()
+
+        self.files = [*folder.glob("**/*.cif")]
+        self.pdb_input_kwargs = pdb_input_kwargs
+        self.training = training
+
+    def __len__(self):
+        """Return the number of PDB mmCIF files in the dataset."""
+        return len(self.files)
+
+    def __getitem__(self, idx: int) -> PDBInput:
+        """Return a PDBInput object for the specified index."""
+        kwargs = self.pdb_input_kwargs
+
+        if exists(self.training):
+            kwargs = {**kwargs, "training": self.training}
+
+        pdb_input = PDBInput(str(self.files[idx]), **kwargs)
+
+        return pdb_input
 
 
 # the config used for keeping track of all the disparate inputs and their transforms down to AtomInput
