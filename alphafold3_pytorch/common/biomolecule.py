@@ -275,7 +275,7 @@ def create_contiguous_crop_masks(
     chain_ids_and_lengths: List[Tuple[str, int]], n_res: int
 ) -> List[np.ndarray]:
     """
-    Create contiguous crop masks for each chain within a Biomolecule.
+    Create contiguous crop masks for each given chain.
     Implements Algorithm 1 from the AlphaFold-Multimer paper.
     """
     m_ks = []
