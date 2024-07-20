@@ -3583,9 +3583,16 @@ class Alphafold3(Module):
         return_loss_breakdown=False,
         return_loss: bool = None,
         return_present_sampled_atoms: bool = False,
+        return_confidence_head_logits: bool = False,
         num_rollout_steps: int = 20,
         rollout_show_tqdm_pbar: bool = False,
-    ) -> Float["b m 3"] | Float["l 3"] | Float[""] | Tuple[Float[""], LossBreakdown]:  # type: ignore
+    ) -> (
+        Float["b m 3"]  # type: ignore
+        | Float["l 3"]  # type: ignore
+        | Tuple[Float["b m 3"] | Float["l 3"], ConfidenceHeadLogits]  # type: ignore
+        | Float[""]  # type: ignore
+        | Tuple[Float[""], LossBreakdown]  # type: ignore
+    ):
         """
         Run the forward pass of AlphaFold 3.
 
@@ -3614,6 +3621,7 @@ class Alphafold3(Module):
         :param return_loss_breakdown: Whether to return the loss breakdown.
         :param return_loss: Whether to return the loss.
         :param return_present_sampled_atoms: Whether to return only non-missing sampled atoms.
+        :param return_confidence_head_logits: Whether to return the confidence head logits.
         :param num_rollout_steps: The number of rollout steps.
         :param rollout_show_tqdm_pbar: Whether to show a tqdm progress bar during rollout.
         :return: The atomic coordinates or the loss.
@@ -3887,10 +3895,27 @@ class Alphafold3(Module):
                 sampled_atom_pos = einx.where(
                     "b m, b m c, -> b m c", atom_mask, sampled_atom_pos, 0.0
                 )
+
+            if return_confidence_head_logits:
+                assert exists(molecule_atom_indices)
+                pred_atom_pos = einx.get_at(
+                    "b [m] c, b n -> b n c", sampled_atom_pos, molecule_atom_indices
+                )
+
             if exists(missing_atom_mask) and return_present_sampled_atoms:
                 sampled_atom_pos = sampled_atom_pos[~missing_atom_mask]
 
-            return sampled_atom_pos
+            if not return_confidence_head_logits:
+                return sampled_atom_pos
+
+            confidence_head_logits = self.confidence_head(
+                single_repr=single.detach(),
+                single_inputs_repr=single_inputs.detach(),
+                pairwise_repr=pairwise.detach(),
+                return_pae_logits=True,
+            )
+
+            return sampled_atom_pos, confidence_head_logits
 
         # if being forced to return loss, but do not have sufficient information to return losses, just return 0
 
@@ -4068,7 +4093,7 @@ class Alphafold3(Module):
                 "b [m] c, b n -> b n c", denoised_atom_pos, molecule_atom_indices
             )
 
-            logits = self.confidence_head(
+            ch_logits = self.confidence_head(
                 single_repr=single.detach(),
                 single_inputs_repr=single_inputs.detach(),
                 pairwise_repr=pairwise.detach(),
@@ -4079,20 +4104,20 @@ class Alphafold3(Module):
 
             if exists(pae_labels):
                 pae_labels = torch.where(pairwise_mask, pae_labels, ignore)
-                pae_loss = F.cross_entropy(logits.pae, pae_labels, ignore_index=ignore)
+                pae_loss = F.cross_entropy(ch_logits.pae, pae_labels, ignore_index=ignore)
 
             if exists(pde_labels):
                 pde_labels = torch.where(pairwise_mask, pde_labels, ignore)
-                pde_loss = F.cross_entropy(logits.pde, pde_labels, ignore_index=ignore)
+                pde_loss = F.cross_entropy(ch_logits.pde, pde_labels, ignore_index=ignore)
 
             if exists(plddt_labels):
                 plddt_labels = torch.where(mask, plddt_labels, ignore)
-                plddt_loss = F.cross_entropy(logits.plddt, plddt_labels, ignore_index=ignore)
+                plddt_loss = F.cross_entropy(ch_logits.plddt, plddt_labels, ignore_index=ignore)
 
             if exists(resolved_labels):
                 resolved_labels = torch.where(mask, resolved_labels, ignore)
                 resolved_loss = F.cross_entropy(
-                    logits.resolved, resolved_labels, ignore_index=ignore
+                    ch_logits.resolved, resolved_labels, ignore_index=ignore
                 )
 
             confidence_loss = pae_loss + pde_loss + plddt_loss + resolved_loss
