@@ -65,6 +65,16 @@ def divisible_by(num: int, den: int) -> bool:
     return (num % den) == 0
 
 
+def compact(*args):
+    """
+    Compact a tuple of objects by removing any `None` values.
+
+    :param args: The objects to compact.
+    :return: The compacted objects.
+    """
+    return tuple(filter(exists, args))
+
+
 def pack_one(t: Tensor, pattern: str) -> Tuple[Tensor, List[Shape]]:
     """
     Pack a single tensor into a tuple of tensors with the given pattern.

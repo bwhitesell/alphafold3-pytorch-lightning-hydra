@@ -34,6 +34,7 @@ from alphafold3_pytorch.models.components.inputs import (
 )
 from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.model_utils import (
+    compact,
     concat_previous_window,
     exclusive_cumsum,
     lens_to_mask,
@@ -4197,6 +4198,9 @@ class Alphafold3(Module):
             )
 
             # cross entropy losses
+
+            assert all([t.shape[-1] for t in compact(pde_labels, plddt_labels, resolved_labels)])
+            assert pde_labels.shape[-1] == ch_logits.pde.shape[-1]
 
             if exists(pae_labels):
                 pae_labels = torch.where(label_pairwise_mask, pae_labels, ignore)
