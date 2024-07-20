@@ -3045,17 +3045,31 @@ class DistogramHead(Module):
 class ConfidenceHeadLogits(NamedTuple):
     """The ConfidenceHeadLogits class."""
 
-    pae: Float["b pae n n"] | None  # type: ignore
-    pde: Float["b pde n n"]  # type: ignore
-    plddt: Float["b plddt n"]  # type: ignore
-    resolved: Float["b 2 n"]  # type: ignore
+    pae: Float["b pae n n"] | Float["b pae m m"] | None  # type: ignore
+    pde: Float["b pde n n"] | Float["b pde m m"]  # type: ignore
+    plddt: Float["b plddt n"] | Float["b plddt m"]  # type: ignore
+    resolved: Float["b 2 n"] | Float["b 2 m"]  # type: ignore
 
 
 class ConfidenceHead(Module):
     """Algorithm 31."""
 
     @typecheck
-    def __init__(self, *, dim_single_inputs, atompair_dist_bins: List[float], dim_single=384, dim_pairwise=128, num_plddt_bins=50, num_pde_bins=64, num_pae_bins=64, pairformer_depth=4, pairformer_kwargs: dict = dict()):  # type: ignore
+    def __init__(
+        self,
+        *,
+        dim_single_inputs,
+        atom_resolution=False,  # @amorehead discovers that the public api has per-atom resolution confidences. improvise a solution
+        dim_atom=128,
+        atompair_dist_bins: List[float],
+        dim_single=384,
+        dim_pairwise=128,
+        num_plddt_bins=50,
+        num_pde_bins=64,
+        num_pae_bins=64,
+        pairformer_depth=4,
+        pairformer_kwargs: dict = dict(),
+    ):  # type: ignore
         super().__init__()
 
         atompair_dist_bins = Tensor(atompair_dist_bins)
@@ -3098,6 +3112,19 @@ class ConfidenceHead(Module):
             LinearNoBias(dim_single, 2), Rearrange("b ... l -> b l ...")
         )
 
+        # atom resolution
+        # for now, just embed per atom distances, sum to atom features, project to pairwise dimension
+
+        self.atom_resolution = atom_resolution
+
+        if atom_resolution:
+            self.atom_feats_to_single = LinearNoBias(dim_atom, dim_single)
+            self.atom_feats_to_pairwise = LinearNoBiasThenOuterSum(dim_atom, dim_pairwise)
+
+        # tensor typing
+
+        self.da = dim_atom
+
     @typecheck
     def forward(
         self,
@@ -3107,7 +3134,9 @@ class ConfidenceHead(Module):
         pairwise_repr: Float["b n n dp"],  # type: ignore
         pred_atom_pos: Float["b n 3"] | Float["b m 3"],  # type: ignore
         molecule_atom_indices: Int["b n"] | None = None,  # type: ignore
+        molecule_atom_lens: Int["b n"] | None = None,  # type: ignore
         mask: Bool["b n"] | None = None,  # type: ignore
+        atom_feats: Float["b m {self.da}"] | None = None,  # type: ignore
         return_pae_logits=True,
     ) -> ConfidenceHeadLogits:
         """
@@ -3118,7 +3147,9 @@ class ConfidenceHead(Module):
         :param pairwise_repr: The pairwise representation tensor.
         :param pred_atom_pos: The predicted atom positions tensor.
         :param molecule_atom_indices: The molecule atom indices tensor.
+        :param molecule_atom_lens: The molecule atom lengths tensor.
         :param mask: The mask tensor.
+        :param atom_feats: The atom features tensor.
         :param return_pae_logits: Whether to return the predicted aligned error (PAE) logits.
         :return: The confidence head logits.
         """
@@ -3129,20 +3160,32 @@ class ConfidenceHead(Module):
 
         is_atom_seq = pred_atom_pos.shape[-2] > single_inputs_repr.shape[-2]
 
-        assert not is_atom_seq or exists(molecule_atom_indices)
+        # handle atom resolution vs not
+
+        if self.atom_resolution:
+            assert exists(
+                atom_feats
+            ), "atom_feats must be passed in if atom_resolution is turned on for ConfidenceHead"
+            assert is_atom_seq, "`pred_atom_pos` must be passed in with atomic length"
+            assert exists(molecule_atom_lens)
 
         if is_atom_seq:
-            pred_atom_pos = einx.get_at(
+            assert exists(
+                molecule_atom_indices
+            ), "molecule_atom_indices must be passed into ConfidenceHead if pred_atom_pos is atomic length"
+            pred_molecule_pos = einx.get_at(
                 "b [m] c, b n -> b n c", pred_atom_pos, molecule_atom_indices
             )
+        else:
+            pred_molecule_pos = pred_atom_pos
 
         # interatomic distances - embed and add to pairwise
 
-        interatom_dist = torch.cdist(pred_atom_pos, pred_atom_pos, p=2)
+        intermolecule_dist = torch.cdist(pred_molecule_pos, pred_molecule_pos, p=2)
 
         dist_from_dist_bins = einx.subtract(
             "b m dist, dist_bins -> b m dist dist_bins",
-            interatom_dist,
+            intermolecule_dist,
             self.atompair_dist_bins,
         ).abs()
         dist_bin_indices = dist_from_dist_bins.argmin(dim=-1)
@@ -3153,6 +3196,33 @@ class ConfidenceHead(Module):
         single_repr, pairwise_repr = self.pairformer_stack(
             single_repr=single_repr, pairwise_repr=pairwise_repr, mask=mask
         )
+
+        # handle maybe atom level resolution
+
+        if self.atom_resolution:
+            single_repr = repeat_consecutive_with_lens(single_repr, molecule_atom_lens)
+
+            pairwise_repr = repeat_consecutive_with_lens(pairwise_repr, molecule_atom_lens)
+
+            molecule_atom_lens = repeat(
+                molecule_atom_lens, "b ... -> (b r) ...", r=pairwise_repr.shape[1]
+            )
+            pairwise_repr, ps = pack_one(pairwise_repr, "* n d")
+            pairwise_repr = repeat_consecutive_with_lens(pairwise_repr, molecule_atom_lens)
+            pairwise_repr = unpack_one(pairwise_repr, ps, "* n d")
+
+            interatomic_dist = torch.cdist(pred_atom_pos, pred_atom_pos, p=2)
+
+            dist_from_dist_bins = einx.subtract(
+                "b m dist, dist_bins -> b m dist dist_bins",
+                interatomic_dist,
+                self.atompair_dist_bins,
+            ).abs()
+            dist_bin_indices = dist_from_dist_bins.argmin(dim=-1)
+            pairwise_repr = pairwise_repr + self.dist_bin_pairwise_embed(dist_bin_indices)
+
+            single_repr = single_repr + self.atom_feats_to_single(atom_feats)
+            pairwise_repr = pairwise_repr + self.atom_feats_to_pairwise(atom_feats)
 
         # to logits
 
