@@ -541,11 +541,11 @@ class TriangleAttention(Module):
         if exists(mask):
             mask = repeat(mask, "b ... -> (b repeat) ...", repeat=batch_repeat)
 
-        pairwise_repr, packed_shape = pack_one(pairwise_repr, "* n d")
+        pairwise_repr, unpack_one = pack_one(pairwise_repr, "* n d")  # noqa: F811
 
         out = self.attn(pairwise_repr, mask=mask, attn_bias=attn_bias, **kwargs)
 
-        out = unpack_one(out, packed_shape, "* n d")
+        out = unpack_one(out)
 
         if self.need_transpose:
             out = rearrange(out, "b j i d -> b i j d")
@@ -1200,7 +1200,7 @@ class TemplateEmbedder(Module):
 
         v = self.template_feats_to_embed_input(templates) + pairwise_repr
 
-        v, merged_batch_ps = pack_one(v, "* i j d")
+        v, unpack_one = pack_one(v, "* i j d")  # noqa: F811
 
         has_templates = reduce(template_mask, "b t -> b", "any")
 
@@ -1212,7 +1212,7 @@ class TemplateEmbedder(Module):
 
         u = self.final_norm(v)
 
-        u = unpack_one(u, merged_batch_ps, "* i jk d")
+        u = unpack_one(u)
 
         # masked mean pool template repr
 
@@ -3208,9 +3208,9 @@ class ConfidenceHead(Module):
             molecule_atom_lens = repeat(
                 molecule_atom_lens, "b ... -> (b r) ...", r=pairwise_repr.shape[1]
             )
-            pairwise_repr, ps = pack_one(pairwise_repr, "* n d")
+            pairwise_repr, unpack_one = pack_one(pairwise_repr, "* n d")  # noqa: F811
             pairwise_repr = repeat_consecutive_with_lens(pairwise_repr, molecule_atom_lens)
-            pairwise_repr = unpack_one(pairwise_repr, ps, "* n d")
+            pairwise_repr = unpack_one(pairwise_repr)
 
             interatomic_dist = torch.cdist(pred_atom_pos, pred_atom_pos, p=2)
 
@@ -3817,7 +3817,7 @@ class Alphafold3(Module):
         ), "you either set `num_molecule_mods` and did not pass in `is_molecule_mod` or vice versa"
 
         if self.has_molecule_mod_embeds:
-            single_init, seq_packed_shape = pack_one(single_init, "* ds")
+            single_init, seq_unpack_one = pack_one(single_init, "* ds")
 
             is_molecule_mod, _ = pack_one(is_molecule_mod, "* mods")
 
@@ -3830,7 +3830,7 @@ class Alphafold3(Module):
             seq_indices = repeat(seq_indices, "n -> n ds", ds=single_init.shape[-1])
             single_init = single_init.scatter_add(0, seq_indices, scatter_values)
 
-            single_init = unpack_one(single_init, seq_packed_shape, "* ds")
+            single_init = seq_unpack_one(single_init)
 
         # relative positional encoding
 

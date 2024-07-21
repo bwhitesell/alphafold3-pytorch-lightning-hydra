@@ -8,7 +8,7 @@ from einops import pack, rearrange, repeat, unpack
 from torch import Tensor
 
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
-from alphafold3_pytorch.utils.utils import exists
+from alphafold3_pytorch.utils.utils import default, exists
 
 # constants
 
@@ -83,19 +83,20 @@ def pack_one(t: Tensor, pattern: str) -> Tuple[Tensor, List[Shape]]:
     :param pattern: The pattern with which to pack.
     :return: The packed tensor along with the shape(s) of the tensor.
     """
-    return pack([t], pattern)
+    packed, ps = pack([t], pattern)
 
+    def unpack_one(to_unpack, unpack_pattern=None):
+        """
+        Unpack a single tensor.
 
-def unpack_one(t: Tensor, ps: List[Shape], pattern: str) -> List[Tensor]:
-    """
-    Unpack a single tensor from a tuple of tensors with the given pattern.
+        :param to_unpack: The tensor to unpack.
+        :param pattern: The pattern with which to unpack.
+        :return: The unpacked tensor.
+        """
+        (unpacked,) = unpack(to_unpack, ps, default(unpack_pattern, pattern))
+        return unpacked
 
-    :param t: The tensor to unpack.
-    :param ps: The shapes of the tensors.
-    :param pattern: The pattern with which to unpack.
-    :return: The unpacked tensor.
-    """
-    return unpack(t, ps, pattern)[0]
+    return packed, unpack_one
 
 
 def softclamp(t: Tensor, value: float) -> Tensor:
@@ -283,7 +284,7 @@ def atom_ref_pos_to_atompair_inputs(
     # Algorithm 5 - lines 2-6
     # allow for either batched or single
 
-    atom_ref_pos, batch_packed_shape = pack_one(atom_ref_pos, "* m c")
+    atom_ref_pos, unpack_one = pack_one(atom_ref_pos, "* m c")
     atom_ref_space_uid, _ = pack_one(atom_ref_space_uid, "* m")
 
     assert atom_ref_pos.shape[0] == atom_ref_space_uid.shape[0]
@@ -319,7 +320,7 @@ def atom_ref_pos_to_atompair_inputs(
 
     # reconstitute optional batch dimension
 
-    atompair_inputs = unpack_one(atompair_inputs, batch_packed_shape, "* i j dapi")
+    atompair_inputs = unpack_one(atompair_inputs, "* i j dapi")
 
     # return
 

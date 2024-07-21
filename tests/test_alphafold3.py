@@ -521,7 +521,7 @@ def test_alphafold3(
     template_feats = torch.randn(2, 2, seq_len, seq_len, 44)
     template_mask = torch.ones((2, 2)).bool()
 
-    msa = torch.randn(2, 7, seq_len, 64)
+    msa = torch.randn(2, 7, seq_len, 8)
     msa_mask = torch.ones((2, 7)).bool()
 
     atom_pos = torch.randn(2, atom_seq_len, 3)
@@ -536,19 +536,30 @@ def test_alphafold3(
 
     alphafold3 = Alphafold3(
         dim_atom_inputs=77,
-        dim_pairwise=64,
+        dim_pairwise=8,
+        dim_single=8,
+        dim_token=8,
         atoms_per_window=atoms_per_window,
         dim_template_feats=44,
         num_dist_bins=38,
         num_molecule_mods=num_molecule_mods,
         confidence_head_kwargs=dict(pairformer_depth=1),
         template_embedder_kwargs=dict(pairformer_stack_depth=1),
-        msa_module_kwargs=dict(depth=1),
-        pairformer_stack=dict(depth=1),
+        msa_module_kwargs=dict(
+            depth=1,
+            dim_msa=8,
+        ),
+        pairformer_stack=dict(
+            depth=1,
+            pair_bias_attn_dim_head=4,
+            pair_bias_attn_heads=2,
+        ),
         diffusion_module_kwargs=dict(
             atom_encoder_depth=1,
             token_transformer_depth=1,
             atom_decoder_depth=1,
+            atom_decoder_kwargs=dict(attn_pair_bias_kwargs=dict(dim_head=4)),
+            atom_encoder_kwargs=dict(attn_pair_bias_kwargs=dict(dim_head=4)),
         ),
         stochastic_frame_average=stochastic_frame_average,
         confidence_head_atom_resolution=confidence_head_atom_resolution,
@@ -578,6 +589,7 @@ def test_alphafold3(
         pde_labels=pde_labels,
         plddt_labels=plddt_labels,
         resolved_labels=resolved_labels,
+        num_rollout_steps=1,
         diffusion_add_smooth_lddt_loss=True,
         return_loss_breakdown=True,
     )
