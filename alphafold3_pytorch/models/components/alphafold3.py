@@ -46,7 +46,6 @@ from alphafold3_pytorch.utils.model_utils import (
     pad_and_window,
     pad_or_slice_to,
     repeat_consecutive_with_lens,
-    unpack_one,
 )
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
 from alphafold3_pytorch.utils.utils import default, exists, identity
