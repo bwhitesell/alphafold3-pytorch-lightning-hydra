@@ -3,7 +3,7 @@ import os
 import pytest
 import torch
 
-from alphafold3_pytorch.data import mmcif_parsing, mmcif_writing
+from alphafold3_pytorch.data import mmcif_writing
 from alphafold3_pytorch.data.atom_datamodule import (
     alphafold3_inputs_to_batched_atom_input,
     pdb_inputs_to_batched_atom_input,
@@ -194,13 +194,10 @@ def test_pdbinput_input():
 
     # visualizing
 
-    mmcif_object = mmcif_parsing.parse_mmcif_object(
+    mmcif_writing.write_mmcif_from_filepath_and_id(
         filepath=filepath,
         file_id=file_id,
-    )
-    mmcif_writing.write_mmcif(
-        mmcif_object=mmcif_object,
-        output_filepath=filepath.replace(".cif", "-sampled.cif"),
+        suffix="sampled",
         gapless_poly_seq=True,
         insert_orig_atom_names=True,
         insert_alphafold_mmcif_metadata=True,
