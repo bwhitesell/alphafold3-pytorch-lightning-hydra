@@ -1922,6 +1922,7 @@ class PDBDataset(Dataset):
 
         assert folder.exists() and folder.is_dir()
 
+        self.folder = folder
         self.files = [*folder.glob("**/*.cif")]
         self.filename_to_index = {path.stem: ind for ind, path in enumerate(self.files)}
 
@@ -1940,6 +1941,9 @@ class PDBDataset(Dataset):
             kwargs = {**kwargs, "training": self.training}
 
         if isinstance(idx, str):
+            assert (
+                idx in self.filename_to_index
+            ), f"PDB ID ({idx}) not found in folder {str(self.folder)}"
             idx = self.filename_to_index[idx]
 
         pdb_input = PDBInput(str(self.files[idx]), **kwargs)
