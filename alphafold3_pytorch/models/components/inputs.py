@@ -1888,7 +1888,24 @@ def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
     return molecule_input
 
 
-# PDB Dataset
+# datasets
+
+# dataset wrapper for returning index along with dataset item
+# for caching logic both integrated into trainer and for precaching
+
+
+class DatasetWithReturnedIndex(Dataset):
+    def __init__(self, dataset: Dataset):
+        self.dataset = dataset
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx: int | str):
+        return idx, self.dataset[idx]
+
+
+# PDB dataset that returns a PDBInput based on folder
 
 
 class PDBDataset(Dataset):
@@ -1906,6 +1923,8 @@ class PDBDataset(Dataset):
         assert folder.exists() and folder.is_dir()
 
         self.files = [*folder.glob("**/*.cif")]
+        self.filename_to_index = {path.stem: ind for ind, path in enumerate(self.files)}
+
         self.pdb_input_kwargs = pdb_input_kwargs
         self.training = training
 
@@ -1919,6 +1938,9 @@ class PDBDataset(Dataset):
 
         if exists(self.training):
             kwargs = {**kwargs, "training": self.training}
+
+        if isinstance(idx, str):
+            idx = self.filename_to_index[idx]
 
         pdb_input = PDBInput(str(self.files[idx]), **kwargs)
 

@@ -5,7 +5,8 @@ import os
 import pytest
 import torch
 
-from alphafold3_pytorch.data.atom_datamodule import AtomDataModule
+from alphafold3_pytorch.data.atom_datamodule import AtomDataModule, MockAtomDataset
+from alphafold3_pytorch.models.components.inputs import AtomInput, DatasetWithReturnedIndex
 
 os.environ["TYPECHECK"] = "True"
 
@@ -39,3 +40,17 @@ def test_atom_datamodule(batch_size: int) -> None:
     x = batch.dict()
     assert len(x["atom_inputs"]) == batch_size
     assert x["atom_inputs"].dtype == torch.float32
+
+
+# test use of a dataset wrapper that returns the indices, for caching
+
+
+def test_dataset_return_index_wrapper():
+    """Tests the `DatasetWithReturnedIndex`."""
+    dataset = MockAtomDataset(5)
+    wrapped_dataset = DatasetWithReturnedIndex(dataset)
+
+    assert len(wrapped_dataset) == len(dataset)
+
+    idx, item = wrapped_dataset[3]
+    assert idx == 3 and isinstance(item, AtomInput)
