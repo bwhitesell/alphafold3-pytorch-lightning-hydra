@@ -1,24 +1,28 @@
-import os
+from pathlib import Path
 
 import pytest
 from torch.utils.data import Sampler
 
 from alphafold3_pytorch.data.weighted_pdb_sampler import WeightedPDBSampler
 
+TEST_FOLDER = Path("./data/test")
+
+INTERFACE_MAPPING_PATH = str(TEST_FOLDER / "interface_cluster_mapping.csv")
+
+CHAIN_MAPPING_PATHS = [
+    str(TEST_FOLDER / "ligand_chain_cluster_mapping.csv"),
+    str(TEST_FOLDER / "nucleic_acid_chain_cluster_mapping.csv"),
+    str(TEST_FOLDER / "peptide_chain_cluster_mapping.csv"),
+    str(TEST_FOLDER / "protein_chain_cluster_mapping.csv"),
+]
+
 
 @pytest.fixture
 def sampler():
     """Return a `WeightedPDBSampler` object."""
-    interface_mapping_path = os.path.join("data", "test", "interface_cluster_mapping.csv")
-    chain_mapping_paths = [
-        os.path.join("data", "test", "ligand_chain_cluster_mapping.csv"),
-        os.path.join("data", "test", "nucleic_acid_chain_cluster_mapping.csv"),
-        os.path.join("data", "test", "peptide_chain_cluster_mapping.csv"),
-        os.path.join("data", "test", "protein_chain_cluster_mapping.csv"),
-    ]
     return WeightedPDBSampler(
-        chain_mapping_paths=chain_mapping_paths,
-        interface_mapping_path=interface_mapping_path,
+        chain_mapping_paths=CHAIN_MAPPING_PATHS,
+        interface_mapping_path=INTERFACE_MAPPING_PATH,
         batch_size=4,
     )
 
