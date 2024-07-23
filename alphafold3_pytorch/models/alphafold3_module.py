@@ -128,14 +128,14 @@ class Alphafold3LitModule(LightningModule):
             on_step=True,
             on_epoch=True,
             prog_bar=True,
-            batch_size=len(batch["atom_inputs"]),
+            batch_size=len(batch.atom_inputs),
         )
         self.log_dict(
             loss_breakdown._asdict(),
             on_step=True,
             on_epoch=True,
             prog_bar=False,
-            batch_size=len(batch["atom_inputs"]),
+            batch_size=len(batch.atom_inputs),
         )
 
         # return loss or backpropagation will fail
@@ -162,14 +162,14 @@ class Alphafold3LitModule(LightningModule):
             on_step=True,
             on_epoch=True,
             prog_bar=True,
-            batch_size=len(batch["atom_inputs"]),
+            batch_size=len(batch.atom_inputs),
         )
         self.log_dict(
             loss_breakdown._asdict(),
             on_step=True,
             on_epoch=True,
             prog_bar=False,
-            batch_size=len(batch["atom_inputs"]),
+            batch_size=len(batch.atom_inputs),
         )
 
     def on_validation_epoch_end(self) -> None:
@@ -202,14 +202,14 @@ class Alphafold3LitModule(LightningModule):
             on_step=True,
             on_epoch=True,
             prog_bar=True,
-            batch_size=len(batch["atom_inputs"]),
+            batch_size=len(batch.atom_inputs),
         )
         self.log_dict(
             loss_breakdown._asdict(),
             on_step=True,
             on_epoch=True,
             prog_bar=False,
-            batch_size=len(batch["atom_inputs"]),
+            batch_size=len(batch.atom_inputs),
         )
 
     def on_test_epoch_end(self) -> None:
