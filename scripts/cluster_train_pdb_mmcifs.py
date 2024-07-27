@@ -692,13 +692,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--mmcif_dir",
         type=str,
-        default=os.path.join("data", "pdb_data", "mmcifs"),
+        default=os.path.join("data", "pdb_data", "train_mmcifs"),
         help="Path to the input directory containing (filtered) mmCIF files.",
     )
     parser.add_argument(
         "--output_dir",
         type=str,
-        default=os.path.join("data", "pdb_data", "data_caches", "clusterings"),
+        default=os.path.join("data", "pdb_data", "data_caches", "train_clusterings"),
         help="Path to the output FASTA file.",
     )
     parser.add_argument(

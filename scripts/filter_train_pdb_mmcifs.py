@@ -37,7 +37,7 @@ import os
 import random
 from datetime import datetime
 from operator import itemgetter
-from typing import Dict, List, Literal, Set, Tuple
+from typing import Dict, List, Set, Tuple
 
 import numpy as np
 import rootutils
@@ -702,7 +702,7 @@ def filter_structure_with_timeout(
     output_dir: str,
     min_cutoff_date: datetime = datetime(1970, 1, 1),
     max_cutoff_date: datetime = datetime(2021, 9, 30),
-    split: Literal["train", "eval", "test"] = "train",
+    remove_ligands_in_exclusion_set: bool = False,
 ):
     """
     Given an input mmCIF file, create a new filtered mmCIF file
@@ -737,7 +737,7 @@ def filter_structure_with_timeout(
     mmcif_object = remove_hydrogens(mmcif_object, remove_waters=True)
     mmcif_object = remove_polymer_chains_with_all_unknown_residues(mmcif_object)
     mmcif_object = remove_clashing_chains(mmcif_object)
-    if split in EVALUATION_SPLITS:
+    if remove_ligands_in_exclusion_set:
         # NOTE: The AlphaFold 3 supplement suggests the training dataset retains these (excluded) ligands
         mmcif_object = remove_excluded_ligands(mmcif_object, LIGAND_EXCLUSION_SET)
     mmcif_object = remove_non_ccd_atoms(mmcif_object, CCD_READER_RESULTS)
@@ -765,12 +765,12 @@ def filter_structure_with_timeout(
 
 
 @typecheck
-def filter_structure(args: Tuple[str, str, datetime, datetime, str]):
+def filter_structure(args: Tuple[str, str, datetime, datetime, bool]):
     """
     Given an input mmCIF file, create a new filtered mmCIF file
     using AlphaFold 3's PDB dataset filtering criteria.
     """
-    filepath, output_dir, min_cutoff_date, max_cutoff_date, split = args
+    filepath, output_dir, min_cutoff_date, max_cutoff_date, remove_ligands_in_exclusion_set = args
     file_id = os.path.splitext(os.path.basename(filepath))[0]
     output_file_dir = os.path.join(output_dir, file_id[1:3])
     output_filepath = os.path.join(output_file_dir, f"{file_id}.cif")
@@ -781,7 +781,7 @@ def filter_structure(args: Tuple[str, str, datetime, datetime, str]):
             output_dir,
             min_cutoff_date=min_cutoff_date,
             max_cutoff_date=max_cutoff_date,
-            split=split,
+            remove_ligands_in_exclusion_set=remove_ligands_in_exclusion_set,
         )
     except Exception as e:
         print(f"Skipping structure filtering of {filepath} due to: {e}")
@@ -825,7 +825,7 @@ if __name__ == "__main__":
         "-o",
         "--output_dir",
         type=str,
-        default=os.path.join("data", "pdb_data", "mmcifs"),
+        default=os.path.join("data", "pdb_data", "train_mmcifs"),
         help="Path to the output directory in which to store filtered mmCIF dataset files.",
     )
     parser.add_argument(
@@ -850,11 +850,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-e",
-        "--split",
-        type=str,
-        choices=["train", "eval", "test"],
-        default="train",
-        help="To which split the filtered dataset should be assigned (i.e., `train`, `eval`, or `test`).",
+        "--remove_ligands_in_exclusion_set",
+        action="store_true",
+        help="Remove ligands in the exclusion set during filtering.",
     )
     parser.add_argument(
         "-n",
@@ -905,7 +903,7 @@ if __name__ == "__main__":
             args.output_dir,
             args.min_cutoff_date,
             args.max_cutoff_date,
-            args.split,
+            args.remove_ligands_in_exclusion_set,
         )
         for filepath in glob.glob(os.path.join(args.mmcif_assembly_dir, "*", "*.cif"))
         if "assembly1" in os.path.basename(filepath)
