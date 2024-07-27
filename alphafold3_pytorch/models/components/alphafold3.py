@@ -2360,12 +2360,11 @@ class ElucidatedAtomDiffusion(Module):
         # section 3.7.1 equation 2 - weighted rigid aligned ground truth
 
         atom_pos_aligned_ground_truth = self.weighted_rigid_align(
-            atom_pos_ground_truth,
-            denoised_atom_pos,
-            align_weights,
+            pred_coords=denoised_atom_pos,
+            true_coords=atom_pos_ground_truth,
+            weights=align_weights,
             mask=atom_mask,
         )
-
         # main diffusion mse loss
 
         losses = (
@@ -2535,6 +2534,7 @@ class WeightedRigidAlign(Module):
         :param weights: Weights for each atom.
         :param mask: The mask for variable lengths.
         """
+
         batch_size, num_points, dim = pred_coords.shape
 
         if exists(mask):
@@ -2547,58 +2547,53 @@ class WeightedRigidAlign(Module):
         weights = rearrange(weights, "b n -> b n 1")
 
         # Compute weighted centroids
-        pred_centroid = (pred_coords * weights).sum(dim=1, keepdim=True) / weights.sum(
+        true_centroid = (true_coords * weights).sum(dim=1, keepdim=True) / weights.sum(
             dim=1, keepdim=True
         )
-        true_centroid = (true_coords * weights).sum(dim=1, keepdim=True) / weights.sum(
+        pred_centroid = (pred_coords * weights).sum(dim=1, keepdim=True) / weights.sum(
             dim=1, keepdim=True
         )
 
         # Center the coordinates
-        pred_coords_centered = pred_coords - pred_centroid
         true_coords_centered = true_coords - true_centroid
+        pred_coords_centered = pred_coords - pred_centroid
 
         if num_points < (dim + 1):
             logger.warning(
-                "The size of one of the point clouds is <= dim+1. "
+                "Warning: The size of one of the point clouds is <= dim+1. "
                 + "`WeightedRigidAlign` cannot return a unique rotation."
             )
 
         # Compute the weighted covariance matrix
         cov_matrix = einsum(
-            weights * true_coords_centered,
-            pred_coords_centered,
-            "b n i, b n j -> b i j",
+            weights * true_coords_centered, pred_coords_centered, "b n i, b n j -> b i j"
         )
 
         # Compute the SVD of the covariance matrix
         U, S, V = torch.svd(cov_matrix)
+        U_T = U.transpose(-2, -1)
 
         # Catch ambiguous rotation by checking the magnitude of singular values
         if (S.abs() <= 1e-15).any() and not (num_points < (dim + 1)):
             logger.warning(
-                "Excessively low rank of "
+                "Warning: Excessively low rank of "
                 + "cross-correlation between aligned point clouds. "
                 + "`WeightedRigidAlign` cannot return a unique rotation."
             )
 
-        # Compute the rotation matrix
-        rot_matrix = einsum(U, V, "b i j, b k j -> b i k")
-
+        det = torch.det(einsum(V, U_T, "b i j, b j k -> b i k"))
         # Ensure proper rotation matrix with determinant 1
-        F = torch.eye(dim, dtype=cov_matrix.dtype, device=cov_matrix.device)[None].repeat(
-            batch_size, 1, 1
-        )
-        F[:, -1, -1] = torch.det(rot_matrix)
-        rot_matrix = einsum(U, F, V, "b i j, b j k, b l k -> b i l")
+        diag = torch.eye(dim, dtype=det.dtype, device=det.device)[None].repeat(batch_size, 1, 1)
+        diag[:, -1, -1] = det
+        rot_matrix = einsum(V, diag, U_T, "b i j, b j k, b k l -> b i l")
 
         # Apply the rotation and translation
-        aligned_coords = (
-            einsum(pred_coords_centered, rot_matrix, "b n i, b j i -> b n j") + true_centroid
+        true_aligned_coords = (
+            einsum(rot_matrix, true_coords_centered, "b i j, b n j -> b n i") + pred_centroid
         )
-        aligned_coords.detach_()
+        true_aligned_coords.detach_()
 
-        return aligned_coords
+        return true_aligned_coords
 
 
 class ExpressCoordinatesInFrame(Module):
