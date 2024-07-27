@@ -361,9 +361,10 @@ find data/ccd_data/ -type f -name "*.gz" -exec gzip -d {} \;
 Then run the following with `pdb_assembly_dir`, `pdb_asym_dir`, `ccd_dir`, and `mmcif_output_dir` replaced with the locations of your local copies of the first-assembly PDB, asymmetric unit PDB, CCD, and your desired dataset output directory (i.e., `./data/pdb_data/unfiltered_assembly_mmcifs/`, `./data/pdb_data/unfiltered_asym_mmcifs/`, `./data/ccd_data/`, and `./data/pdb_data/train_mmcifs/`).
 ```bash
 python scripts/filter_train_pdb_mmcifs.py --mmcif_assembly_dir <pdb_assembly_dir> --mmcif_asym_dir <pdb_asym_dir> --ccd_dir <ccd_dir> --output_dir <mmcif_output_dir>
+python scripts/filter_val_pdb_mmcifs.py --mmcif_assembly_dir <pdb_assembly_dir> --mmcif_asym_dir <pdb_asym_dir> --output_dir <mmcif_output_dir>
 ```
 
-See the script for more options. Each first-assembly mmCIF that successfully passes
+See the scripts for more options. Each first-assembly mmCIF that successfully passes
 all processing steps will be written to `mmcif_output_dir` within a subdirectory
 named according to the mmCIF's second and third PDB ID characters (e.g. `5c`).
 

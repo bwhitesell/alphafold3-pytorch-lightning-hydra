@@ -1,5 +1,5 @@
 # %% [markdown]
-# # Curating AlphaFold 3 PDB Dataset
+# # Curating AlphaFold 3 PDB Training Dataset
 #
 # For training AlphaFold 3, we follow the training procedure outlined in Abramson et al (2024).
 #
@@ -71,8 +71,6 @@ from alphafold3_pytorch.utils.utils import exists
 FILTER_STRUCTURE_MAX_SECONDS_PER_INPUT = (
     600  # Maximum time allocated to filter a single structure (in seconds)
 )
-
-EVALUATION_SPLITS = {"eval", "test"}
 
 # Helper functions
 
@@ -215,6 +213,8 @@ def prefilter_target(
             mmcif_object, min_cutoff_date=min_cutoff_date, max_cutoff_date=max_cutoff_date
         )
         and filter_resolution(mmcif_object)
+        # NOTE: Due to lack of clarity and rationale in the AF3 supplement, we retain
+        # up to 1,000 polymer chains for training, in constrast to the supplement's 300
         and filter_polymer_chains(mmcif_object)
     )
     return filter_resolved_chains(mmcif_object) if target_passes_prefilters else None
@@ -706,8 +706,8 @@ def filter_structure_with_timeout(
 ):
     """
     Given an input mmCIF file, create a new filtered mmCIF file
-    using AlphaFold 3's PDB dataset filtering criteria under a
-    timeout constraint.
+    using AlphaFold 3's PDB training dataset filtering criteria
+    under a timeout constraint.
     """
     # Section 2.5.4 of the AlphaFold 3 supplement
     asym_filepath = os.path.join(
@@ -768,7 +768,7 @@ def filter_structure_with_timeout(
 def filter_structure(args: Tuple[str, str, datetime, datetime, bool]):
     """
     Given an input mmCIF file, create a new filtered mmCIF file
-    using AlphaFold 3's PDB dataset filtering criteria.
+    using AlphaFold 3's PDB training dataset filtering criteria.
     """
     filepath, output_dir, min_cutoff_date, max_cutoff_date, remove_ligands_in_exclusion_set = args
     file_id = os.path.splitext(os.path.basename(filepath))[0]
@@ -798,7 +798,7 @@ if __name__ == "__main__":
     # Parse command-line arguments
 
     parser = argparse.ArgumentParser(
-        description="Filter mmCIF files to curate the AlphaFold 3 PDB dataset."
+        description="Filter mmCIF files to curate the AlphaFold 3 PDB training dataset."
     )
     parser.add_argument(
         "-i",
