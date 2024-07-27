@@ -1,6 +1,8 @@
 """This file prepares unit tests for AlphaFold 3 modules."""
 
+import itertools
 import os
+import random
 
 import pytest
 import rootutils
@@ -13,7 +15,9 @@ from alphafold3_pytorch import (
     Attention,
     CentreRandomAugmentation,
     ComputeAlignmentError,
+    ComputeRankingScore,
     ConfidenceHead,
+    ConfidenceHeadLogits,
     DiffusionModule,
     DiffusionTransformer,
     DistogramHead,
@@ -912,3 +916,81 @@ def test_collate_fn():
     batched_atom_inputs = collate_inputs_to_batched_atom_input([dataset[i] for i in range(3)])
 
     _, breakdown = alphafold3(**batched_atom_inputs.dict(), return_loss_breakdown=True)
+
+
+# test compute ranking score
+
+
+def test_compute_ranking_score():
+    """Test the compute ranking score function."""
+    # mock inputs
+
+    batch_size = 2
+    seq_len = 16
+    molecule_atom_lens = torch.randint(1, 3, (batch_size, seq_len))
+    atom_seq_len = molecule_atom_lens.sum(dim=-1).amax()
+    is_molecule_types = torch.randint(0, 2, (batch_size, seq_len, 5)).bool()
+    atom_pos = torch.randn(batch_size, atom_seq_len, 3) * 5
+    atom_mask = torch.randint(0, 2, (atom_pos.shape[:-1])).type_as(atom_pos).bool()
+    has_frame = torch.randint(0, 2, (batch_size, seq_len)).bool()
+    is_modified_residue = torch.randint(0, 2, (batch_size, atom_seq_len))
+
+    pae_logits = torch.randn(batch_size, 64, seq_len, seq_len)
+    pde_logits = torch.randn(batch_size, 64, seq_len, seq_len)
+    plddt_logits = torch.randn(batch_size, 50, atom_seq_len)
+    resolved_logits = torch.randint(0, 2, (batch_size, 2, seq_len))
+    confidence_head_logits = ConfidenceHeadLogits(
+        pae_logits, pde_logits, plddt_logits, resolved_logits
+    )
+
+    chain_length = [random.randint(seq_len // 4, seq_len // 2) for _ in range(batch_size)]
+
+    asym_id = torch.tensor(
+        [
+            [
+                item
+                for val, count in enumerate([chain_len, seq_len - chain_len])
+                for item in itertools.repeat(val, count)
+            ]
+            for chain_len in chain_length
+        ]
+    ).long()
+
+    compute_ranking_score = ComputeRankingScore()
+
+    full_complex_metric = compute_ranking_score.compute_full_complex_metric(
+        confidence_head_logits,
+        asym_id,
+        has_frame,
+        molecule_atom_lens,
+        atom_pos,
+        atom_mask,
+        is_molecule_types,
+    )
+
+    single_chain_metric = compute_ranking_score.compute_single_chain_metric(
+        confidence_head_logits,
+        asym_id,
+        has_frame,
+    )
+
+    interface_metric = compute_ranking_score.compute_interface_metric(
+        confidence_head_logits, asym_id, has_frame, interface_chains=[(0, 1), (1,)]
+    )
+
+    modified_residue_score = compute_ranking_score.compute_modified_residue_score(
+        confidence_head_logits, atom_mask, is_modified_residue
+    )
+
+    assert (
+        full_complex_metric.numel() == batch_size
+    ), f"Full complex metric has wrong shape: {full_complex_metric.shape}"
+    assert (
+        single_chain_metric.numel() == batch_size
+    ), f"Single chain metric has wrong shape: {single_chain_metric.shape}"
+    assert (
+        interface_metric.numel() == batch_size
+    ), f"Interface metric has wrong shape: {interface_metric.shape}"
+    assert (
+        modified_residue_score.numel() == batch_size
+    ), f"Modified residue score has wrong shape: {modified_residue_score.shape}"

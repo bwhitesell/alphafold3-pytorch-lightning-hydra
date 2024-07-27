@@ -18,6 +18,7 @@ from alphafold3_pytorch.models.components.alphafold3 import (
     ComputeAlignmentError,
     ConditionWrapper,
     ConfidenceHead,
+    ConfidenceHeadLogits,
     DiffusionModule,
     DiffusionTransformer,
     DistogramHead,
@@ -42,6 +43,7 @@ from alphafold3_pytorch.models.components.attention import (
     Attention,
     full_pairwise_repr_to_windowed,
 )
+from alphafold3_pytorch.models.components.confidence import ComputeRankingScore
 from alphafold3_pytorch.models.components.inputs import (
     Alphafold3Input,
     AtomInput,
@@ -80,7 +82,9 @@ __all__ = [
     DiffusionModule,
     ElucidatedAtomDiffusion,
     InputFeatureEmbedder,
+    ComputeRankingScore,
     ConfidenceHead,
+    ConfidenceHeadLogits,
     DistogramHead,
     Alphafold3,
     Alphafold3WithHubMixin,
