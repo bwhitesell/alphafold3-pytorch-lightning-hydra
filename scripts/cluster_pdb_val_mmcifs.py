@@ -1,21 +1,37 @@
 # %% [markdown]
-# # Clustering AlphaFold 3 PDB Dataset
+# # Clustering AlphaFold 3 PDB Validation Dataset
 #
-# For clustering AlphaFold 3's PDB dataset, we follow the clustering procedure outlined in Abramson et al (2024).
+# For clustering AlphaFold 3's PDB validation dataset, we follow the clustering procedure outlined in Abramson et al (2024).
 #
-# In order to reduce bias in the training and evaluation sets, clustering was performed on PDB chains and interfaces, as
-# follows.
-# • Chain-based clustering occur at 40% sequence homology for proteins, 100% homology for nucleic acids, 100%
-# homology for peptides (<10 residues) and according to CCD identity for small molecules (i.e. only identical
-# molecules share a cluster).
-# • Chain-based clustering of polymers with modified residues is first done by mapping the modified residues to
-# a standard residue using SCOP [23, 24] convention (https://github.com/biopython/biopython/
-# blob/5ee5e69e649dbe17baefe3919e56e60b54f8e08f/Bio/Data/SCOPData.py). If the mod-
-# ified residue could not be found as a mapping key or was mapped to a value longer than a single character, it was
-# mapped to type unknown.
-# • Interface-based clustering is a join on the cluster IDs of the constituent chains, such that interfaces I and J are
-# in the same interface cluster C^interface only if their constituent chain pairs {I_1,I_2},{J_1,J_2} have the same chain
-# cluster pairs {C_1^chain ,C_2^chain}.
+# The process for selecting these targets was broken up into two separate stages. The first was for selecting multimers,
+# the second for selecting monomers. Multimer selection proceeded as follows:
+#
+# # ... (see the PDB validation set filtering script)
+# 2. Filter to only low homology interfaces, which are defined as those where no target in the training set contains
+# two chains with high homology to the chains involved in the interface, where high homology here means >
+# 40% sequence identity for polymers or > 0.85 tanimoto similarity for ligands. Additionally filter out interfaces
+# involving a ligand with ranking model fit less than 0.5 or with multiple residues.
+# 3. Assign interfaces to clusters as per subsubsection 2.5.3, other than for polymer-ligand interfaces which use cluster
+# ID (polymer_cluster, CCD-code) and sample one interface per cluster.
+# 4. Take the following interface types only, possibly reducing number of clusters by sampling a subset of clusters
+# (number of samples given in brackets if reduced): protein-protein (600), protein-DNA (100), DNA-DNA (100),
+# Protein-ligand (600), DNA-ligand (50), ligand-ligand (200), protein-RNA, RNA-RNA, DNA-RNA, RNA-ligand.
+# 5. Take the set of all PDB targets containing the remaining interfaces with a final additional restriction of max total
+# tokens 2048 and make the set of scored chains and interfaces equal to all low homology chains and interfaces in
+# those targets.
+# 6. Manually exclude a small set of targets (11 in our case) where alignment for scoring took too long to be practical
+# for generating validation scores during experiments.
+#
+# Monomer selection proceeded similarly:
+#
+# ... (see the PDB validation set filtering script)
+# 2. Filter to only low homology polymers.
+# 3. Assign polymers to clusters as per subsubsection 2.5.3.
+# 4. Sample 40 protein monomers and take all DNA and RNA monomers.
+# 5. Add a final additional restriction of max total tokens 2048 and make the set of scored chains and interfaces equal
+# to all low homology chains and interfaces in the remaining targets.
+# 6. Manually exclude a set of RNA monomers (8 in our case) that all come from one over represented cluster.
+# The end result was 1,220 PDB targets containing 2,333 low homology interfaces and 2,099 low homology chains.
 
 # %%
 
@@ -38,9 +54,13 @@ rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
 from alphafold3_pytorch.data import mmcif_parsing
 from alphafold3_pytorch.utils import RankedLogger
-from alphafold3_pytorch.utils.data_utils import RESIDUE_MOLECULE_TYPE, get_residue_molecule_type
+from alphafold3_pytorch.utils.data_utils import (
+    RESIDUE_MOLECULE_TYPE,
+    get_residue_molecule_type,
+    is_polymer,
+)
 from alphafold3_pytorch.utils.tensor_typing import IntType, typecheck
-from alphafold3_pytorch.utils.utils import np_mode
+from alphafold3_pytorch.utils.utils import exists, np_mode
 
 logger = RankedLogger(__name__, rank_zero_only=True)
 
@@ -321,6 +341,14 @@ def parse_chain_sequences_and_interfaces_from_mmcif_directory(
                 all_interface_chain_ids[structure_id] = list(interface_chain_ids)
 
     return all_chain_sequences, all_interface_chain_ids
+
+
+@typecheck
+def filter_to_low_homology_sequences(
+    all_chain_sequences: CHAIN_SEQUENCES, interface_chain_ids: CHAIN_INTERFACES
+):
+    """Filter targets to only low homology sequences."""
+    raise NotImplementedError("Filtering to low homology sequences is not yet implemented.")
 
 
 @typecheck
@@ -687,24 +715,24 @@ def cluster_interfaces(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Cluster chains and interfaces within the AlphaFold 3 PDB training dataset's filtered mmCIF files."
+        description="Cluster chains and interfaces within the AlphaFold 3 PDB validation dataset's filtered mmCIF files."
     )
     parser.add_argument(
         "--mmcif_dir",
         type=str,
-        default=os.path.join("data", "pdb_data", "train_mmcifs"),
+        default=os.path.join("data", "pdb_data", "val_mmcifs"),
         help="Path to the input directory containing (filtered) mmCIF files.",
     )
     parser.add_argument(
         "--output_dir",
         type=str,
-        default=os.path.join("data", "pdb_data", "data_caches", "train_clusterings"),
+        default=os.path.join("data", "pdb_data", "data_caches", "val_clusterings"),
         help="Path to the output FASTA file.",
     )
     parser.add_argument(
         "--clustering_filtered_pdb_dataset",
         action="store_true",
-        help="Whether the clustering is being performed on the filtered PDB dataset.",
+        help="Whether the clustering is being performed on a filtered PDB dataset.",
     )
     parser.add_argument(
         "-n",
@@ -752,6 +780,30 @@ if __name__ == "__main__":
 
         with open(os.path.join(args.output_dir, "interface_chain_ids.json"), "w") as f:
             json.dump(interface_chain_ids, f)
+
+    # Attempt to filter chain sequences and interfaces according to the AlphaFold 3 supplement
+
+    if os.path.exists(
+        os.path.join(args.output_dir, "filtered_all_chain_sequences.json")
+    ) and os.path.exists(os.path.join(args.output_dir, "filtered_interface_chain_ids.json")):
+        with open(os.path.join(args.output_dir, "filtered_all_chain_sequences.json"), "r") as f:
+            all_chain_sequences = json.load(f)
+
+        with open(os.path.join(args.output_dir, "filtered_interface_chain_ids.json"), "r") as f:
+            interface_chain_ids = json.load(f)
+    else:
+        (
+            filtered_all_chain_sequences,
+            filtered_interface_chain_ids,
+        ) = filter_to_low_homology_sequences(all_chain_sequences, interface_chain_ids)
+
+        # Cache (filtered) chain sequences and interfaces to local storage
+
+        with open(os.path.join(args.output_dir, "filtered_all_chain_sequences.json"), "w") as f:
+            json.dump(filtered_all_chain_sequences, f)
+
+        with open(os.path.join(args.output_dir, "filtered_interface_chain_ids.json"), "w") as f:
+            json.dump(filtered_interface_chain_ids, f)
 
     # Attempt to load existing chain cluster mappings from local storage
 

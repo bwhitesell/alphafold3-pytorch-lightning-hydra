@@ -11,33 +11,14 @@
 # 1. Take all targets released after 2021-09-30 and before 2023-01-13 and remove targets with total number of tokens
 # greater than 2560, more than one thousand chains or resolution greater than 4.5, then generate a list of all interface
 # chain pairs for all remaining targets.
-# 2. Filter to only low homology interfaces, which are defined as those where no target in the training set contains
-# two chains with high homology to the chains involved in the interface, where high homology here means >
-# 40% sequence identity for polymers or > 0.85 tanimoto similarity for ligands. Additionally filter out interfaces
-# involving a ligand with ranking model fit less than 0.5 or with multiple residues.
-# 3. Assign interfaces to clusters as per subsubsection 2.5.3, other than for polymer-ligand interfaces which use cluster
-# ID (polymer_cluster, CCD-code) and sample one interface per cluster.
-# 4. Take the following interface types only, possibly reducing number of clusters by sampling a subset of clusters
-# (number of samples given in brackets if reduced): protein-protein (600), protein-DNA (100), DNA-DNA (100),
-# Protein-ligand (600), DNA-ligand (50), ligand-ligand (200), protein-RNA, RNA-RNA, DNA-RNA, RNA-ligand.
-# 5. Take the set of all PDB targets containing the remaining interfaces with a final additional restriction of max total
-# tokens 2048 and make the set of scored chains and interfaces equal to all low homology chains and interfaces in
-# those targets.
-# 6. Manually exclude a small set of targets (11 in our case) where alignment for scoring took too long to be practical
-# for generating validation scores during experiments.
+# ... (see the PDB validation set clustering script)
 #
 # Monomer selection proceeded similarly:
 #
 # 1. Take all polymer monomer targets released after 2021-09-30 and before 2023-01-13 (can include monomer poly-
 # mers with ligand chains) and remove targets with total number of tokens greater than 2560 or resolution greater
 # than 4.5
-# 2. Filter to only low homology polymers.
-# 3. Assign polymers to clusters as per subsubsection 2.5.3.
-# 4. Sample 40 protein monomers and take all DNA and RNA monomers.
-# 5. Add a final additional restriction of max total tokens 2048 and make the set of scored chains and interfaces equal
-# to all low homology chains and interfaces in the remaining targets.
-# 6. Manually exclude a set of RNA monomers (8 in our case) that all come from one over represented cluster.
-# The end result was 1,220 PDB targets containing 2,333 low homology interfaces and 2,099 low homology chains.
+# ... (see the PDB validation set clustering script)
 #
 
 # %%
