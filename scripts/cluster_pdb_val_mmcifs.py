@@ -345,9 +345,16 @@ def parse_chain_sequences_and_interfaces_from_mmcif_directory(
 
 @typecheck
 def filter_to_low_homology_sequences(
-    all_chain_sequences: CHAIN_SEQUENCES, interface_chain_ids: CHAIN_INTERFACES
+    all_chain_sequences: CHAIN_SEQUENCES,
+    interface_chain_ids: CHAIN_INTERFACES,
+    train_clustering_dir: str,
 ):
     """Filter targets to only low homology sequences."""
+    assert os.path.isdir(train_clustering_dir), "The training clustering directory must exist."
+    write_sequences_to_fasta(all_chain_sequences, fasta_filepath, molecule_type="protein")
+    write_sequences_to_fasta(all_chain_sequences, fasta_filepath, molecule_type="nucleic_acid")
+    write_sequences_to_fasta(all_chain_sequences, fasta_filepath, molecule_type="peptide")
+    # TODO: Reference https://github.com/soedinglab/MMseqs2?tab=readme-ov-file#search to perform all-against-all sequence identity comparisons
     raise NotImplementedError("Filtering to low homology sequences is not yet implemented.")
 
 
@@ -724,10 +731,16 @@ if __name__ == "__main__":
         help="Path to the input directory containing (filtered) mmCIF files.",
     )
     parser.add_argument(
+        "--train_clustering_dir",
+        type=str,
+        default=os.path.join("data", "pdb_data", "data_caches", "train_clusterings"),
+        help="Path to the training clustering directory.",
+    )
+    parser.add_argument(
         "--output_dir",
         type=str,
         default=os.path.join("data", "pdb_data", "data_caches", "val_clusterings"),
-        help="Path to the output FASTA file.",
+        help="Path to the output clustering directory.",
     )
     parser.add_argument(
         "--clustering_filtered_pdb_dataset",
@@ -795,7 +808,9 @@ if __name__ == "__main__":
         (
             filtered_all_chain_sequences,
             filtered_interface_chain_ids,
-        ) = filter_to_low_homology_sequences(all_chain_sequences, interface_chain_ids)
+        ) = filter_to_low_homology_sequences(
+            all_chain_sequences, interface_chain_ids, args.train_clustering_dir
+        )
 
         # Cache (filtered) chain sequences and interfaces to local storage
 

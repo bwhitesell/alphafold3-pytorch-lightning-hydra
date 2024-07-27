@@ -699,7 +699,7 @@ if __name__ == "__main__":
         "--output_dir",
         type=str,
         default=os.path.join("data", "pdb_data", "data_caches", "train_clusterings"),
-        help="Path to the output FASTA file.",
+        help="Path to the output clustering directory.",
     )
     parser.add_argument(
         "--clustering_filtered_pdb_dataset",
