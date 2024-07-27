@@ -14,6 +14,7 @@ import einx
 import numpy as np
 import torch
 import torch.nn.functional as F
+from numpy.lib.format import open_memmap
 from pdbeccdutils.core import ccd_reader
 from rdkit import Chem
 from rdkit.Chem import AllChem, rdDetermineBonds
@@ -187,6 +188,60 @@ class BatchedAtomInput:
     def dict(self):
         """Return the dataclass as a dictionary."""
         return asdict(self)
+
+
+# functions for saving an AtomInput to disk or loading from disk to AtomInput
+
+
+@typecheck
+def atom_input_to_file(atom_input: AtomInput, path: str, overwrite: bool = False) -> Path:
+    """Save an AtomInput to disk."""
+    path = Path(path)
+
+    if not overwrite:
+        assert not path.exists()
+
+    path.parents[0].mkdir(exist_ok=True, parents=True)
+
+    torch.save(atom_input.dict(), str(path))
+    return path
+
+
+@typecheck
+def file_to_atom_input(path: str | Path) -> AtomInput:
+    """Load an AtomInput from disk."""
+    if isinstance(path, str):
+        path = Path(path)
+
+    assert path.is_file()
+
+    atom_input_dict = torch.load(str(path))
+    return AtomInput(**atom_input_dict)
+
+
+# Atom dataset that returns a AtomInput based on folders of atom inputs stored on disk
+
+
+class AtomDataset(Dataset):
+    """Dataset for AtomInput stored on disk."""
+
+    def __init__(self, folder: str | Path):
+        if isinstance(folder, str):
+            folder = Path(folder)
+
+        assert folder.exists() and folder.is_dir()
+
+        self.folder = folder
+        self.files = [*folder.glob("**/*.pt")]
+
+    def __len__(self) -> int:
+        """Return the length of the dataset."""
+        return len(self.files)
+
+    def __getitem__(self, idx: int) -> AtomInput:
+        """Return an item from the dataset."""
+        file = self.files[idx]
+        return file_to_atom_input(file)
 
 
 # molecule input - accepting list of molecules as rdchem.Mol + the atomic lengths for how to pool into tokens

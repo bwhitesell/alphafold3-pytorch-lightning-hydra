@@ -1,16 +1,22 @@
 import os
+import shutil
 
 import pytest
 import torch
 
-from alphafold3_pytorch.data import mmcif_writing
-from alphafold3_pytorch.data.atom_datamodule import (
+from alphafold3_pytorch import (
     alphafold3_inputs_to_batched_atom_input,
+    atom_input_to_file,
+    file_to_atom_input,
     pdb_inputs_to_batched_atom_input,
 )
+from alphafold3_pytorch.data import mmcif_writing
 from alphafold3_pytorch.data.life import reverse_complement, reverse_complement_tensor
+from alphafold3_pytorch.data.mocks import MockAtomDataset
 from alphafold3_pytorch.models.components.alphafold3 import Alphafold3
-from alphafold3_pytorch.models.components.inputs import Alphafold3Input, PDBInput
+from alphafold3_pytorch.models.components.inputs import Alphafold3Input, AtomDataset, PDBInput
+
+# reverse complements
 
 
 def test_string_reverse_complement():
@@ -24,6 +30,39 @@ def test_tensor_reverse_complement():
     seq = torch.randint(0, 5, (100,))
     rc = reverse_complement_tensor(seq)
     assert torch.allclose(reverse_complement_tensor(rc), seq)
+
+
+# atom input
+
+
+def test_atom_input_to_file_and_from():
+    """Test the atom input to file and from file functions."""
+    mock_atom_dataset = MockAtomDataset(64)
+    atom_input = mock_atom_dataset[0]
+
+    file = atom_input_to_file(atom_input, "test-atom-input.pt", overwrite=True)
+    atom_input_reconstituted = file_to_atom_input(str(file))
+    assert torch.allclose(atom_input.atom_inputs, atom_input_reconstituted.atom_inputs)
+
+
+def test_atom_dataset():
+    """Test the atom dataset class."""
+    num_atom_inputs = 10
+    test_folder = "test_atom_folder"
+
+    mock_atom_dataset = MockAtomDataset(num_atom_inputs)
+
+    for i in range(num_atom_inputs):
+        atom_input = mock_atom_dataset[i]
+        atom_input_to_file(atom_input, f"{test_folder}/{i}.pt", overwrite=True)
+
+    atom_dataset_from_disk = AtomDataset(test_folder)
+    assert len(atom_dataset_from_disk) == num_atom_inputs
+
+    shutil.rmtree(test_folder, ignore_errors=True)
+
+
+# alphafold3 input
 
 
 @pytest.mark.parametrize("directed_bonds", (False, True))

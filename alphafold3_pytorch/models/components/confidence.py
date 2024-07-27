@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, NamedTuple, Optional
+from typing import List, NamedTuple
 
 import torch
 import torch.nn.functional as F
@@ -18,19 +18,24 @@ from alphafold3_pytorch.models.components.inputs import (
     IS_PROTEIN_INDEX,
 )
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
+from alphafold3_pytorch.utils.utils import exists
 
 
 class ConfidenceScore(NamedTuple):
     plddt: Float["b n"]  # type: ignore
-    ptm: Float["b"]  # type: ignore
-    iptm: Float["b"] | None  # type: ignore
+    ptm: Float[" b"]  # type: ignore
+    iptm: Float[" b"] | None  # type: ignore
 
 
 class ComputeConfidenceScore(Module):
     """Compute confidence score."""
 
     @typecheck
-    def __init__(self, pae_breaks: Optional[Float["nbreak"]] = None, eps: float = 1e-8):  # type: ignore
+    def __init__(
+        self,
+        pae_breaks: Float[" nbreak"] = torch.arange(0, 31.5, 0.5),  # type: ignore
+        eps: float = 1e-8,
+    ):
         super().__init__()
         if pae_breaks is None:
             pae_breaks = torch.arange(0, 31.5, 0.5)
@@ -64,7 +69,7 @@ class ComputeConfidenceScore(Module):
         confidence_head_logits: ConfidenceHeadLogits,
         asym_id: Int["b n"],  # type: ignore
         has_frame: Bool["b n"],  # type: ignore
-        ptm_residue_weight: Optional[Float["b n"]] = None,  # type: ignore
+        ptm_residue_weight: Float["b n"] | None = None,  # type: ignore
         multimer_mode: bool = True,
     ) -> ConfidenceScore:
         """
@@ -90,6 +95,8 @@ class ComputeConfidenceScore(Module):
             interface=False,
         )
 
+        iptm = None
+
         if multimer_mode:
             # Section 5.9.2 equation 18
             iptm = self.compute_ptm(
@@ -100,8 +107,6 @@ class ComputeConfidenceScore(Module):
                 ptm_residue_weight,
                 interface=True,
             )
-        else:
-            iptm = None
 
         confidence_score = ConfidenceScore(plddt=plddt, ptm=ptm, iptm=iptm)
         return confidence_score
@@ -130,10 +135,10 @@ class ComputeConfidenceScore(Module):
     def compute_ptm(
         self,
         logits: Float["b c n n "],  # type: ignore
-        breaks: Float["d"],  # type: ignore
+        breaks: Float[" d"],  # type: ignore
         asym_id: Int["b n"],  # type: ignore
         has_frame: Bool["b n"],  # type: ignore
-        residue_weights: Optional[Float["b n"]] = None,  # type: ignore
+        residue_weights: Float["b n"] | None = None,  # type: ignore
         interface: bool = False,
         compute_chain_wise_iptm: bool = False,
     ) -> Float["b n"] | Tuple[Float["b n n"], Float["b n n"], List[List[int]]]:  # type: ignore
@@ -151,8 +156,9 @@ class ComputeConfidenceScore(Module):
         """
         device = logits.device
 
-        if residue_weights is None:
+        if not exists(residue_weights):
             residue_weights = torch.ones_like(has_frame)
+
         residue_weights = residue_weights * has_frame
 
         num_batch = logits.shape[0]
@@ -258,10 +264,10 @@ class ComputeClash(Module):
     def compute_has_clash(
         self,
         atom_pos: Float["m 3"],  # type: ignore
-        asym_id: Int["n"],  # type: ignore
-        indices: Int["m"],  # type: ignore
-        valid_indices: Int["m"],  # type: ignore
-    ) -> Bool:  # type: ignore
+        asym_id: Int[" n"],  # type: ignore
+        indices: Int[" m"],  # type: ignore
+        valid_indices: Int[" m"],  # type: ignore
+    ) -> Bool[""]:  # type: ignore
         """
         Compute if there is a clash in the chain.
 
@@ -304,10 +310,10 @@ class ComputeClash(Module):
     def forward(
         self,
         atom_pos: Float["b m 3"] | Float["m 3"],  # type: ignore
-        atom_mask: Bool["b m"] | Bool["m"],  # type: ignore
-        molecule_atom_lens: Int["b n"] | Int["n"],  # type: ignore
-        asym_id: Int["b n"] | Int["n"],  # type: ignore
-    ) -> Bool:  # type: ignore
+        atom_mask: Bool["b m"] | Bool[" m"],  # type: ignore
+        molecule_atom_lens: Int["b n"] | Int[" n"],  # type: ignore
+        asym_id: Int["b n"] | Int[" n"],  # type: ignore
+    ) -> Bool[""]:  # type: ignore
         """
         Compute if there is a clash in the chain.
 
@@ -363,7 +369,7 @@ class ComputeRankingScore(Module):
         plddt: Float["b m"],  # type: ignore
         atom_mask: Float["b m"],  # type: ignore
         atom_is_molecule_types: Float["b m"],  # type: ignore
-    ) -> Float["b"]:  # type: ignore
+    ) -> Float[" b"]:  # type: ignore
         """
         Compute disorder score.
 
@@ -389,7 +395,7 @@ class ComputeRankingScore(Module):
         atom_pos: Float["b m 3"],  # type: ignore
         atom_mask: Bool["b m"],  # type: ignore
         is_molecule_types: Int[f"b n {IS_MOLECULE_TYPES}"],  # type: ignore
-    ) -> Float["b"]:  # type: ignore
+    ) -> Float[" b"]:  # type: ignore
         """
         Compute full complex metric.
 
@@ -450,7 +456,7 @@ class ComputeRankingScore(Module):
         confidence_head_logits: ConfidenceHeadLogits,
         asym_id: Int["b n"],  # type: ignore
         has_frame: Bool["b n"],  # type: ignore
-    ) -> Float["b"]:  # type: ignore
+    ) -> Float[" b"]:  # type: ignore
         """
         Compute single chain metric.
 
@@ -475,7 +481,7 @@ class ComputeRankingScore(Module):
         asym_id: Int["b n"],  # type: ignore
         has_frame: Bool["b n"],  # type: ignore
         interface_chains: List,
-    ) -> Float["b"]:  # type: ignore
+    ) -> Float[" b"]:  # type: ignore
         """
         Compute interface metric.
 
@@ -529,7 +535,7 @@ class ComputeRankingScore(Module):
         confidence_head_logits: ConfidenceHeadLogits,
         atom_mask: Bool["b m"],  # type: ignore
         atom_is_modified_residue: Int["b m"],  # type: ignore
-    ) -> Float["b"]:  # type: ignore
+    ) -> Float[" b"]:  # type: ignore
         """
         Compute modified residue score.
 
