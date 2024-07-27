@@ -46,14 +46,13 @@ from alphafold3_pytorch.models.components.attention import (
 from alphafold3_pytorch.models.components.confidence import ComputeRankingScore
 from alphafold3_pytorch.models.components.inputs import (
     Alphafold3Input,
+    AtomDataset,
     AtomInput,
     BatchedAtomInput,
     DatasetWithReturnedIndex,
     MoleculeInput,
     PDBDataset,
     PDBInput,
-    atom_input_to_file,
-    file_to_atom_input,
     maybe_transform_to_atom_input,
     maybe_transform_to_atom_inputs,
     register_input_transform,
