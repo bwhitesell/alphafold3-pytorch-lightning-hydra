@@ -42,7 +42,7 @@ def test_data_input():
         folder=os.path.join("data", "mmcif"), sampler=sampler, sample_type="default", crop_size=128
     )
 
-    mol_input = pdb_input_to_molecule_input(dataset[0])
+    mol_input = pdb_input_to_molecule_input(pdb_input=dataset[0])
     atom_input = molecule_to_atom_input(mol_input)
     batched_atom_input = collate_inputs_to_batched_atom_input([atom_input], atoms_per_window=27)
 
