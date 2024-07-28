@@ -14,7 +14,6 @@ import einx
 import numpy as np
 import torch
 import torch.nn.functional as F
-from numpy.lib.format import open_memmap
 from pdbeccdutils.core import ccd_reader
 from rdkit import Chem
 from rdkit.Chem import AllChem, rdDetermineBonds
