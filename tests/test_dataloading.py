@@ -1,36 +1,35 @@
-
-
-from alphafold3_pytorch.data.weighted_pdb_sampler import WeightedPDBSampler
-from alphafold3_pytorch.models.components.inputs import PDBDataset,BatchedAtomInput,AtomInput
-from torch.utils.data import DataLoader
 import os
-from alphafold3_pytorch.models.components.alphafold3 import Alphafold3
-from alphafold3_pytorch.models.components.inputs import pdb_input_to_molecule_input,molecule_to_atom_input
-from alphafold3_pytorch.data.atom_datamodule import (collate_inputs_to_batched_atom_input,
+
+from torch.utils.data import DataLoader
+
+from alphafold3_pytorch.data.atom_datamodule import (
     alphafold3_inputs_to_batched_atom_input,
+    collate_inputs_to_batched_atom_input,
     pdb_inputs_to_batched_atom_input,
 )
+from alphafold3_pytorch.data.weighted_pdb_sampler import WeightedPDBSampler
+from alphafold3_pytorch.models.components.alphafold3 import Alphafold3
+from alphafold3_pytorch.models.components.inputs import (
+    AtomInput,
+    BatchedAtomInput,
+    PDBDataset,
+    molecule_to_atom_input,
+    pdb_input_to_molecule_input,
+)
+
 
 def test_data_input():
-
-    interface_mapping_path = os.path.join(
-        "data", "test", "interface_cluster_mapping.csv"
-    )
+    """Test a PDBDataset constructed using a WeightedPDBSampler."""
+    interface_mapping_path = os.path.join("data", "test", "interface_cluster_mapping.csv")
     chain_mapping_paths = [
-        os.path.join(
-            "data", "test", "ligand_chain_cluster_mapping.csv"
-        ),
+        os.path.join("data", "test", "ligand_chain_cluster_mapping.csv"),
         os.path.join(
             "data",
             "test",
             "nucleic_acid_chain_cluster_mapping.csv",
         ),
-        os.path.join(
-            "data", "test", "peptide_chain_cluster_mapping.csv"
-        ),
-        os.path.join(
-            "data", "test", "protein_chain_cluster_mapping.csv"
-        ),
+        os.path.join("data", "test", "peptide_chain_cluster_mapping.csv"),
+        os.path.join("data", "test", "protein_chain_cluster_mapping.csv"),
     ]
 
     sampler = WeightedPDBSampler(
@@ -39,17 +38,13 @@ def test_data_input():
         batch_size=64,
     )
 
-
     dataset = PDBDataset(
-    folder='/data/mmcif',
-    sampler=sampler,
-    sample_type='clustered',
-    crop_size=10
-        )
+        folder=os.path.join("data", "mmcif"), sampler=sampler, sample_type="default", crop_size=128
+    )
 
-    mol=pdb_input_to_molecule_input(biomol=dataset[0])
-    atom_input=molecule_to_atom_input(mol)
-    batched_atom_input=collate_inputs_to_batched_atom_input([atom_input],atoms_per_window=27)
+    mol_input = pdb_input_to_molecule_input(dataset[0])
+    atom_input = molecule_to_atom_input(mol_input)
+    batched_atom_input = collate_inputs_to_batched_atom_input([atom_input], atoms_per_window=27)
 
     alphafold3 = Alphafold3(
         dim_atom_inputs=3,
@@ -67,7 +62,6 @@ def test_data_input():
             atom_decoder_depth=1,
         ),
     )
-    
+
     loss = alphafold3(**batched_atom_input.dict())
     loss.backward()
-
