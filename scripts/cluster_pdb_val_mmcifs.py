@@ -347,13 +347,32 @@ def parse_chain_sequences_and_interfaces_from_mmcif_directory(
 def filter_to_low_homology_sequences(
     all_chain_sequences: CHAIN_SEQUENCES,
     interface_chain_ids: CHAIN_INTERFACES,
+    fasta_filepath: str,
     train_clustering_dir: str,
 ):
     """Filter targets to only low homology sequences."""
     assert os.path.isdir(train_clustering_dir), "The training clustering directory must exist."
-    write_sequences_to_fasta(all_chain_sequences, fasta_filepath, molecule_type="protein")
-    write_sequences_to_fasta(all_chain_sequences, fasta_filepath, molecule_type="nucleic_acid")
-    write_sequences_to_fasta(all_chain_sequences, fasta_filepath, molecule_type="peptide")
+    fasta_filepath = fasta_filepath.replace(".fasta", "_monomer.fasta")
+
+    # isolate monomer sequences
+
+    monomer_chain_sequences = []
+    # multimer_chain_sequences = []
+    # for entry in all_chain_sequences:
+    #     chain_ids, molecule_ids, polymer_molecule_ids = [], [], []
+    #     for entry in entry.values():
+    #         chain_id, molecule_id = entry.split(":")
+    #         chain_ids.append(chain_id)
+    #         molecule_ids.append(molecule_id)
+    #         if any(mol_id for mol_id in {}):
+    #             pass
+
+    # write monomer sequences to FASTA files
+
+    write_sequences_to_fasta(monomer_chain_sequences, fasta_filepath, molecule_type="protein")
+    write_sequences_to_fasta(monomer_chain_sequences, fasta_filepath, molecule_type="nucleic_acid")
+    write_sequences_to_fasta(monomer_chain_sequences, fasta_filepath, molecule_type="peptide")
+
     # TODO: Reference https://github.com/soedinglab/MMseqs2?tab=readme-ov-file#search to perform all-against-all sequence identity comparisons
     raise NotImplementedError("Filtering to low homology sequences is not yet implemented.")
 
@@ -809,7 +828,7 @@ if __name__ == "__main__":
             filtered_all_chain_sequences,
             filtered_interface_chain_ids,
         ) = filter_to_low_homology_sequences(
-            all_chain_sequences, interface_chain_ids, args.train_clustering_dir
+            all_chain_sequences, interface_chain_ids, fasta_filepath, args.train_clustering_dir
         )
 
         # Cache (filtered) chain sequences and interfaces to local storage
