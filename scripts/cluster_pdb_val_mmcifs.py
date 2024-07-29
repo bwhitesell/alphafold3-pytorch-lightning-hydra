@@ -40,24 +40,27 @@ import glob
 import json
 import os
 import subprocess
+from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from typing import Dict, List, Literal, Optional, Set, Tuple, Union
+from typing import Dict, List, Literal, Set, Tuple, Union
 
 import numpy as np
 import polars as pl
 import rootutils
 from Bio.Data import PDBData
 from Bio.PDB.NeighborSearch import NeighborSearch
+from rdkit import Chem, DataStructs
+from rdkit.Chem import AllChem
 from tqdm import tqdm
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
 from alphafold3_pytorch.data import mmcif_parsing
+from alphafold3_pytorch.models.components.inputs import CCD_COMPONENTS_SMILES
 from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.data_utils import (
     RESIDUE_MOLECULE_TYPE,
     get_residue_molecule_type,
-    is_polymer,
 )
 from alphafold3_pytorch.utils.tensor_typing import IntType, typecheck
 from alphafold3_pytorch.utils.utils import exists, np_mode
@@ -81,6 +84,7 @@ NUCLEIC_LETTERS_3TO1_EXTENDED = {
     k.strip(): v.strip() for k, v in PDBData.nucleic_letters_3to1_extended.items()
 }
 
+CLUSTERING_POLYMER_MOLECULE_TYPES = {"protein", "rna", "dna", "peptide"}
 PROTEIN_LETTERS_1TO3 = {k.strip(): v.strip() for k, v in PDBData.protein_letters_1to3.items()}
 RNA_LETTERS_1TO3 = {
     "A": "A",
@@ -344,37 +348,217 @@ def parse_chain_sequences_and_interfaces_from_mmcif_directory(
 
 
 @typecheck
-def filter_to_low_homology_sequences(
+def separate_monomer_and_multimer_chain_sequences(
     all_chain_sequences: CHAIN_SEQUENCES,
-    interface_chain_ids: CHAIN_INTERFACES,
-    fasta_filepath: str,
-    train_clustering_dir: str,
-):
-    """Filter targets to only low homology sequences."""
-    assert os.path.isdir(train_clustering_dir), "The training clustering directory must exist."
-    fasta_filepath = fasta_filepath.replace(".fasta", "_monomer.fasta")
-
-    # isolate monomer sequences
-
+) -> Tuple[CHAIN_SEQUENCES, CHAIN_SEQUENCES]:
+    """Separate monomer and multimer chain sequences."""
     monomer_chain_sequences = []
-    # multimer_chain_sequences = []
-    # for entry in all_chain_sequences:
-    #     chain_ids, molecule_ids, polymer_molecule_ids = [], [], []
-    #     for entry in entry.values():
-    #         chain_id, molecule_id = entry.split(":")
-    #         chain_ids.append(chain_id)
-    #         molecule_ids.append(molecule_id)
-    #         if any(mol_id for mol_id in {}):
-    #             pass
+    multimer_chain_sequences = []
+    for chain_sequences in tqdm(
+        all_chain_sequences, desc="Separating monomer and multimer chain sequences"
+    ):
+        chain_ids, molecule_ids, polymer_molecule_ids = [], [], []
+        for chain_sequence_dicts in chain_sequences.values():
+            for chain_sequence_dict in chain_sequence_dicts:
+                chain_id, molecule_id = chain_sequence_dict.split(":")
+                chain_ids.append(chain_id)
+                molecule_ids.append(molecule_id)
+                mol_is_polymer = any(
+                    mol_id in molecule_id for mol_id in CLUSTERING_POLYMER_MOLECULE_TYPES
+                )
+                if mol_is_polymer:
+                    polymer_molecule_ids.append(molecule_id)
+        if len(polymer_molecule_ids) > 1:
+            multimer_chain_sequences.append(chain_sequences)
+        else:
+            monomer_chain_sequences.append(chain_sequences)
 
-    # write monomer sequences to FASTA files
+    return monomer_chain_sequences, multimer_chain_sequences
 
-    write_sequences_to_fasta(monomer_chain_sequences, fasta_filepath, molecule_type="protein")
-    write_sequences_to_fasta(monomer_chain_sequences, fasta_filepath, molecule_type="nucleic_acid")
-    write_sequences_to_fasta(monomer_chain_sequences, fasta_filepath, molecule_type="peptide")
 
-    # TODO: Reference https://github.com/soedinglab/MMseqs2?tab=readme-ov-file#search to perform all-against-all sequence identity comparisons
-    raise NotImplementedError("Filtering to low homology sequences is not yet implemented.")
+@typecheck
+def filter_to_low_homology_sequences(
+    input_all_chain_sequences: CHAIN_SEQUENCES,
+    reference_all_chain_sequences: CHAIN_SEQUENCES,
+    input_interface_chain_ids: CHAIN_INTERFACES,
+    reference_interface_chain_ids: CHAIN_INTERFACES,
+    input_fasta_filepath: str,
+    reference_fasta_filepath: str,
+) -> Tuple[CHAIN_SEQUENCES, CHAIN_INTERFACES]:
+    """Filter targets to only low homology sequences."""
+    input_monomer_fasta_filepath = input_fasta_filepath.replace(".fasta", "_monomer.fasta")
+    input_multimer_fasta_filepath = input_fasta_filepath.replace(".fasta", "_multimer.fasta")
+
+    reference_monomer_fasta_filepath = reference_fasta_filepath.replace(".fasta", "_monomer.fasta")
+    reference_multimer_fasta_filepath = reference_fasta_filepath.replace(
+        ".fasta", "_multimer.fasta"
+    )
+
+    # Separate monomer and multimer sequences
+
+    (
+        input_monomer_chain_sequences,
+        input_multimer_chain_sequences,
+    ) = separate_monomer_and_multimer_chain_sequences(input_all_chain_sequences)
+    (
+        reference_monomer_chain_sequences,
+        reference_multimer_chain_sequences,
+    ) = separate_monomer_and_multimer_chain_sequences(reference_all_chain_sequences)
+
+    # Write monomer and multimer sequences to FASTA files
+
+    write_sequences_to_fasta(
+        input_monomer_chain_sequences, input_monomer_fasta_filepath, molecule_type="protein"
+    )
+    write_sequences_to_fasta(
+        input_monomer_chain_sequences, input_monomer_fasta_filepath, molecule_type="nucleic_acid"
+    )
+    write_sequences_to_fasta(
+        input_monomer_chain_sequences, input_monomer_fasta_filepath, molecule_type="peptide"
+    )
+
+    write_sequences_to_fasta(
+        input_multimer_chain_sequences,
+        input_multimer_fasta_filepath,
+        molecule_type="protein",
+        interface_chain_ids=input_interface_chain_ids,
+    )
+    write_sequences_to_fasta(
+        input_multimer_chain_sequences,
+        input_multimer_fasta_filepath,
+        molecule_type="nucleic_acid",
+        interface_chain_ids=input_interface_chain_ids,
+    )
+    write_sequences_to_fasta(
+        input_multimer_chain_sequences,
+        input_multimer_fasta_filepath,
+        molecule_type="peptide",
+        interface_chain_ids=input_interface_chain_ids,
+    )
+
+    write_sequences_to_fasta(
+        reference_monomer_chain_sequences,
+        reference_monomer_fasta_filepath,
+        molecule_type="protein",
+    )
+    write_sequences_to_fasta(
+        reference_monomer_chain_sequences,
+        reference_monomer_fasta_filepath,
+        molecule_type="nucleic_acid",
+    )
+    write_sequences_to_fasta(
+        reference_monomer_chain_sequences,
+        reference_monomer_fasta_filepath,
+        molecule_type="peptide",
+    )
+
+    write_sequences_to_fasta(
+        reference_multimer_chain_sequences,
+        reference_multimer_fasta_filepath,
+        molecule_type="protein",
+        interface_chain_ids=reference_interface_chain_ids,
+    )
+    write_sequences_to_fasta(
+        reference_multimer_chain_sequences,
+        reference_multimer_fasta_filepath,
+        molecule_type="nucleic_acid",
+        interface_chain_ids=reference_interface_chain_ids,
+    )
+    write_sequences_to_fasta(
+        reference_multimer_chain_sequences,
+        reference_multimer_fasta_filepath,
+        molecule_type="peptide",
+        interface_chain_ids=reference_interface_chain_ids,
+    )
+
+    # Use MMseqs2 to perform all-against-all sequence identity comparisons for monomers
+
+    input_monomer_protein_sequence_names = search_sequences_using_mmseqs2(
+        input_monomer_fasta_filepath,
+        reference_monomer_fasta_filepath,
+        args.output_dir,
+        molecule_type="protein",
+        max_seq_id=0.4,
+    )
+    input_monomer_nucleic_acid_sequence_names = search_sequences_using_mmseqs2(
+        input_monomer_fasta_filepath,
+        reference_monomer_fasta_filepath,
+        args.output_dir,
+        molecule_type="nucleic_acid",
+        max_seq_id=0.4,
+    )
+    input_monomer_peptide_sequence_names = search_sequences_using_mmseqs2(
+        input_monomer_fasta_filepath,
+        reference_monomer_fasta_filepath,
+        args.output_dir,
+        molecule_type="peptide",
+        max_seq_id=0.4,
+    )
+    input_monomer_sequence_names = (
+        input_monomer_protein_sequence_names
+        | input_monomer_nucleic_acid_sequence_names
+        | input_monomer_peptide_sequence_names
+    )
+
+    # Identify monomer sequences that passed the sequence identity criterion
+
+    input_monomer_chain_sequences = filter_chains_by_sequence_names(
+        input_monomer_chain_sequences, input_monomer_sequence_names
+    )
+
+    # Use MMseqs2 and RDKit to perform all-against-all sequence identity
+    # and thresholded Tanimoto similarity comparisons for multimers
+
+    input_multimer_protein_sequence_names = search_sequences_using_mmseqs2(
+        input_multimer_fasta_filepath,
+        reference_multimer_fasta_filepath,
+        args.output_dir,
+        molecule_type="protein",
+        max_seq_id=0.4,
+        alignment_file_prefix="alnRes_multimer_",
+    )
+    input_multimer_nucleic_acid_sequence_names = search_sequences_using_mmseqs2(
+        input_multimer_fasta_filepath,
+        reference_multimer_fasta_filepath,
+        args.output_dir,
+        molecule_type="nucleic_acid",
+        max_seq_id=0.4,
+        alignment_file_prefix="alnRes_multimer_",
+    )
+    input_multimer_peptide_sequence_names = search_sequences_using_mmseqs2(
+        input_multimer_fasta_filepath,
+        reference_multimer_fasta_filepath,
+        args.output_dir,
+        molecule_type="peptide",
+        max_seq_id=0.4,
+        alignment_file_prefix="alnRes_multimer_",
+    )
+    input_multimer_sequence_names = (
+        input_multimer_protein_sequence_names
+        | input_multimer_nucleic_acid_sequence_names
+        | input_multimer_peptide_sequence_names
+    )
+
+    # Identify multimer sequences and interfaces that passed the sequence identity and Tanimoto similarity criteria
+
+    reference_ligand_chain_sequences = filter_chains_by_molecule_type(
+        reference_multimer_chain_sequences,
+        molecule_type="ligand",
+        interface_chain_ids=reference_interface_chain_ids,
+    )
+    input_multimer_chain_sequences, input_interface_chain_ids = filter_chains_by_sequence_names(
+        input_multimer_chain_sequences,
+        input_multimer_sequence_names,
+        interface_chain_ids=input_interface_chain_ids,
+        reference_ligand_chain_sequences=reference_ligand_chain_sequences,
+        max_ligand_similarity=0.85,
+    )
+
+    # Assemble monomer and multimer chain sequences
+
+    input_chain_sequences = input_monomer_chain_sequences + input_multimer_chain_sequences
+
+    return input_chain_sequences, input_interface_chain_ids
 
 
 @typecheck
@@ -382,6 +566,7 @@ def write_sequences_to_fasta(
     all_chain_sequences: CHAIN_SEQUENCES,
     fasta_filepath: str,
     molecule_type: CLUSTERING_MOLECULE_TYPE,
+    interface_chain_ids: CHAIN_INTERFACES | None = None,
 ) -> List[str]:
     """Write sequences of a particular molecule type to a FASTA file, and return all molecule IDs."""
     assert fasta_filepath.endswith(".fasta"), "The output file must be a FASTA file."
@@ -409,6 +594,12 @@ def write_sequences_to_fasta(
                         )
                         molecule_id = f"{structure_id}{chain_id_}:{molecule_type_and_name[0]}{molecule_index_postfix}"
 
+                        if exists(interface_chain_ids) and not any(
+                            chain_id in interface_chain_id.split("+")
+                            for interface_chain_id in interface_chain_ids[structure_id]
+                        ):
+                            continue
+
                         mapped_sequence = (
                             sequence.replace("X", "N")
                             if molecule_type == "nucleic_acid"
@@ -417,6 +608,158 @@ def write_sequences_to_fasta(
                         f.write(f">{molecule_id}\n{mapped_sequence}\n")
                         molecule_ids.append(molecule_id)
     return molecule_ids
+
+
+@typecheck
+def is_novel_ligand(
+    ligand_sequence: str,
+    reference_ligand_chain_sequences: List[str],
+    max_sim: float = 0.85,
+) -> bool:
+    """Check if a ligand sequence is novel based on Tanimoto similarity to a reference set of ligand sequences."""
+    fpgen = AllChem.GetRDKitFPGenerator()
+    ligand_smiles = CCD_COMPONENTS_SMILES.get(ligand_sequence, None)
+    if not exists(ligand_smiles):
+        logger.warning(f"Could not find SMILES for ligand sequence: {ligand_sequence}")
+        return False
+    ligand_mol = Chem.MolFromSmiles(ligand_smiles)
+    if not exists(ligand_mol):
+        logger.warning(f"Could not generate RDKit molecule for ligand sequence: {ligand_sequence}")
+        return False
+
+    for reference_ligand_sequence in reference_ligand_chain_sequences:
+        reference_ligand_smiles = CCD_COMPONENTS_SMILES.get(reference_ligand_sequence, None)
+        if not exists(reference_ligand_smiles):
+            logger.warning(
+                f"Could not find SMILES for reference ligand sequence: {reference_ligand_sequence}"
+            )
+            return False
+        reference_ligand_mol = Chem.MolFromSmiles(reference_ligand_smiles)
+        if not exists(reference_ligand_mol):
+            logger.warning(
+                f"Could not generate RDKit molecule for reference ligand sequence: {reference_ligand_sequence}"
+            )
+            return False
+        ligand_fp = fpgen.GetFingerprint(ligand_mol)
+        reference_ligand_fp = fpgen.GetFingerprint(reference_ligand_mol)
+        sim = DataStructs.TanimotoSimilarity(ligand_fp, reference_ligand_fp)
+        if sim > max_sim:
+            return False
+
+    return True
+
+
+@typecheck
+def filter_chains_by_sequence_names(
+    all_chain_sequences: CHAIN_SEQUENCES,
+    sequence_names: Set[str],
+    interface_chain_ids: CHAIN_INTERFACES | None = None,
+    reference_ligand_chain_sequences: List[str] | None = None,
+    max_ligand_similarity: float = 0.85,
+) -> Union[CHAIN_SEQUENCES, Tuple[CHAIN_SEQUENCES, CHAIN_INTERFACES]]:
+    """Return only chains (and potentially interfaces) with sequence names in the given set."""
+    filtered_structure_ids = set(
+        name.split("-assembly1")[0] + "-assembly1" for name in sequence_names
+    )
+    interfaces_provided = exists(interface_chain_ids)
+    if interfaces_provided:
+        assert exists(
+            reference_ligand_chain_sequences
+        ), "Reference ligand sequences must be provided if interfaces are also provided."
+
+    filtered_chain_sequences = []
+    filtered_interface_chain_ids = defaultdict(set)
+    for structure_chain_sequences in all_chain_sequences:
+        for structure_id, chain_sequences in structure_chain_sequences.items():
+            # Filter chain sequences based on either sequence names or Tanimoto similarity
+
+            filtered_structure_chain_sequences = {}
+            for chain_id, sequence in chain_sequences.items():
+                _, molecule_type_ = chain_id.split(":")
+                molecule_type = molecule_type_.split("-")[0]
+                sequence_name = f"{structure_id}{chain_id}"
+                if interfaces_provided and sequence_name in sequence_names:
+                    filtered_structure_chain_sequences[chain_id] = sequence
+                elif (
+                    interfaces_provided
+                    and any(
+                        chain_id in interface_chain_id.split("+")
+                        for interface_chain_id in interface_chain_ids[structure_id]
+                    )
+                    and molecule_type == "ligand"
+                ):
+                    ligand_is_novel = is_novel_ligand(
+                        sequence, reference_ligand_chain_sequences, max_sim=max_ligand_similarity
+                    )
+                    if ligand_is_novel:
+                        # NOTE: In contrast to the AF3 supplement, we currently do not
+                        # filter out ligands with ranking model fit less than 0.5 or
+                        # with multiple residues, due to lack of easily-accessible metadata
+                        # within the context of this clustering script
+                        # TODO: Investigate whether it is reasonable to filter by ranking model fit values
+                        filtered_structure_chain_sequences[chain_id] = sequence
+                elif not interfaces_provided and (
+                    sequence_name in sequence_names
+                    or (structure_id in filtered_structure_ids and molecule_type == "ligand")
+                ):
+                    # NOTE: The AF3 supplement suggests that all monomer ligand sequences should remain unfiltered
+                    filtered_structure_chain_sequences[chain_id] = sequence
+
+            if filtered_structure_chain_sequences:
+                filtered_chain_sequences.append({structure_id: filtered_structure_chain_sequences})
+
+                # Filter interfaces based on the filtered chain sequences
+
+                if interfaces_provided:
+                    for interface_chain_id in interface_chain_ids[structure_id]:
+                        chain_id_1, chain_id_2 = interface_chain_id.split("+")
+                        if (
+                            chain_id_1 in filtered_structure_chain_sequences
+                            and chain_id_2 in filtered_structure_chain_sequences
+                            and f"{chain_id_2}:{chain_id_1}"
+                            not in filtered_interface_chain_ids[structure_id]
+                        ):
+                            filtered_interface_chain_ids[structure_id].add(interface_chain_id)
+                            break
+
+    if interfaces_provided:
+        filtered_interface_chain_ids = {
+            k: list(v) for k, v in filtered_interface_chain_ids.items()
+        }
+        return filtered_chain_sequences, filtered_interface_chain_ids
+    return filtered_chain_sequences
+
+
+@typecheck
+def filter_chains_by_molecule_type(
+    all_chain_sequences: CHAIN_SEQUENCES,
+    molecule_type: CLUSTERING_MOLECULE_TYPE,
+    interface_chain_ids: CHAIN_INTERFACES | None = None,
+) -> List[str]:
+    """Return only chains of a particular molecule type."""
+    filtered_chain_sequences = set()
+    for structure_chain_sequences in tqdm(
+        all_chain_sequences, desc=f"Filtering for {molecule_type} chains"
+    ):
+        for structure_id, chain_sequences in structure_chain_sequences.items():
+            for chain_id, sequence in chain_sequences.items():
+                _, molecule_type_ = chain_id.split(":")
+                molecule_type_and_name = molecule_type_.split("-")
+                mol_type = (
+                    molecule_type_and_name[0]
+                    .replace("rna", "nucleic_acid")
+                    .replace("dna", "nucleic_acid")
+                )
+                if mol_type == molecule_type:
+                    if (
+                        exists(interface_chain_ids)
+                        and any(
+                            chain_id in interface_chain_id.split("+")
+                            for interface_chain_id in interface_chain_ids[structure_id]
+                        )
+                    ) or not exists(interface_chain_ids):
+                        filtered_chain_sequences.add(sequence)
+    return list(filtered_chain_sequences)
 
 
 @typecheck
@@ -433,6 +776,87 @@ def extract_pdb_chain_and_molecule_ids_from_clustering_string(x: str) -> Tuple[s
 
 
 @typecheck
+def search_sequences_using_mmseqs2(
+    input_filepath: str,
+    reference_filepath: str,
+    output_dir: str,
+    molecule_type: CLUSTERING_MOLECULE_TYPE,
+    max_seq_id: float = 0.4,
+    alignment_file_prefix: str = "alnRes_",
+    extra_parameters: Dict[str, Union[int, float, str]] | None = None,
+) -> Set[str]:
+    """Run MMseqs2 on the input FASTA file and write the resulting search outputs to a local output directory."""
+    assert input_filepath.endswith(".fasta"), "The input file must be a FASTA file."
+    assert reference_filepath.endswith(".fasta"), "The reference file must be a FASTA file."
+
+    input_filepath = input_filepath.replace(".fasta", f"_{molecule_type}.fasta")
+    reference_filepath = reference_filepath.replace(".fasta", f"_{molecule_type}.fasta")
+    output_alignment_filepath = os.path.join(
+        output_dir, molecule_type, f"{alignment_file_prefix}{molecule_type}.m8"
+    )
+    tmp_output_dir = os.path.join(output_dir, molecule_type, "tmp")
+    os.makedirs(os.path.join(output_dir, molecule_type), exist_ok=True)
+
+    assert os.path.isfile(input_filepath), f"Input file '{input_filepath}' does not exist."
+    assert os.path.isfile(
+        reference_filepath
+    ), f"Reference file '{reference_filepath}' does not exist."
+
+    # Search sequences
+
+    mmseqs_command = [
+        "mmseqs",
+        "easy-search",
+        input_filepath,
+        reference_filepath,
+        output_alignment_filepath,
+        tmp_output_dir,
+    ]
+    if extra_parameters:
+        for key, value in extra_parameters.items():
+            mmseqs_command.extend([key, str(value)])
+
+    subprocess.run(mmseqs_command)
+    if not os.path.isfile(output_alignment_filepath):
+        logger.warning(
+            f"Output alignment file '{output_alignment_filepath}' does not exist. No input sequences were found."
+        )
+        return set()
+
+    chain_search_mapping = pl.read_csv(
+        output_alignment_filepath,
+        separator="\t",
+        has_header=False,
+        new_columns=[
+            "query",
+            "target",
+            "fident",
+            "alnlen",
+            "mismatch",
+            "gapopen",
+            "qstart",
+            "qend",
+            "tstart",
+            "tend",
+            "evalue",
+            "bits",
+        ],
+    )
+
+    # Filter out sequences with reference sequence identity greater than the maximum threshold
+
+    filtered_chains = set(
+        chain_search_mapping.group_by("query")
+        .agg(pl.max("fident"))
+        .filter(pl.col("fident") <= max_seq_id)
+        .get_column("query")
+        .to_list()
+    )
+
+    return filtered_chains
+
+
+@typecheck
 def cluster_sequences_using_mmseqs2(
     input_filepath: str,
     output_dir: str,
@@ -440,7 +864,7 @@ def cluster_sequences_using_mmseqs2(
     min_seq_id: float = 0.5,
     coverage: float = 0.8,
     coverage_mode: Literal[0, 1, 2, 3] = 1,
-    extra_parameters: Optional[Dict[str, Union[int, float, str]]] = None,
+    extra_parameters: Dict[str, Union[int, float, str]] | None = None,
 ) -> Dict[str, int]:
     """Run MMseqs2 on the input FASTA file and write the resulting clusters to a local output directory."""
     assert input_filepath.endswith(".fasta"), "The input file must be a FASTA file."
@@ -456,6 +880,7 @@ def cluster_sequences_using_mmseqs2(
     assert os.path.isfile(input_filepath), f"Input file '{input_filepath}' does not exist."
 
     # Cluster sequences
+
     mmseqs_command = [
         "mmseqs",
         "easy-cluster",
@@ -474,9 +899,11 @@ def cluster_sequences_using_mmseqs2(
             mmseqs_command.extend([key, str(value)])
 
     subprocess.run(mmseqs_command)
-    assert os.path.isfile(
-        output_cluster_filepath
-    ), f"Output cluster file '{output_cluster_filepath}' does not exist."
+    if not os.path.isfile(output_cluster_filepath):
+        logger.warning(
+            f"Output cluster file '{output_cluster_filepath}' does not exist. No input sequences were clustered."
+        )
+        return {}
 
     chain_cluster_mapping = pl.read_csv(
         output_cluster_filepath,
@@ -499,6 +926,7 @@ def cluster_sequences_using_mmseqs2(
     )
 
     # Cache chain cluster mappings to local (CSV) storage
+
     local_chain_cluster_mapping = pl.DataFrame(
         chain_cluster_mapping.get_column("cluster_member")
         .map_elements(
@@ -750,10 +1178,10 @@ if __name__ == "__main__":
         help="Path to the input directory containing (filtered) mmCIF files.",
     )
     parser.add_argument(
-        "--train_clustering_dir",
+        "--reference_clustering_dir",
         type=str,
         default=os.path.join("data", "pdb_data", "data_caches", "train_clusterings"),
-        help="Path to the training clustering directory.",
+        help="Path to the reference clustering directory.",
     )
     parser.add_argument(
         "--output_dir",
@@ -782,6 +1210,7 @@ if __name__ == "__main__":
     # Determine paths for intermediate files
 
     fasta_filepath = os.path.join(args.output_dir, "sequences.fasta")
+    reference_fasta_filepath = os.path.join(args.reference_clustering_dir, "sequences.fasta")
 
     # Attempt to load existing chain sequences and interfaces from local storage
 
@@ -824,20 +1253,35 @@ if __name__ == "__main__":
         with open(os.path.join(args.output_dir, "filtered_interface_chain_ids.json"), "r") as f:
             interface_chain_ids = json.load(f)
     else:
+        with open(
+            os.path.join(args.reference_clustering_dir, "all_chain_sequences.json"), "r"
+        ) as f:
+            reference_all_chain_sequences = json.load(f)
+
+        with open(
+            os.path.join(args.reference_clustering_dir, "interface_chain_ids.json"), "r"
+        ) as f:
+            reference_interface_chain_ids = json.load(f)
+
         (
-            filtered_all_chain_sequences,
-            filtered_interface_chain_ids,
+            all_chain_sequences,
+            interface_chain_ids,
         ) = filter_to_low_homology_sequences(
-            all_chain_sequences, interface_chain_ids, fasta_filepath, args.train_clustering_dir
+            all_chain_sequences,
+            reference_all_chain_sequences,
+            interface_chain_ids,
+            reference_interface_chain_ids,
+            fasta_filepath,
+            reference_fasta_filepath,
         )
 
         # Cache (filtered) chain sequences and interfaces to local storage
 
         with open(os.path.join(args.output_dir, "filtered_all_chain_sequences.json"), "w") as f:
-            json.dump(filtered_all_chain_sequences, f)
+            json.dump(all_chain_sequences, f)
 
         with open(os.path.join(args.output_dir, "filtered_interface_chain_ids.json"), "w") as f:
-            json.dump(filtered_interface_chain_ids, f)
+            json.dump(interface_chain_ids, f)
 
     # Attempt to load existing chain cluster mappings from local storage
 
