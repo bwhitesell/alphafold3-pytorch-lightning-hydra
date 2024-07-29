@@ -4,6 +4,7 @@ import copy
 import json
 import os
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from functools import partial
 from itertools import groupby
@@ -14,6 +15,7 @@ import einx
 import numpy as np
 import torch
 import torch.nn.functional as F
+from joblib import Parallel, delayed
 from pdbeccdutils.core import ccd_reader
 from rdkit import Chem
 from rdkit.Chem import AllChem, rdDetermineBonds
@@ -194,8 +196,12 @@ class BatchedAtomInput:
 
 
 @typecheck
-def atom_input_to_file(atom_input: AtomInput, path: str, overwrite: bool = False) -> Path:
+def atom_input_to_file(atom_input: AtomInput, path: str | Path, overwrite: bool = False) -> Path:
     """Save an AtomInput to disk."""
+
+    if isinstance(path, str):
+        path = Path(path)
+
     path = Path(path)
 
     if not overwrite:
@@ -219,6 +225,50 @@ def file_to_atom_input(path: str | Path) -> AtomInput:
     return AtomInput(**atom_input_dict)
 
 
+@typecheck
+def pdb_dataset_to_atom_inputs(
+    pdb_dataset: PDBDataset,
+    *,
+    output_atom_folder: str | Path | None = None,
+    indices: Iterable | None = None,
+    return_atom_dataset: bool = False,
+    n_jobs: int = 8,
+    parallel_kwargs: dict = dict(),
+) -> Path | AtomDataset:
+    """Convert a PDBDataset to AtomInputs stored on disk."""
+    if not exists(output_atom_folder):
+        pdb_folder = Path(pdb_dataset.folder).resolve()
+        parent_folder = pdb_folder.parents[0]
+        output_atom_folder = parent_folder / f"{pdb_folder.stem}.atom-inputs"
+
+    if isinstance(output_atom_folder, str):
+        output_atom_folder = Path(output_atom_folder)
+
+    if not exists(indices):
+        indices = torch.randperm(len(pdb_dataset)).tolist()
+
+    to_atom_input_fn = compose(pdb_input_to_molecule_input, molecule_to_atom_input)
+
+    @delayed
+    def pdb_input_to_atom_file(index: int, path: str):
+        """Convert a PDB input to an atom file."""
+        pdb_input = pdb_dataset[index]
+
+        atom_input = to_atom_input_fn(pdb_input)
+        atom_input_path = path / f"{index}.pt"
+
+        atom_input_to_file(atom_input, atom_input_path)
+
+    Parallel(n_jobs=n_jobs, **parallel_kwargs)(
+        pdb_input_to_atom_file(index, output_atom_folder) for index in indices
+    )
+
+    if not return_atom_dataset:
+        return output_atom_folder
+
+    return AtomDataset(output_atom_folder)
+
+
 # Atom dataset that returns a AtomInput based on folders of atom inputs stored on disk
 
 
@@ -229,10 +279,12 @@ class AtomDataset(Dataset):
         if isinstance(folder, str):
             folder = Path(folder)
 
-        assert folder.exists() and folder.is_dir()
+        assert folder.exists() and folder.is_dir(), f"Atom dataset not found at {str(folder)}"
 
         self.folder = folder
         self.files = [*folder.glob("**/*.pt")]
+
+        assert len(self) > 0, f"No valid atom `.pt` files found at {str(folder)}"
 
     def __len__(self) -> int:
         """Return the length of the dataset."""
@@ -1956,21 +2008,6 @@ def pdb_input_to_molecule_input(
 
 # datasets
 
-# dataset wrapper for returning index along with dataset item
-# for caching logic both integrated into trainer and for precaching
-
-
-class DatasetWithReturnedIndex(Dataset):
-    def __init__(self, dataset: Dataset):
-        self.dataset = dataset
-
-    def __len__(self):
-        return len(self.dataset)
-
-    def __getitem__(self, idx: int | str):
-        return idx, self.dataset[idx]
-
-
 # PDB dataset that returns a PDBInput based on folder
 
 
@@ -1993,7 +2030,9 @@ class PDBDataset(Dataset):
         if isinstance(folder, str):
             folder = Path(folder)
 
-        assert folder.exists() and folder.is_dir()
+        assert folder.exists() and folder.is_dir(), f"{str(folder)} does not exist for PDBDataset"
+        self.folder = folder
+
         self.files = {
             os.path.splitext(os.path.basename(file.name))[0]: file
             for file in folder.glob(os.path.join("**", "*.cif"))
@@ -2006,6 +2045,8 @@ class PDBDataset(Dataset):
         self.crop_size = crop_size
         self.training = training
         self.pdb_input_kwargs = pdb_input_kwargs
+
+        assert len(self) > 0, f"No valid mmCIFs / PDBs found at {str(folder)}"
 
     def __len__(self):
         """Return the number of PDB mmCIF files in the dataset."""

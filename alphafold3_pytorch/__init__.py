@@ -16,6 +16,7 @@ from alphafold3_pytorch.models.components.alphafold3 import (
     AttentionPairBias,
     CentreRandomAugmentation,
     ComputeAlignmentError,
+    ComputeRankingScore,
     ConditionWrapper,
     ConfidenceHead,
     ConfidenceHeadLogits,
@@ -43,18 +44,19 @@ from alphafold3_pytorch.models.components.attention import (
     Attention,
     full_pairwise_repr_to_windowed,
 )
-from alphafold3_pytorch.models.components.confidence import ComputeRankingScore
 from alphafold3_pytorch.models.components.inputs import (
     Alphafold3Input,
     AtomDataset,
     AtomInput,
     BatchedAtomInput,
-    DatasetWithReturnedIndex,
     MoleculeInput,
     PDBDataset,
     PDBInput,
+    atom_input_to_file,
+    file_to_atom_input,
     maybe_transform_to_atom_input,
     maybe_transform_to_atom_inputs,
+    pdb_dataset_to_atom_inputs,
     register_input_transform,
 )
 
@@ -97,12 +99,14 @@ __all__ = [
     AtomDataset,
     PDBInput,
     PDBDataset,
-    DatasetWithReturnedIndex,
     alphafold3_inputs_to_batched_atom_input,
+    atom_input_to_file,
     collate_inputs_to_batched_atom_input,
+    file_to_atom_input,
     full_pairwise_repr_to_windowed,
     maybe_transform_to_atom_input,
     maybe_transform_to_atom_inputs,
+    pdb_dataset_to_atom_inputs,
     pdb_inputs_to_batched_atom_input,
     register_input_transform,
 ]
