@@ -493,6 +493,8 @@ def filter_to_low_homology_sequences(
         extra_parameters={
             # force nucleotide mode
             "--dbtype": 2,
+            # force nucleotide search mode
+            "--search-type": 3,
             # 7 or 8 should work best, something to test
             "-k": 8,
             # there is currently an issue in mmseqs2 with nucleotide search and spaced k-mers
@@ -567,6 +569,8 @@ def filter_to_low_homology_sequences(
         extra_parameters={
             # force nucleotide mode
             "--dbtype": 2,
+            # force nucleotide search mode
+            "--search-type": 3,
             # 7 or 8 should work best, something to test
             "-k": 8,
             # there is currently an issue in mmseqs2 with nucleotide search and spaced k-mers

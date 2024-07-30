@@ -82,6 +82,7 @@
                 // "--output_dir", "data/pdb_data/data_caches/dev_val_clusterings",
                 "--output_dir", "data/pdb_data/data_caches/val_clusterings",
                 "--clustering_filtered_pdb_dataset",
+                // "--max_num_tokens", "2048",
                 // "--no_workers", "16",
                 "--no_workers", "1",
             ]
