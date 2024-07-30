@@ -482,9 +482,6 @@ def filter_to_low_homology_sequences(
         extra_parameters={
             # force protein mode
             "--dbtype": 1,
-            # cluster reassign improves clusters by reassigning sequences to the best cluster
-            # and fixes transitivity issues of the cascade clustering
-            "--cluster-reassign": 1,
         },
     )
     input_monomer_nucleic_acid_sequence_names = search_sequences_using_mmseqs2(
@@ -500,8 +497,6 @@ def filter_to_low_homology_sequences(
             "-k": 8,
             # there is currently an issue in mmseqs2 with nucleotide search and spaced k-mers
             "--spaced-kmer-mode": 0,
-            # see above
-            "--cluster-reassign": 1,
         },
     )
     input_monomer_peptide_sequence_names = search_sequences_using_mmseqs2(
@@ -533,8 +528,6 @@ def filter_to_low_homology_sequences(
             # Let's disable e-values as these are too short for reliable homology anyway
             # The most we can do is to collapse nearly identical peptides
             "-e": "inf",
-            # see above
-            "--cluster-reassign": 1,
         },
     )
     input_monomer_sequence_names = (
@@ -562,9 +555,6 @@ def filter_to_low_homology_sequences(
         extra_parameters={
             # force protein mode
             "--dbtype": 1,
-            # cluster reassign improves clusters by reassigning sequences to the best cluster
-            # and fixes transitivity issues of the cascade clustering
-            "--cluster-reassign": 1,
         },
     )
     input_multimer_nucleic_acid_sequence_names = search_sequences_using_mmseqs2(
@@ -581,8 +571,6 @@ def filter_to_low_homology_sequences(
             "-k": 8,
             # there is currently an issue in mmseqs2 with nucleotide search and spaced k-mers
             "--spaced-kmer-mode": 0,
-            # see above
-            "--cluster-reassign": 1,
         },
     )
     input_multimer_peptide_sequence_names = search_sequences_using_mmseqs2(
@@ -615,8 +603,6 @@ def filter_to_low_homology_sequences(
             # Let's disable e-values as these are too short for reliable homology anyway
             # The most we can do is to collapse nearly identical peptides
             "-e": "inf",
-            # see above
-            "--cluster-reassign": 1,
         },
     )
     input_multimer_sequence_names = (
