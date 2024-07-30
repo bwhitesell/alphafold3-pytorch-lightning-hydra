@@ -452,7 +452,7 @@ We use `pip` and `docker` to manage the project's underlying dependencies. Notab
 docker stop <container_id> # First stop any running `af3` container(s)
 docker rm <container_id> # Then remove the container(s) - Caution: Make sure to push your local changes to GitHub before running this!
 docker build -t af3 . # Rebuild the Docker image
-docker run -v .:/data --gpus all -it af3 # # Lastly, (re)start the Docker container from the updated image
+docker run -v .:/data --gpus all -it af3 # Lastly, (re)start the Docker container from the updated image
 ```
 
 If you want to update the project's `pip` dependencies only, you can simply push to GitHub your changes to the `pyproject.toml` file.
