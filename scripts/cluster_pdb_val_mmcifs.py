@@ -1602,11 +1602,9 @@ if __name__ == "__main__":
     assert all(
         (
             protein_chain_cluster_mapping,
-            nucleic_acid_chain_cluster_mapping,
-            peptide_chain_cluster_mapping,
             ligand_chain_cluster_mapping,
         )
-    ), "All molecule type-specific chain cluster mappings must be available to cluster interfaces."
+    ), "At least protein and ligand molecule type-specific chain cluster mappings must be available to cluster interfaces."
 
     cluster_interfaces(
         protein_chain_cluster_mapping,
@@ -1673,7 +1671,7 @@ if __name__ == "__main__":
         )
         .select(["pdb_id", "chain_id", "molecule_id", "cluster_id"])
     )
-    protein_chain_clusters.to_csv(
+    protein_chain_clusters.write_csv(
         os.path.join(args.output_dir, "protein_chain_cluster_mapping.csv")
     )
 
@@ -1764,7 +1762,10 @@ if __name__ == "__main__":
     structure_ids.update(set(interface_clusters["pdb_id"].to_list()))
 
     structure_ids_to_keep = filter_structures_by_token_count(
-        structure_ids, args.mmcif_dir, max_tokens=args.max_num_tokens, num_workers=args.no_workers
+        structure_ids,
+        args.mmcif_dir,
+        max_num_tokens=args.max_num_tokens,
+        max_workers=args.no_workers,
     )
 
     # Filter chain and interface clusters according to the final token count filter
