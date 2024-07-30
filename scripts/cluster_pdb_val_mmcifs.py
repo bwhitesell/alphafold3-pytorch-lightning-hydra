@@ -479,14 +479,30 @@ def filter_to_low_homology_sequences(
         args.output_dir,
         molecule_type="protein",
         max_seq_id=0.4,
+        extra_parameters={
+            # force protein mode
+            "--dbtype": 1,
+            # cluster reassign improves clusters by reassigning sequences to the best cluster
+            # and fixes transitivity issues of the cascade clustering
+            "--cluster-reassign": 1,
+        },
     )
-    # TODO: Pass in extra arguments for nucleic acid and peptide clustering
     input_monomer_nucleic_acid_sequence_names = search_sequences_using_mmseqs2(
         input_monomer_fasta_filepath,
         reference_monomer_fasta_filepath,
         args.output_dir,
         molecule_type="nucleic_acid",
         max_seq_id=0.4,
+        extra_parameters={
+            # force nucleotide mode
+            "--dbtype": 2,
+            # 7 or 8 should work best, something to test
+            "-k": 8,
+            # there is currently an issue in mmseqs2 with nucleotide search and spaced k-mers
+            "--spaced-kmer-mode": 0,
+            # see above
+            "--cluster-reassign": 1,
+        },
     )
     input_monomer_peptide_sequence_names = search_sequences_using_mmseqs2(
         input_monomer_fasta_filepath,
@@ -494,6 +510,32 @@ def filter_to_low_homology_sequences(
         args.output_dir,
         molecule_type="peptide",
         max_seq_id=0.4,
+        # some of these parameters are from the spacepharer optimized parameters
+        # these were for short CRISPR spacer recognition, so they should work well for arbitrary peptides
+        extra_parameters={
+            # force protein mode
+            "--dbtype": 1,
+            # spacepharer optimized parameters
+            "--gap-open": 16,
+            "--gap-extend": 2,
+            "--sub-mat": "VTML40.out",
+            # we would like to try using ungapped prefilter mode to avoid
+            # minimum consecutive k-mer match restrictions, but the cluster workflow doesn't expose this yet
+            # let's use a real small k-mer size instead
+            # "--prefilter-mode": 1,
+            "-k": 5,
+            "--spaced-kmer-mode": 0,
+            # Don't try suppresing FP hits since the peptides are too short
+            "--mask": 0,
+            "--comp-bias-corr": 0,
+            # let more things through the prefilter
+            "--min-ungapped-score": 5,
+            # Let's disable e-values as these are too short for reliable homology anyway
+            # The most we can do is to collapse nearly identical peptides
+            "-e": "inf",
+            # see above
+            "--cluster-reassign": 1,
+        },
     )
     input_monomer_sequence_names = (
         input_monomer_protein_sequence_names
@@ -517,6 +559,13 @@ def filter_to_low_homology_sequences(
         molecule_type="protein",
         max_seq_id=0.4,
         alignment_file_prefix="alnRes_multimer_",
+        extra_parameters={
+            # force protein mode
+            "--dbtype": 1,
+            # cluster reassign improves clusters by reassigning sequences to the best cluster
+            # and fixes transitivity issues of the cascade clustering
+            "--cluster-reassign": 1,
+        },
     )
     input_multimer_nucleic_acid_sequence_names = search_sequences_using_mmseqs2(
         input_multimer_fasta_filepath,
@@ -525,6 +574,16 @@ def filter_to_low_homology_sequences(
         molecule_type="nucleic_acid",
         max_seq_id=0.4,
         alignment_file_prefix="alnRes_multimer_",
+        extra_parameters={
+            # force nucleotide mode
+            "--dbtype": 2,
+            # 7 or 8 should work best, something to test
+            "-k": 8,
+            # there is currently an issue in mmseqs2 with nucleotide search and spaced k-mers
+            "--spaced-kmer-mode": 0,
+            # see above
+            "--cluster-reassign": 1,
+        },
     )
     input_multimer_peptide_sequence_names = search_sequences_using_mmseqs2(
         input_multimer_fasta_filepath,
@@ -533,6 +592,32 @@ def filter_to_low_homology_sequences(
         molecule_type="peptide",
         max_seq_id=0.4,
         alignment_file_prefix="alnRes_multimer_",
+        # some of these parameters are from the spacepharer optimized parameters
+        # these were for short CRISPR spacer recognition, so they should work well for arbitrary peptides
+        extra_parameters={
+            # force protein mode
+            "--dbtype": 1,
+            # spacepharer optimized parameters
+            "--gap-open": 16,
+            "--gap-extend": 2,
+            "--sub-mat": "VTML40.out",
+            # we would like to try using ungapped prefilter mode to avoid
+            # minimum consecutive k-mer match restrictions, but the cluster workflow doesn't expose this yet
+            # let's use a real small k-mer size instead
+            # "--prefilter-mode": 1,
+            "-k": 5,
+            "--spaced-kmer-mode": 0,
+            # Don't try suppresing FP hits since the peptides are too short
+            "--mask": 0,
+            "--comp-bias-corr": 0,
+            # let more things through the prefilter
+            "--min-ungapped-score": 5,
+            # Let's disable e-values as these are too short for reliable homology anyway
+            # The most we can do is to collapse nearly identical peptides
+            "-e": "inf",
+            # see above
+            "--cluster-reassign": 1,
+        },
     )
     input_multimer_sequence_names = (
         input_multimer_protein_sequence_names
