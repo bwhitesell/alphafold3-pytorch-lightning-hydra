@@ -360,7 +360,7 @@ find data/ccd_data/ -type f -name "*.gz" -exec gzip -d {} \;
 
 ### PDB dataset filtering
 
-Then run the following with `pdb_assembly_dir`, `pdb_asym_dir`, `ccd_dir`, and `mmcif_output_dir` replaced with the locations of your local copies of the first-assembly PDB, asymmetric unit PDB, CCD, and your desired dataset output directory (i.e., `./data/pdb_data/unfiltered_assembly_mmcifs/`, `./data/pdb_data/unfiltered_asym_mmcifs/`, `./data/ccd_data/`, and `./data/pdb_data/train_mmcifs/`).
+Then run the following with `pdb_assembly_dir`, `pdb_asym_dir`, `ccd_dir`, and `mmcif_output_dir` replaced with the locations of your local copies of the first-assembly PDB, asymmetric unit PDB, CCD, and your desired dataset output directory (i.e., `./data/pdb_data/unfiltered_assembly_mmcifs/`, `./data/pdb_data/unfiltered_asym_mmcifs/`, `./data/ccd_data/`, and `./data/pdb_data/{train,val}_mmcifs/`).
 ```bash
 python scripts/filter_pdb_train_mmcifs.py --mmcif_assembly_dir <pdb_assembly_dir> --mmcif_asym_dir <pdb_asym_dir> --ccd_dir <ccd_dir> --output_dir <mmcif_output_dir>
 python scripts/filter_pdb_val_mmcifs.py --mmcif_assembly_dir <pdb_assembly_dir> --mmcif_asym_dir <pdb_asym_dir> --output_dir <mmcif_output_dir>
@@ -372,7 +372,7 @@ named according to the mmCIF's second and third PDB ID characters (e.g. `5c`).
 
 ### PDB dataset clustering
 
-Next, run the following with `mmcif_dir` and `{train,val}_clustering_output_dir` replaced, respectively, with your local output directory created using the dataset filtering script above and with your desired clustering output directories (i.e., `./data/pdb_data/train_mmcifs/` and `./data/pdb_data/data_caches/{train,val}_clusterings/`):
+Next, run the following with `mmcif_dir` and `{train,val}_clustering_output_dir` replaced, respectively, with your local output directory created using the dataset filtering script above and with your desired clustering output directories (i.e., `./data/pdb_data/{train,val}_mmcifs/` and `./data/pdb_data/data_caches/{train,val}_clusterings/`):
 ```bash
 python scripts/cluster_pdb_train_mmcifs.py --mmcif_dir <mmcif_dir> --output_dir <train_clustering_output_dir> --clustering_filtered_pdb_dataset
 python scripts/cluster_pdb_val_mmcifs.py --mmcif_dir <mmcif_dir> --reference_clustering_dir <train_clustering_output_dir> --output_dir <val_clustering_output_dir> --clustering_filtered_pdb_dataset
@@ -380,7 +380,7 @@ python scripts/cluster_pdb_val_mmcifs.py --mmcif_dir <mmcif_dir> --reference_clu
 
 **Note**: The `--clustering_filtered_pdb_dataset` flag is recommended when clustering the filtered PDB dataset as curated using the scripts above, as this flag will enable faster runtimes in this context (since filtering leaves each chain's residue IDs 1-based). However, this flag must **not** be provided when clustering other (i.e., non-PDB) datasets of mmCIF files. Otherwise, interface clustering may be performed incorrectly, as these datasets' mmCIF files may not use strict 1-based residue indexing for each chain.
 
-**Note**: One can also download preprocessed (i.e., filtered) mmCIF (`train`/`val`) files (~20GB, comprising 148k complexes) and chain/interface clustering (`train`/`val`) files (~1GB) for the PDB's `20240101` AWS snapshot via a [shared OneDrive folder](https://mailmissouri-my.sharepoint.com/:f:/g/personal/acmwhb_umsystem_edu/EqU8tjUmmKxJr-FAlq4tzaIBi2TIBtmw5Vl3k_kmgNlepA?e=mzlyv6).
+**Note**: One can instead download preprocessed (i.e., filtered) mmCIF (`train`/`val`) files (~20GB, comprising 148k complexes) and chain/interface clustering (`train`/`val`) files (~1GB) for the PDB's `20240101` AWS snapshot via a [shared OneDrive folder](https://mailmissouri-my.sharepoint.com/:f:/g/personal/acmwhb_umsystem_edu/EqU8tjUmmKxJr-FAlq4tzaIBi2TIBtmw5Vl3k_kmgNlepA?e=mzlyv6). Each of these `tar` archives should be uncompressed within the `data/pdb_data/` directory.
 
 </details>
 
