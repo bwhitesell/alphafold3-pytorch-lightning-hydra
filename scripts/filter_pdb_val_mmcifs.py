@@ -32,7 +32,6 @@ from typing import Dict, Set, Tuple
 
 import rootutils
 import timeout_decorator
-from dateutil import parser as date_parser
 from tqdm.contrib.concurrent import process_map
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
@@ -124,7 +123,7 @@ def filter_pdb_release_date(
         "release_date" in mmcif_object.header
         and exists(mmcif_object.header["release_date"])
         and min_cutoff_date
-        <= date_parser.parse(mmcif_object.header["release_date"])
+        <= datetime.strptime(mmcif_object.header["release_date"], "%Y-%m-%d")
         <= max_cutoff_date
     )
 

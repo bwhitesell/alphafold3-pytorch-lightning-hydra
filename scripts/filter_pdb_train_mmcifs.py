@@ -43,7 +43,6 @@ import numpy as np
 import rootutils
 import timeout_decorator
 from Bio.PDB.NeighborSearch import NeighborSearch
-from dateutil import parser as date_parser
 from pdbeccdutils.core import ccd_reader
 from pdbeccdutils.core.ccd_reader import CCDReaderResult
 from tqdm.contrib.concurrent import process_map
@@ -141,7 +140,7 @@ def filter_pdb_release_date(
         "release_date" in mmcif_object.header
         and exists(mmcif_object.header["release_date"])
         and min_cutoff_date
-        <= date_parser.parse(mmcif_object.header["release_date"])
+        <= datetime.strptime(mmcif_object.header["release_date"], "%Y-%m-%d")
         <= max_cutoff_date
     )
 
