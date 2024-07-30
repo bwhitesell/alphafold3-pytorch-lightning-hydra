@@ -615,31 +615,38 @@ def is_novel_ligand(
     ligand_sequence: str,
     reference_ligand_chain_sequences: List[str],
     max_sim: float = 0.85,
+    verbose: bool = False,
 ) -> bool:
     """Check if a ligand sequence is novel based on Tanimoto similarity to a reference set of ligand sequences."""
     fpgen = AllChem.GetRDKitFPGenerator()
     ligand_smiles = CCD_COMPONENTS_SMILES.get(ligand_sequence, None)
     if not exists(ligand_smiles):
-        logger.warning(f"Could not find SMILES for ligand sequence: {ligand_sequence}")
-        return False
+        if verbose:
+            logger.warning(f"Could not find SMILES for ligand sequence: {ligand_sequence}")
+        return True
     ligand_mol = Chem.MolFromSmiles(ligand_smiles)
     if not exists(ligand_mol):
-        logger.warning(f"Could not generate RDKit molecule for ligand sequence: {ligand_sequence}")
-        return False
+        if verbose:
+            logger.warning(
+                f"Could not generate RDKit molecule for ligand sequence: {ligand_sequence}"
+            )
+        return True
 
     for reference_ligand_sequence in reference_ligand_chain_sequences:
         reference_ligand_smiles = CCD_COMPONENTS_SMILES.get(reference_ligand_sequence, None)
         if not exists(reference_ligand_smiles):
-            logger.warning(
-                f"Could not find SMILES for reference ligand sequence: {reference_ligand_sequence}"
-            )
-            return False
+            if verbose:
+                logger.warning(
+                    f"Could not find SMILES for reference ligand sequence: {reference_ligand_sequence}"
+                )
+            continue
         reference_ligand_mol = Chem.MolFromSmiles(reference_ligand_smiles)
         if not exists(reference_ligand_mol):
-            logger.warning(
-                f"Could not generate RDKit molecule for reference ligand sequence: {reference_ligand_sequence}"
-            )
-            return False
+            if verbose:
+                logger.warning(
+                    f"Could not generate RDKit molecule for reference ligand sequence: {reference_ligand_sequence}"
+                )
+            continue
         ligand_fp = fpgen.GetFingerprint(ligand_mol)
         reference_ligand_fp = fpgen.GetFingerprint(reference_ligand_mol)
         sim = DataStructs.TanimotoSimilarity(ligand_fp, reference_ligand_fp)
@@ -669,7 +676,9 @@ def filter_chains_by_sequence_names(
 
     filtered_chain_sequences = []
     filtered_interface_chain_ids = defaultdict(set)
-    for structure_chain_sequences in all_chain_sequences:
+    for structure_chain_sequences in tqdm(
+        all_chain_sequences, desc="Filtering chain sequences by sequence names"
+    ):
         for structure_id, chain_sequences in structure_chain_sequences.items():
             # Filter chain sequences based on either sequence names or Tanimoto similarity
 
@@ -695,8 +704,8 @@ def filter_chains_by_sequence_names(
                         # NOTE: In contrast to the AF3 supplement, we currently do not
                         # filter out ligands with ranking model fit less than 0.5 or
                         # with multiple residues, due to lack of easily-accessible metadata
-                        # within the context of this clustering script
-                        # TODO: Investigate whether it is reasonable to filter by ranking model fit values
+                        # within the context of this clustering script as well as the limited
+                        # number of novel ligand interface chains left in the validation set
                         filtered_structure_chain_sequences[chain_id] = sequence
                 elif not interfaces_provided and (
                     sequence_name in sequence_names
@@ -723,6 +732,11 @@ def filter_chains_by_sequence_names(
                             break
 
     if interfaces_provided:
+        filtered_chain_sequences = [
+            sequences
+            for sequences in filtered_chain_sequences
+            if list(sequences.keys())[0] in filtered_interface_chain_ids
+        ]
         filtered_interface_chain_ids = {
             k: list(v) for k, v in filtered_interface_chain_ids.items()
         }
