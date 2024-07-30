@@ -387,9 +387,10 @@ def mean_pool_with_lens(
 
 @typecheck
 def repeat_consecutive_with_lens(
-    feats: Float["b n ..."] | Bool["b n"] | Int["b n"],  # type: ignore
+    feats: Float["b n ..."] | Bool["b n ..."] | Bool["b n"] | Int["b n"],  # type: ignore
     lens: Int["b n"],  # type: ignore
-) -> Float["b m ..."] | Bool["b m"] | Int["b m"]:  # type: ignore
+    mask_value: float | int | bool | None = None,  # type: ignore
+) -> Float["b m ..."] | Bool["b m ..."] | Bool["b m"] | Int["b m"]:  # type: ignore
     """
     Repeat a Tensor's values consecutively with the given lengths.
 
@@ -443,7 +444,8 @@ def repeat_consecutive_with_lens(
 
     # final mask
 
-    mask_value = False if dtype == torch.bool else 0
+    if mask_value is None:
+        mask_value = False if dtype == torch.bool else 0
 
     output = einx.where("b n, b n ..., -> b n ...", output_mask, output, mask_value)
 
