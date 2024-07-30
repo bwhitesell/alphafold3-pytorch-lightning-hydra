@@ -177,7 +177,6 @@ def convert_modified_residue_three_to_one(
         return mapped_residue, "ligand"
 
 
-@typecheck
 def parse_chain_sequences_and_interfaces_from_mmcif(
     filepath: str,
     assume_one_based_residue_ids: bool = False,
@@ -295,7 +294,6 @@ def parse_chain_sequences_and_interfaces_from_mmcif(
     return sequences, interface_chain_ids
 
 
-@typecheck
 def parse_chain_sequences_and_interfaces_from_mmcif_file(
     cif_filepath: str, assume_one_based_residue_ids: bool = False
 ) -> Tuple[str, Dict[str, str], Set[str]]:
@@ -614,7 +612,6 @@ def write_sequences_to_fasta(
     return molecule_ids
 
 
-@typecheck
 def is_novel_ligand(
     ligand_sequence: str,
     reference_ligand_chain_sequences: List[str],
@@ -1217,6 +1214,40 @@ def cluster_interfaces(
     return interface_clusters
 
 
+def filter_structure_by_token_count(
+    structure_id: str, mmcif_dir: str, max_num_tokens: int
+) -> str | None:
+    """Filter structure based on the number of tokens it contains."""
+    mmcif_filepath = os.path.join(mmcif_dir, structure_id[1:3], f"{structure_id}.cif")
+    mmcif_object = mmcif_parsing.parse_mmcif_object(mmcif_filepath, structure_id)
+    biomol = _from_mmcif_object(mmcif_object)
+    if len(biomol.atom_mask) <= max_num_tokens:
+        return structure_id
+    return None
+
+
+@typecheck
+def filter_structures_by_token_count(
+    structure_ids: Set[str], mmcif_dir: str, max_num_tokens: int, max_workers: int
+) -> Set[str]:
+    """Filter structures based on the number of tokens they contain."""
+    structure_ids_to_keep = set()
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(
+                filter_structure_by_token_count, structure_id, mmcif_dir, max_num_tokens
+            ): structure_id
+            for structure_id in structure_ids
+        }
+        for future in tqdm(
+            as_completed(futures), total=len(futures), desc="Applying final token count filter"
+        ):
+            result = future.result()
+            if exists(result):
+                structure_ids_to_keep.add(result)
+    return structure_ids_to_keep
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Cluster chains and interfaces within the AlphaFold 3 PDB validation dataset's filtered mmCIF files."
@@ -1493,14 +1524,14 @@ if __name__ == "__main__":
 
     # Cluster interfaces based on the cluster IDs of the chains involved, and save the interface cluster mapping to local (CSV) storage
 
-    # assert all(
-    #     (
-    #         protein_chain_cluster_mapping,
-    #         nucleic_acid_chain_cluster_mapping,
-    #         peptide_chain_cluster_mapping,
-    #         ligand_chain_cluster_mapping,
-    #     )
-    # ), "All molecule type-specific chain cluster mappings must be available to cluster interfaces."
+    assert all(
+        (
+            protein_chain_cluster_mapping,
+            nucleic_acid_chain_cluster_mapping,
+            peptide_chain_cluster_mapping,
+            ligand_chain_cluster_mapping,
+        )
+    ), "All molecule type-specific chain cluster mappings must be available to cluster interfaces."
 
     cluster_interfaces(
         protein_chain_cluster_mapping,
@@ -1550,129 +1581,133 @@ if __name__ == "__main__":
 
     # Sample one member of 40 random protein chain clusters and leave the RNA and DNA chain clusters unchanged
 
-    if len(protein_chain_clusters):
-        protein_chain_clusters_grouped = protein_chain_clusters.group_by("cluster_id").agg(
-            pl.col("*").sample(1, seed=42)
+    protein_chain_clusters_grouped = protein_chain_clusters.group_by("cluster_id").agg(
+        pl.col("*").sample(1, seed=42)
+    )
+    protein_random_chain_clusters = np.random.choice(
+        protein_chain_clusters_grouped.shape[0], 40, replace=False
+    )
+    protein_chain_clusters = (
+        protein_chain_clusters_grouped[protein_random_chain_clusters]
+        .with_columns(
+            [
+                pl.col("pdb_id").explode().alias("pdb_id"),
+                pl.col("chain_id").explode().alias("chain_id"),
+                pl.col("molecule_id").explode().alias("molecule_id"),
+            ]
         )
-        protein_random_chain_clusters = np.random.choice(
-            protein_chain_clusters_grouped.shape[0], 40, replace=False
-        )
-        protein_chain_clusters = (
-            protein_chain_clusters_grouped[protein_random_chain_clusters]
-            .with_columns(
-                [
-                    pl.col("pdb_id").explode().alias("pdb_id"),
-                    pl.col("chain_id").explode().alias("chain_id"),
-                    pl.col("molecule_id").explode().alias("molecule_id"),
-                ]
-            )
-            .select(["pdb_id", "chain_id", "molecule_id", "cluster_id"])
-        )
-        # protein_chain_clusters.to_csv(
-        #     os.path.join(args.output_dir, "protein_chain_cluster_mapping.csv")
-        # )
+        .select(["pdb_id", "chain_id", "molecule_id", "cluster_id"])
+    )
+    protein_chain_clusters.to_csv(
+        os.path.join(args.output_dir, "protein_chain_cluster_mapping.csv")
+    )
 
     # Subsample interface cluster types
 
-    if len(interface_clusters):
-        interface_clusters = interface_clusters.with_columns(
-            pl.concat_list(
+    interface_clusters = interface_clusters.with_columns(
+        pl.concat_list(
+            [
+                pl.col("interface_molecule_id_1").str.split_exact("-", 0).struct.field("field_0"),
+                pl.col("interface_molecule_id_2").str.split_exact("-", 0).struct.field("field_0"),
+            ]
+        )
+        .list.sort()
+        .list.join("-")
+        .alias("interface_type")
+    )
+
+    interface_sample_sizes = {
+        "protein-protein": 600,
+        "dna-protein": 100,
+        "dna-dna": 100,
+        "ligand-protein": 600,
+        "dna-ligand": 50,
+        "ligand-ligand": 200,
+        # NOTE: `None` implies all rows are taken
+        "protein-rna": None,
+        "rna-rna": None,
+        "dna-rna": None,
+        "ligand-rna": None,
+    }
+
+    sampled_interface_dataframes = []
+    for interface_type, sample_size in interface_sample_sizes.items():
+        filtered_interface_df = interface_clusters.filter(
+            pl.col("interface_type") == interface_type
+        )
+        if sample_size is not None:
+            interface_chain_clusters_grouped = filtered_interface_df.group_by(
+                "interface_cluster_id"
+            ).agg(pl.col("*").sample(1, seed=42))
+            interface_random_chain_clusters = np.random.choice(
+                interface_chain_clusters_grouped.shape[0],
+                min(len(interface_chain_clusters_grouped), sample_size),
+                replace=False,
+            )
+            sampled_interface_df = interface_chain_clusters_grouped[
+                interface_random_chain_clusters
+            ].with_columns(
                 [
-                    pl.col("interface_molecule_id_1").str.split_exact("-", 0),
-                    pl.col("interface_molecule_id_2").str.split_exact("-", 0),
+                    pl.col("pdb_id").explode().alias("pdb_id"),
+                    pl.col("interface_chain_id_1").explode().alias("interface_chain_id_1"),
+                    pl.col("interface_chain_id_2").explode().alias("interface_chain_id_2"),
+                    pl.col("interface_molecule_id_1").explode().alias("interface_molecule_id_1"),
+                    pl.col("interface_molecule_id_2").explode().alias("interface_molecule_id_2"),
+                    pl.col("interface_chain_cluster_id_1")
+                    .explode()
+                    .alias("interface_chain_cluster_id_1"),
+                    pl.col("interface_chain_cluster_id_2")
+                    .explode()
+                    .alias("interface_chain_cluster_id_2"),
                 ]
             )
-            .list.sort()
-            .list.join("-")
-            .alias("interface_type")
-        )
-
-        interface_sample_sizes = {
-            "protein-protein": 600,
-            "dna-protein": 100,
-            "dna-dna": 100,
-            "ligand-protein": 600,
-            "dna-ligand": 50,
-            "ligand-ligand": 200,
-            # NOTE: `None` implies all rows are taken
-            "protein-rna": None,
-            "rna-rna": None,
-            "dna-rna": None,
-            "ligand-rna": None,
-        }
-
-        sampled_interface_dataframes = []
-        for interface_type, sample_size in interface_sample_sizes.items():
-            filtered_interface_df = interface_clusters.filter(
-                pl.col("interface_type") == interface_type
+        else:
+            sampled_interface_df = filtered_interface_df
+        sampled_interface_dataframes.append(
+            sampled_interface_df.select(
+                [
+                    "pdb_id",
+                    "interface_chain_id_1",
+                    "interface_chain_id_2",
+                    "interface_molecule_id_1",
+                    "interface_molecule_id_2",
+                    "interface_chain_cluster_id_1",
+                    "interface_chain_cluster_id_2",
+                    "interface_cluster_id",
+                ]
             )
-            if sample_size is not None:
-                interface_chain_clusters_grouped = filtered_interface_df.group_by(
-                    "interface_cluster_id"
-                ).agg(pl.col("*").sample(1, seed=42))
-                interface_random_chain_clusters = np.random.choice(
-                    interface_chain_clusters_grouped.shape[0], sample_size, replace=False
-                )
-                sampled_interface_df = (
-                    interface_chain_clusters_grouped[interface_random_chain_clusters]
-                    .with_columns(
-                        [
-                            pl.col("pdb_id").explode().alias("pdb_id"),
-                            pl.col("chain_id").explode().alias("chain_id"),
-                            pl.col("molecule_id").explode().alias("molecule_id"),
-                        ]
-                    )
-                    .select(["pdb_id", "chain_id", "molecule_id", "cluster_id"])
-                )
-            else:
-                sampled_interface_df = filtered_interface_df
-            sampled_interface_dataframes.append(sampled_interface_df)
-        interface_clusters = pl.concat(sampled_interface_dataframes)
-        # interface_clusters.write_csv(
-        #     os.path.join(args.output_dir, "interface_cluster_mapping.csv")
-        # )
+        )
+    interface_clusters = pl.concat(sampled_interface_dataframes)
+    interface_clusters.write_csv(os.path.join(args.output_dir, "interface_cluster_mapping.csv"))
 
     # Apply a final token count filter to the chain and interface clusters using `Biomolecule` featurization
 
-    structure_ids = set(protein_chain_clusters["pdb_id"]) if protein_chain_clusters else set()
-    structure_ids.update(
-        set(nucleic_acid_chain_clusters["pdb_id"]) if nucleic_acid_chain_clusters else set()
-    )
-    structure_ids.update(
-        set(peptide_chain_clusters["pdb_id"]) if peptide_chain_clusters else set()
-    )
-    structure_ids.update(set(ligand_chain_clusters["pdb_id"]) if ligand_chain_clusters else set())
-    structure_ids.update(set(interface_clusters["pdb_id"]))
+    structure_ids = set(protein_chain_clusters["pdb_id"].to_list())
+    structure_ids.update(set(nucleic_acid_chain_clusters["pdb_id"].to_list()))
+    structure_ids.update(set(peptide_chain_clusters["pdb_id"].to_list()))
+    structure_ids.update(set(ligand_chain_clusters["pdb_id"].to_list()))
+    structure_ids.update(set(interface_clusters["pdb_id"].to_list()))
 
-    structure_ids_to_keep = set()
-    for structure_id in tqdm(structure_ids, desc="Applying final token count filter"):
-        mmcif_filepath = os.path.join(args.mmcif_dir, structure_id[1:3], f"{structure_id}.cif")
-        mmcif_object = mmcif_parsing.parse_mmcif_object(mmcif_filepath, structure_id)
-        biomol = _from_mmcif_object(mmcif_object)
-        if len(biomol.atom_mask) <= args.max_num_tokens:
-            structure_ids_to_keep.add(structure_id)
+    structure_ids_to_keep = filter_structures_by_token_count(
+        structure_ids, args.mmcif_dir, max_tokens=args.max_num_tokens, num_workers=args.no_workers
+    )
 
     # Filter chain and interface clusters according to the final token count filter
 
-    if len(protein_chain_clusters):
-        protein_chain_clusters.filter(pl.col("pdb_id").is_in(structure_ids_to_keep)).write_csv(
-            os.path.join(args.output_dir, "protein_chain_cluster_mapping.csv")
-        )
-    if len(nucleic_acid_chain_clusters):
-        nucleic_acid_chain_clusters.filter(
-            pl.col("pdb_id").is_in(structure_ids_to_keep)
-        ).write_csv(os.path.join(args.output_dir, "nucleic_acid_chain_cluster_mapping.csv"))
-    if len(peptide_chain_clusters):
-        peptide_chain_clusters.filter(pl.col("pdb_id").is_in(structure_ids_to_keep)).write_csv(
-            os.path.join(args.output_dir, "peptide_chain_cluster_mapping.csv")
-        )
-    if len(ligand_chain_clusters):
-        ligand_chain_clusters.filter(pl.col("pdb_id").is_in(structure_ids_to_keep)).write_csv(
-            os.path.join(args.output_dir, "ligand_chain_cluster_mapping.csv")
-        )
-    if len(interface_clusters):
-        interface_clusters.filter(pl.col("pdb_id").is_in(structure_ids_to_keep)).write_csv(
-            os.path.join(args.output_dir, "interface_cluster_mapping.csv")
-        )
+    protein_chain_clusters.filter(pl.col("pdb_id").is_in(structure_ids_to_keep)).write_csv(
+        os.path.join(args.output_dir, "protein_chain_cluster_mapping.csv")
+    )
+    nucleic_acid_chain_clusters.filter(pl.col("pdb_id").is_in(structure_ids_to_keep)).write_csv(
+        os.path.join(args.output_dir, "nucleic_acid_chain_cluster_mapping.csv")
+    )
+    peptide_chain_clusters.filter(pl.col("pdb_id").is_in(structure_ids_to_keep)).write_csv(
+        os.path.join(args.output_dir, "peptide_chain_cluster_mapping.csv")
+    )
+    ligand_chain_clusters.filter(pl.col("pdb_id").is_in(structure_ids_to_keep)).write_csv(
+        os.path.join(args.output_dir, "ligand_chain_cluster_mapping.csv")
+    )
+    interface_clusters.filter(pl.col("pdb_id").is_in(structure_ids_to_keep)).write_csv(
+        os.path.join(args.output_dir, "interface_cluster_mapping.csv")
+    )
 
 # %%
