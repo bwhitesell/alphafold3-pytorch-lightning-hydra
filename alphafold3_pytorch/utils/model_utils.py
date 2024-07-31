@@ -450,3 +450,20 @@ def repeat_consecutive_with_lens(
     output = einx.where("b n, b n ..., -> b n ...", output_mask, output, mask_value)
 
     return output
+
+
+@typecheck
+def to_pairwise_mask(
+    mask_i: Bool["... n"],  # type: ignore
+    mask_j: Bool["... n"] | None = None,  # type: ignore
+) -> Bool["... n n"]:  # type: ignore
+    """
+    Convert two masks into a pairwise mask.
+
+    :param mask_i: The first mask.
+    :param mask_j: The second mask.
+    :return: The pairwise mask.
+    """
+    mask_j = default(mask_j, mask_i)
+    assert mask_i.shape == mask_j.shape
+    return einx.logical_and("... i, ... j -> ... i j", mask_i, mask_j)

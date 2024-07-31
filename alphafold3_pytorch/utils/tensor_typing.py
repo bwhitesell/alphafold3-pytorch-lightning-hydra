@@ -52,4 +52,4 @@ typecheck = jaxtyped(typechecker=beartype) if should_typecheck else identity
 
 beartype_isinstance = is_bearable if should_typecheck else always(True)
 
-__all__ = [beartype_isinstance, Bool, Float, Int, Shaped, typecheck]
+__all__ = [beartype_isinstance, Bool, Float, Int, Shaped, should_typecheck, typecheck]
