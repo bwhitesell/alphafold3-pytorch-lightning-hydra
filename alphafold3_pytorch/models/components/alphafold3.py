@@ -3804,12 +3804,13 @@ class ComputeRankingScore(Module):
 # model selection
 
 
+@typecheck
 def get_cid_molecule_type(
     cid: int,
     asym_id: Int[" n"],  # type: ignore
-    is_molecule_types: Bool["n {IS_MOLECULE_TYPES}"],  # type: ignore
+    is_molecule_types: Bool[f"n {IS_MOLECULE_TYPES}"],  # type: ignore
     return_one_hot: bool = False,
-) -> int | Bool[" {IS_MOLECULE_TYPES}"]:  # type: ignore
+) -> int | Bool[f" {IS_MOLECULE_TYPES}"]:  # type: ignore
     """
     Get the molecule type for where `asym_id == cid`.
 
@@ -3834,6 +3835,7 @@ def get_cid_molecule_type(
 class ComputeModelSelectionScore(Module):
     """Compute model selection score."""
 
+    @typecheck
     def __init__(
         self,
         eps: float = 1e-8,
@@ -3855,6 +3857,7 @@ class ComputeModelSelectionScore(Module):
 
         self.register_buffer("dist_breaks", dist_breaks)
 
+    @typecheck
     def compute_gpde(
         self,
         pde_logits: Float["b pde n n"],  # type: ignore
@@ -3895,6 +3898,7 @@ class ComputeModelSelectionScore(Module):
 
         return gpde
 
+    @typecheck
     def compute_lddt(
         self,
         pred_coords: Float["b m 3"],  # type: ignore
@@ -3958,13 +3962,14 @@ class ComputeModelSelectionScore(Module):
 
         return lddt_mean
 
+    @typecheck
     def compute_chain_pair_lddt(
         self,
         asym_mask_a: Bool["b m"] | Bool[" m"],  # type: ignore
         asym_mask_b: Bool["b m"] | Bool[" m"],  # type: ignore
         pred_coords: Float["b m 3"] | Float["m 3"],  # type: ignore
         true_coords: Float["b m 3"] | Float["m 3"],  # type: ignore
-        is_molecule_types: Int["b m {IS_MOLECULE_TYPES}"] | Int["m {IS_MOLECULE_TYPES}"],  # type: ignore
+        is_molecule_types: Bool[f"b m {IS_MOLECULE_TYPES}"] | Bool[f"m {IS_MOLECULE_TYPES}"],  # type: ignore
         coords_mask: Bool["b m"] | Bool[" m"] | None = None,  # type: ignore
     ) -> Float[" b"]:  # type: ignore
         """
@@ -4015,6 +4020,7 @@ class ComputeModelSelectionScore(Module):
 
         return lddt
 
+    @typecheck
     def get_lddt_weight(
         self,
         type_chain_a: int,
@@ -4080,6 +4086,7 @@ class ComputeModelSelectionScore(Module):
         assert weight, f"Weight not found for {interface_type} {lddt_type}"
         return weight
 
+    @typecheck
     def compute_weighted_lddt(
         self,
         # atom level input
@@ -4088,7 +4095,7 @@ class ComputeModelSelectionScore(Module):
         atom_mask: Bool["b m"] | None,  # type: ignore
         # token level input
         asym_id: Int["b n"],  # type: ignore
-        is_molecule_types: Bool["b n {IS_MOLECULE_TYPES}"],  # type: ignore
+        is_molecule_types: Bool[f"b n {IS_MOLECULE_TYPES}"],  # type: ignore
         molecule_atom_lens: Int["b n"],  # type: ignore
         # additional input
         chains_list: List[Tuple[int, int] | Tuple[int]],
