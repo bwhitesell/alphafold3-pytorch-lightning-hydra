@@ -305,9 +305,9 @@ class AtomDataModule(LightningDataModule):
 
         # load dataset splits only if not loaded already
         if not self.data_train and not self.data_val and not self.data_test:
-            self.data_train = MockAtomDataset(num_examples=self.hparams.train_val_test_split[0])
-            self.data_val = MockAtomDataset(num_examples=self.hparams.train_val_test_split[1])
-            self.data_test = MockAtomDataset(num_examples=self.hparams.train_val_test_split[2])
+            self.data_train = MockAtomDataset(data_length=self.hparams.train_val_test_split[0])
+            self.data_val = MockAtomDataset(data_length=self.hparams.train_val_test_split[1])
+            self.data_test = MockAtomDataset(data_length=self.hparams.train_val_test_split[2])
 
     def train_dataloader(self) -> DataLoader[Any]:
         """Create and return the train dataloader.
