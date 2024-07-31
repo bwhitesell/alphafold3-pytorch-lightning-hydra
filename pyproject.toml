@@ -1,6 +1,6 @@
 [project]
 name = "alphafold3-pytorch-lightning-hydra"
-version = "0.2.52"
+version = "0.2.54"
 description = "AlphaFold 3 - Pytorch"
 authors = [
     { name = "Phil Wang", email = "lucidrains@gmail.com" },
@@ -48,6 +48,7 @@ dependencies = [
     # "wandb",
 
     # --------- others --------- #
+    "adam-atan2-pytorch>=0.0.8", # optimization
     "beartype",        # runtime type checking
     "biopython>=1.83", # for biological data parsing
     "CoLT5-attention>=0.11.0", # for CoLT5 attention
