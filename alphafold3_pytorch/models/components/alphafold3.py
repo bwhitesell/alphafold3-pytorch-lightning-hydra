@@ -3463,12 +3463,11 @@ class ComputeConfidenceScore(Module):
     def compute_pde(
         self,
         logits: Float["b pde n n"],  # type: ignore
-        breaks: Float[" pde_break"],  # type: ignore
         tok_repr_atm_mask: Bool[" b n"],  # type: ignore
     ) -> Float[" b n n"]:  # type: ignore
         """Compute PDE from logits."""
         logits = rearrange(logits, "b pde i j -> b i j pde")
-        bin_centers = self._calculate_bin_centers(breaks.to(logits.device))
+        bin_centers = self._calculate_bin_centers(self.pde_breaks)
         probs = F.softmax(logits, dim=-1)
 
         pde = einsum(probs, bin_centers, "b i j pde, pde -> b i j ")
@@ -3807,7 +3806,7 @@ class ComputeRankingScore(Module):
 
 def get_cid_molecule_type(
     cid: int,
-    asym_id: Int["n"],  # type: ignore
+    asym_id: Int[" n"],  # type: ignore
     is_molecule_types: Bool["n {IS_MOLECULE_TYPES}"],  # type: ignore
     return_one_hot: bool = False,
 ) -> int | Bool[" {IS_MOLECULE_TYPES}"]:  # type: ignore
@@ -3822,13 +3821,13 @@ def get_cid_molecule_type(
     """
 
     cid_is_molecule_types = is_molecule_types[asym_id == cid]
-    valid = torch.all(einx.equal("b i, i -> b i", cid_is_molecule_types, cid_is_molecule_types[0]))
+    molecule_type, rest_molecule_type = cid_is_molecule_types[0], cid_is_molecule_types[1:]
+
+    valid = einx.equal("b i, i -> b i", rest_molecule_type, molecule_type).all()
     assert valid, f"Ambiguous molecule types for chain {cid}"
 
-    if return_one_hot:
-        molecule_type = cid_is_molecule_types[0]
-    else:
-        molecule_type = cid_is_molecule_types[0].int().argmax().item()
+    if not return_one_hot:
+        molecule_type = molecule_type.int().argmax().item()
     return molecule_type
 
 
@@ -3845,12 +3844,15 @@ class ComputeModelSelectionScore(Module):
         ),
         nucleic_acid_cutoff: float = 30.0,
         other_cutoff: float = 15.0,
+        contact_mask_threshold: float = 8.0,
     ):
         super().__init__()
         self.compute_confidence_score = ComputeConfidenceScore(eps=eps)
         self.eps = eps
         self.nucleic_acid_cutoff = nucleic_acid_cutoff
         self.other_cutoff = other_cutoff
+        self.contact_mask_threshold = contact_mask_threshold
+
         self.register_buffer("dist_breaks", dist_breaks)
 
     def compute_gpde(
@@ -3870,16 +3872,15 @@ class ComputeModelSelectionScore(Module):
         :return: [b] global PDE
         """
 
-        pde = self.compute_confidence_score.compute_pde(
-            pde_logits, self.compute_confidence_score.pde_breaks, tok_repr_atm_mask
-        )
+        pde = self.compute_confidence_score.compute_pde(pde_logits, tok_repr_atm_mask)
 
         dist_logits = rearrange(dist_logits, "b dist i j -> b i j dist")
         dist_probs = F.softmax(dist_logits, dim=-1)
-        contact_mask = dist_breaks < 8.0
-        contact_mask = torch.cat(
-            [contact_mask, torch.zeros([1], device=dist_logits.device)]
-        ).bool()
+
+        contact_mask = dist_breaks < self.contact_mask_threshold
+
+        contact_mask = F.pad(contact_mask, (0, 1), value=True)
+
         contact_prob = einx.where(
             " dist, b i j dist, -> b i j dist", contact_mask, dist_probs, 0.0
         ).sum(dim=-1)
@@ -3902,7 +3903,7 @@ class ComputeModelSelectionScore(Module):
         is_rna: Bool["b m"],  # type: ignore
         pairwise_mask: Bool["b m m"],  # type: ignore
         coords_mask: Bool["b m"] | None = None,  # type: ignore
-    ) -> Float["b"]:  # type: ignore
+    ) -> Float[" b"]:  # type: ignore
         """
         Compute lDDT.
 
@@ -3965,7 +3966,7 @@ class ComputeModelSelectionScore(Module):
         true_coords: Float["b m 3"] | Float["m 3"],  # type: ignore
         is_molecule_types: Int["b m {IS_MOLECULE_TYPES}"] | Int["m {IS_MOLECULE_TYPES}"],  # type: ignore
         coords_mask: Bool["b m"] | Bool[" m"] | None = None,  # type: ignore
-    ) -> Float["b"]:  # type: ignore
+    ) -> Float[" b"]:  # type: ignore
         """
         Compute the plDDT between atoms maked by `asym_mask_a` and `asym_mask_b`.
 
@@ -4092,7 +4093,7 @@ class ComputeModelSelectionScore(Module):
         # additional input
         chains_list: List[Tuple[int, int] | Tuple[int]],
         is_fine_tuning: bool = False,
-    ) -> Float["b"]:  # type: ignore
+    ) -> Float[" b"]:  # type: ignore
         """
         Compute the weighted lDDT.
 
