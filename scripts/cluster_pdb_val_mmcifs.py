@@ -805,6 +805,11 @@ def filter_structure_chain_sequences(
                     ptnr2_molecule_type = ptnr2_chain_id.split(":")[1].split("-")[0]
 
                     if ptnr1_molecule_type == "ligand":
+                        # NOTE: We currently do not filter out interfaces
+                        # involving a ligand with ranking model fit less
+                        # than 0.5 or with multiple residues, due to a lack
+                        # of available metadata within the context of this
+                        # clustering script. This may be revisited in the future.
                         ptnr1_is_novel = is_novel_ligand(
                             ptnr1_sequence,
                             reference_ligand_chain_sequences,
