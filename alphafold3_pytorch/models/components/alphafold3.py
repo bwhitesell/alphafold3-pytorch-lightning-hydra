@@ -32,9 +32,7 @@ from alphafold3_pytorch.models.components.inputs import (
     IS_DNA,
     IS_DNA_INDEX,
     IS_LIGAND,
-    IS_LIGAND_INDEX,
     IS_METAL_ION,
-    IS_METAL_ION_INDEX,
     IS_MOLECULE_TYPES,
     IS_PROTEIN,
     IS_PROTEIN_INDEX,
@@ -66,6 +64,7 @@ from alphafold3_pytorch.utils.utils import default, exists, identity
 global ein notation:
 b - batch
 ba - batch with augmentation
+bt - batch with templates dimension merged
 h - heads
 n - molecule sequence length
 i - molecule sequence length (source)
@@ -1394,7 +1393,7 @@ class TemplateEmbedder(Module):
     @typecheck
     def to_layers(
         self,
-        v: Float["bt n n dt"],  # type: ignore
+        templates: Float["bt n n dt"],  # type: ignore
         *,
         mask: Bool["bt n"] | None = None,  # type: ignore
     ) -> Float["bt n n dt"]:  # type: ignore
@@ -1402,20 +1401,18 @@ class TemplateEmbedder(Module):
         Perform the forward pass with individual layers.
 
         :param templates: The templates tensor.
-        :param template_mask: The template mask tensor.
-        :param pairwise_repr: The pairwise representation tensor.
         :param mask: The mask tensor.
         :return: The output tensor.
         """
         for block in self.pairformer_stack:
-            v = block(pairwise_repr=v, mask=mask) + v
+            templates = block(pairwise_repr=templates, mask=mask) + templates
 
-        return v
+        return templates
 
     @typecheck
     def to_checkpointed_layers(
         self,
-        v: Float["bt n n dt"],  # type: ignore
+        templates: Float["bt n n dt"],  # type: ignore
         *,
         mask: Bool["bt n"] | None = None,  # type: ignore
     ) -> Float["bt n n dt"]:  # type: ignore
@@ -1423,31 +1420,29 @@ class TemplateEmbedder(Module):
         Perform the forward pass with checkpointed layers.
 
         :param templates: The templates tensor.
-        :param template_mask: The template mask tensor.
-        :param pairwise_repr: The pairwise representation tensor.
         :param mask: The mask tensor.
         :return: The output tensor.
         """
         wrapped_layers = []
-        inputs = (v, mask)
+        inputs = (templates, mask)
 
         def block_wrapper(fn):
             @wraps(fn)
             def inner(inputs):
-                v, mask = inputs
-                v = fn(pairwise_repr=v, mask=mask)
-                return v, mask
+                templates, mask = inputs
+                templates = fn(pairwise_repr=templates, mask=mask)
+                return templates, mask
 
             return inner
 
         for block in self.pairformer_stack:
             wrapped_layers.append(block_wrapper(block))
 
-        v, _ = checkpoint_sequential(
+        templates, _ = checkpoint_sequential(
             wrapped_layers, self.checkpoint_segments, inputs, use_reentrant=False
         )
 
-        return v
+        return templates
 
     @typecheck
     def forward(
@@ -1472,9 +1467,9 @@ class TemplateEmbedder(Module):
         pairwise_repr = self.pairwise_to_embed_input(pairwise_repr)
         pairwise_repr = rearrange(pairwise_repr, "b i j d -> b 1 i j d")
 
-        v = self.template_feats_to_embed_input(templates) + pairwise_repr
+        templates = self.template_feats_to_embed_input(templates) + pairwise_repr
 
-        v, unpack_one = pack_one(v, "* i j d")
+        templates, unpack_one = pack_one(templates, "* i j d")
 
         has_templates = reduce(template_mask, "b t -> b", "any")
 
@@ -1483,7 +1478,7 @@ class TemplateEmbedder(Module):
 
         # going through the pairformer stack
 
-        if should_checkpoint(self, v):
+        if should_checkpoint(self, templates):
             to_layers_fn = self.to_checkpointed_layers
         else:
             to_layers_fn = self.to_layers
@@ -1491,19 +1486,19 @@ class TemplateEmbedder(Module):
         # layers
         # todo - figure out why single-variable names v and u used here and name it better.
 
-        v = to_layers_fn(v)
+        templates = to_layers_fn(templates)
 
         # final norm
 
-        u = self.final_norm(v)
+        templates = self.final_norm(templates)
 
-        u = unpack_one(u)
+        templates = unpack_one(templates)
 
         # masked mean pool template repr
 
-        u = einx.where("b t, b t ..., -> b t ...", template_mask, u, 0.0)
+        templates = einx.where("b t, b t ..., -> b t ...", template_mask, templates, 0.0)
 
-        num = reduce(u, "b t i j d -> b i j d", "sum")
+        num = reduce(templates, "b t i j d -> b i j d", "sum")
         den = reduce(template_mask.float(), "b t -> b", "sum")
 
         avg_template_repr = einx.divide("b i j d, b -> b i j d", num, den.clamp(min=self.eps))
