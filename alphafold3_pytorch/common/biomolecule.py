@@ -604,6 +604,7 @@ def get_unique_res_atom_names(
 def _from_mmcif_object(
     mmcif_object: mmcif_parsing.MmcifObject,
     chain_ids: Optional[Set[str]] = None,
+    atomize_modified_polymer_residues: bool = False,
 ) -> Biomolecule:
     """Takes a Biopython structure/model mmCIF object and creates a `Biomolecule` instance.
 
@@ -621,6 +622,10 @@ def _from_mmcif_object(
     :param mmcif_object: The parsed Biopython structure/model mmCIF object.
     :param chain_ids: If chain_ids are specified (e.g. A), then only these chains are parsed.
         Otherwise all chains are parsed.
+    :param atomize_modified_polymer_residues: If True, then the atoms of modified
+        polymer residues are treated as "pseudoresidues". This is useful for
+        representing modified polymer residues as a collection of (e.g., ligand)
+        atoms rather than as a single residue.
 
     :return: A new `Biomolecule` created from the structure/model mmCIF object contents.
 
@@ -675,7 +680,10 @@ def _from_mmcif_object(
             restype_idx = residue_constants.restype_order.get(
                 res_shortname, residue_constants.restype_num
             )
-            if is_polymer_residue:
+            is_modified_polymer_residue = is_polymer_residue and res_shortname == "X"
+            if is_polymer_residue and not (
+                atomize_modified_polymer_residues and is_modified_polymer_residue
+            ):
                 pos = np.zeros((residue_constants.atom_type_num, 3))
                 mask = np.zeros((residue_constants.atom_type_num,))
                 res_b_factors = np.zeros((residue_constants.atom_type_num,))

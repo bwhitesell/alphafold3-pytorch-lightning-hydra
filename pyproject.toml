@@ -1,6 +1,6 @@
 [project]
 name = "alphafold3-pytorch-lightning-hydra"
-version = "0.2.58"
+version = "0.2.59"
 description = "AlphaFold 3 - Pytorch"
 authors = [
     { name = "Phil Wang", email = "lucidrains@gmail.com" },
@@ -85,7 +85,8 @@ Repository = "https://github.com/amorehead/alphafold3-pytorch-lightning-hydra"
 [project.optional-dependencies]
 examples = []
 test = [
-    "pytest"
+    "pytest",
+    "pytest-split"
 ]
 
 [build-system]
