@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from functools import partial
+from functools import partial, wraps
 from importlib.metadata import version
 from math import pi, sqrt
 from pathlib import Path
@@ -805,6 +805,8 @@ class MSAModule(Module):
         msa_pwa_dropout_row_prob=0.15,
         msa_pwa_heads=8,
         msa_pwa_dim_head=32,
+        checkpoint=False,
+        checkpoint_segments=1,
         pairwise_block_kwargs: dict = dict(),
         max_num_msa: int | None = None,
         layerscale_output: bool = True,
@@ -856,11 +858,128 @@ class MSAModule(Module):
                 )
             )
 
+        self.checkpoint = checkpoint
+        self.checkpoint_segments = checkpoint_segments
+
         self.layers = layers
 
         self.layerscale_output = (
             nn.Parameter(torch.zeros(dim_pairwise)) if layerscale_output else 1.0
         )
+
+    @typecheck
+    def to_layers(
+        self,
+        *,
+        pairwise_repr: Float["b n n dp"],  # type: ignore
+        msa: Float["b s n dm"],  # type: ignore
+        mask: Bool["b n"] | None = None,  # type: ignore
+        msa_mask: Bool["b s"] | None = None,  # type: ignore
+    ) -> Float["b n n dp"]:  # type: ignore
+        """
+        Perform the forward pass with individual layers.
+
+        :param single_repr: The single representation tensor.
+        :param pairwise_repr: The pairwise representation tensor.
+        :param msa: The MSA tensor.
+        :param mask: The mask tensor.
+        :param msa_mask: The MSA mask tensor.
+        :return: The output tensor.
+        """
+        for (
+            outer_product_mean,
+            msa_pair_weighted_avg,
+            msa_transition,
+            pairwise_block,
+        ) in self.layers:
+            # communication between msa and pairwise rep
+
+            pairwise_repr = outer_product_mean(msa, mask=mask, msa_mask=msa_mask) + pairwise_repr
+
+            msa = msa_pair_weighted_avg(msa=msa, pairwise_repr=pairwise_repr, mask=mask) + msa
+            msa = msa_transition(msa) + msa
+
+            # pairwise block
+
+            pairwise_repr = pairwise_block(pairwise_repr=pairwise_repr, mask=mask)
+
+        return pairwise_repr
+
+    @typecheck
+    def to_checkpointed_layers(
+        self,
+        *,
+        pairwise_repr: Float["b n n dp"],  # type: ignore
+        msa: Float["b s n dm"],  # type: ignore
+        mask: Bool["b n"] | None = None,  # type: ignore
+        msa_mask: Bool["b s"] | None = None,  # type: ignore
+    ) -> Float["b n n dp"]:  # type: ignore
+        """
+        Perform the forward pass with checkpointed layers.
+
+        :param single_repr: The single representation tensor.
+        :param pairwise_repr: The pairwise representation tensor.
+        :param msa: The MSA tensor.
+        :param mask: The mask tensor.
+        :param msa_mask: The MSA mask tensor.
+        :return: The output tensor.
+        """
+        inputs = (pairwise_repr, mask, msa, msa_mask)
+
+        wrapped_layers = []
+
+        def outer_product_mean_wrapper(fn):
+            @wraps(fn)
+            def inner(inputs):
+                pairwise_repr, mask, msa, msa_mask = inputs
+                pairwise_repr = fn(msa=msa, mask=mask, msa_mask=msa_mask) + pairwise_repr
+                return pairwise_repr, mask, msa, msa_mask
+
+            return inner
+
+        def msa_pair_weighted_avg_wrapper(fn):
+            @wraps(fn)
+            def inner(inputs):
+                pairwise_repr, mask, msa, msa_mask = inputs
+                msa = fn(msa=msa, pairwise_repr=pairwise_repr, mask=mask) + msa
+                return pairwise_repr, mask, msa, msa_mask
+
+            return inner
+
+        def pairwise_block_wrapper(fn):
+            @wraps(fn)
+            def inner(inputs):
+                pairwise_repr, mask, msa, msa_mask = inputs
+                pairwise_repr = fn(pairwise_repr=pairwise_repr, mask=mask)
+                return pairwise_repr, mask, msa, msa_mask
+
+            return inner
+
+        def msa_transition_wrapper(fn):
+            @wraps(fn)
+            def inner(inputs):
+                pairwise_repr, mask, msa, msa_mask = inputs
+                msa = fn(msa) + msa
+                return pairwise_repr, mask, msa, msa_mask
+
+            return inner
+
+        for (
+            outer_product_mean,
+            msa_pair_weighted_avg,
+            msa_transition,
+            pairwise_block,
+        ) in self.layers:
+            wrapped_layers.append(outer_product_mean_wrapper(outer_product_mean))
+            wrapped_layers.append(msa_pair_weighted_avg_wrapper(msa_pair_weighted_avg))
+            wrapped_layers.append(msa_transition_wrapper(msa_transition))
+            wrapped_layers.append(pairwise_block_wrapper(pairwise_block))
+
+        pairwise_repr, *_ = checkpoint_sequential(
+            wrapped_layers, self.checkpoint_segments, inputs, use_reentrant=False
+        )
+
+        return pairwise_repr
 
     @typecheck
     def forward(
@@ -912,22 +1031,18 @@ class MSAModule(Module):
 
         msa = rearrange(single_msa_feats, "b n d -> b 1 n d") + msa
 
-        for (
-            outer_product_mean,
-            msa_pair_weighted_avg,
-            msa_transition,
-            pairwise_block,
-        ) in self.layers:
-            # communication between msa and pairwise rep
+        # going through the layers
 
-            pairwise_repr = outer_product_mean(msa, mask=mask, msa_mask=msa_mask) + pairwise_repr
+        if should_checkpoint(self, (pairwise_repr, msa)):
+            to_layers_fn = self.to_checkpointed_layers
+        else:
+            to_layers_fn = self.to_layers
 
-            msa = msa_pair_weighted_avg(msa=msa, pairwise_repr=pairwise_repr, mask=mask) + msa
-            msa = msa_transition(msa) + msa
+        pairwise_repr = to_layers_fn(
+            msa=msa, mask=mask, pairwise_repr=pairwise_repr, msa_mask=msa_mask
+        )
 
-            # pairwise block
-
-            pairwise_repr = pairwise_block(pairwise_repr=pairwise_repr, mask=mask)
+        # final masking and then layer scale
 
         if exists(msa_mask):
             pairwise_repr = einx.where("b, b ..., -> b ...", has_msa, pairwise_repr, 0.0)

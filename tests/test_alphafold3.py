@@ -227,20 +227,26 @@ def test_pairformer(checkpoint, recurrent_depth, enable_attn_softclamp):
         loss.backward()
 
 
-def test_msa_module():
+@pytest.mark.parametrize("checkpoint", (False, True))
+def test_msa_module(checkpoint):
     """Test the MSA module."""
-    single = torch.randn(2, 16, 384)
-    pairwise = torch.randn(2, 16, 16, 128)
+    single = torch.randn(2, 16, 384).requires_grad_()
+    pairwise = torch.randn(2, 16, 16, 128).requires_grad_()
     msa = torch.randn(2, 7, 16, 64)
     mask = torch.randint(0, 2, (2, 16)).bool()
 
     msa_module = MSAModule(
-        max_num_msa=3  # will randomly select 3 out of the MSAs, accounting for mask, using sample without replacement
+        checkpoint=checkpoint,
+        max_num_msa=3,  # will randomly select 3 out of the MSAs, accounting for mask, using sample without replacement
     )
 
     pairwise_out = msa_module(msa=msa, single_repr=single, pairwise_repr=pairwise, mask=mask)
 
     assert pairwise.shape == pairwise_out.shape
+
+    if checkpoint:
+        loss = pairwise_out.sum()
+        loss.backward()
 
 
 @pytest.mark.parametrize("serial,checkpoint", ((False, False), (True, False), (True, True)))
