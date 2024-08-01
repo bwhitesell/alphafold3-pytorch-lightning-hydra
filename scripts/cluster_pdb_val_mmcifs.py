@@ -646,15 +646,33 @@ def filter_to_low_homology_sequences(
 
     # Identify multimer sequences and interfaces that passed the sequence identity and Tanimoto similarity criteria
 
-    reference_ligand_chain_sequences = filter_chains_by_molecule_type(
+    fpgen = AllChem.GetRDKitFPGenerator()
+    reference_ligand_ccd_codes = filter_chains_by_molecule_type(
         reference_multimer_chain_sequences,
         molecule_type="ligand",
     )
+    reference_ligand_fps = []
+    for reference_ligand_ccd_code in reference_ligand_ccd_codes:
+        reference_ligand_smiles = CCD_COMPONENTS_SMILES.get(reference_ligand_ccd_code, None)
+        if not exists(reference_ligand_smiles):
+            logger.warning(
+                f"Could not find SMILES for reference CCD ligand: {reference_ligand_ccd_code}"
+            )
+            continue
+        reference_ligand_mol = Chem.MolFromSmiles(reference_ligand_smiles)
+        if not exists(reference_ligand_mol):
+            logger.warning(
+                f"Could not generate RDKit molecule for reference CCD ligand: {reference_ligand_ccd_code}"
+            )
+            continue
+        reference_ligand_fp = fpgen.GetFingerprint(reference_ligand_mol)
+        reference_ligand_fps.append(reference_ligand_fp)
+
     input_multimer_chain_sequences, input_interface_chain_ids = filter_chains_by_sequence_names(
         input_multimer_chain_sequences,
         input_multimer_chain_mappings.select(["query", "fident"]).to_numpy(),
         interface_chain_ids=input_interface_chain_ids,
-        reference_ligand_chain_sequences=reference_ligand_chain_sequences,
+        reference_ligand_fps=reference_ligand_fps,
         max_polymer_similarity=0.4,
         max_ligand_similarity=0.85,
         max_workers=max_workers,
@@ -718,7 +736,7 @@ def write_sequences_to_fasta(
 
 def is_novel_ligand(
     ligand_sequence: str,
-    reference_ligand_chain_sequences: List[str],
+    reference_ligand_fps: List[DataStructs.cDataStructs.ExplicitBitVect],
     max_sim: float = 0.85,
     verbose: bool = False,
 ) -> bool:
@@ -736,24 +754,9 @@ def is_novel_ligand(
                 f"Could not generate RDKit molecule for ligand sequence: {ligand_sequence}"
             )
         return True
+    ligand_fp = fpgen.GetFingerprint(ligand_mol)
 
-    for reference_ligand_sequence in reference_ligand_chain_sequences:
-        reference_ligand_smiles = CCD_COMPONENTS_SMILES.get(reference_ligand_sequence, None)
-        if not exists(reference_ligand_smiles):
-            if verbose:
-                logger.warning(
-                    f"Could not find SMILES for reference ligand sequence: {reference_ligand_sequence}"
-                )
-            continue
-        reference_ligand_mol = Chem.MolFromSmiles(reference_ligand_smiles)
-        if not exists(reference_ligand_mol):
-            if verbose:
-                logger.warning(
-                    f"Could not generate RDKit molecule for reference ligand sequence: {reference_ligand_sequence}"
-                )
-            continue
-        ligand_fp = fpgen.GetFingerprint(ligand_mol)
-        reference_ligand_fp = fpgen.GetFingerprint(reference_ligand_mol)
+    for reference_ligand_fp in reference_ligand_fps:
         sim = DataStructs.TanimotoSimilarity(ligand_fp, reference_ligand_fp)
         if sim > max_sim:
             return False
@@ -765,7 +768,7 @@ def filter_structure_chain_sequences(
     structure_chain_sequences: Dict[str, Dict[str, str]],
     sequence_names: Set[str] | np.ndarray,
     interface_chain_ids: CHAIN_INTERFACES | None,
-    reference_ligand_chain_sequences: List[str] | None,
+    reference_ligand_fps: List[DataStructs.cDataStructs.ExplicitBitVect] | None,
     max_polymer_similarity: float,
     max_ligand_similarity: float,
     filtered_structure_ids: Set[str],
@@ -779,8 +782,8 @@ def filter_structure_chain_sequences(
             sequence_names, np.ndarray
         ), "Sequence names must be provided as a NumPy array if interfaces are also provided."
         assert exists(
-            reference_ligand_chain_sequences
-        ), "Reference ligand sequences must be provided if interfaces are also provided."
+            reference_ligand_fps
+        ), "Reference ligand fingerprints must be provided if interfaces are also provided."
 
     filtered_structure_chain_sequences = {}
     filtered_interface_chain_ids = defaultdict(set)
@@ -812,7 +815,7 @@ def filter_structure_chain_sequences(
                         # clustering script. This may be revisited in the future.
                         ptnr1_is_novel = is_novel_ligand(
                             ptnr1_sequence,
-                            reference_ligand_chain_sequences,
+                            reference_ligand_fps,
                             max_sim=max_ligand_similarity,
                         )
                     else:
@@ -826,7 +829,7 @@ def filter_structure_chain_sequences(
                     if ptnr2_molecule_type == "ligand":
                         ptnr2_is_novel = is_novel_ligand(
                             ptnr2_sequence,
-                            reference_ligand_chain_sequences,
+                            reference_ligand_fps,
                             max_sim=max_ligand_similarity,
                         )
                     else:
@@ -873,7 +876,7 @@ def filter_chains_by_sequence_names(
     all_chain_sequences: CHAIN_SEQUENCES,
     sequence_names: Set[str] | np.ndarray,
     interface_chain_ids: CHAIN_INTERFACES | None = None,
-    reference_ligand_chain_sequences: List[str] | None = None,
+    reference_ligand_fps: List[DataStructs.cDataStructs.ExplicitBitVect] | None = None,
     max_polymer_similarity: float = 0.4,
     max_ligand_similarity: float = 0.85,
     max_workers: int = 2,
@@ -894,8 +897,8 @@ def filter_chains_by_sequence_names(
             sequence_names, np.ndarray
         ), "Sequence names must be provided as a NumPy array if interfaces are also provided."
         assert exists(
-            reference_ligand_chain_sequences
-        ), "Reference ligand sequences must be provided if interfaces are also provided."
+            reference_ligand_fps
+        ), "Reference ligand fingerprints must be provided if interfaces are also provided."
 
     filtered_chain_sequences = []
     filtered_interface_chain_ids = defaultdict(set)
@@ -907,7 +910,7 @@ def filter_chains_by_sequence_names(
                 structure_chain_sequences=structure_chain_sequences,
                 sequence_names=sequence_names,
                 interface_chain_ids=interface_chain_ids,
-                reference_ligand_chain_sequences=reference_ligand_chain_sequences,
+                reference_ligand_fps=reference_ligand_fps,
                 max_polymer_similarity=max_polymer_similarity,
                 max_ligand_similarity=max_ligand_similarity,
                 filtered_structure_ids=filtered_structure_ids,
