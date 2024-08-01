@@ -1359,6 +1359,8 @@ class TemplateEmbedder(Module):
         pairformer_stack_depth=2,
         pairwise_block_kwargs: dict = dict(),
         eps=1e-5,
+        checkpoint=False,
+        checkpoint_segments=1,
         layerscale_output=True,
     ):
         super().__init__()
@@ -1378,6 +1380,9 @@ class TemplateEmbedder(Module):
 
         self.pairformer_stack = layers
 
+        self.checkpoint = checkpoint
+        self.checkpoint_segments = checkpoint_segments
+
         self.final_norm = nn.LayerNorm(dim)
 
         # final projection of mean pooled repr -> out
@@ -1385,6 +1390,64 @@ class TemplateEmbedder(Module):
         self.to_out = nn.Sequential(nn.ReLU(), LinearNoBias(dim, dim_pairwise))
 
         self.layerscale = nn.Parameter(torch.zeros(dim_pairwise)) if layerscale_output else 1.0
+
+    @typecheck
+    def to_layers(
+        self,
+        v: Float["bt n n dt"],  # type: ignore
+        *,
+        mask: Bool["bt n"] | None = None,  # type: ignore
+    ) -> Float["bt n n dt"]:  # type: ignore
+        """
+        Perform the forward pass with individual layers.
+
+        :param templates: The templates tensor.
+        :param template_mask: The template mask tensor.
+        :param pairwise_repr: The pairwise representation tensor.
+        :param mask: The mask tensor.
+        :return: The output tensor.
+        """
+        for block in self.pairformer_stack:
+            v = block(pairwise_repr=v, mask=mask) + v
+
+        return v
+
+    @typecheck
+    def to_checkpointed_layers(
+        self,
+        v: Float["bt n n dt"],  # type: ignore
+        *,
+        mask: Bool["bt n"] | None = None,  # type: ignore
+    ) -> Float["bt n n dt"]:  # type: ignore
+        """
+        Perform the forward pass with checkpointed layers.
+
+        :param templates: The templates tensor.
+        :param template_mask: The template mask tensor.
+        :param pairwise_repr: The pairwise representation tensor.
+        :param mask: The mask tensor.
+        :return: The output tensor.
+        """
+        wrapped_layers = []
+        inputs = (v, mask)
+
+        def block_wrapper(fn):
+            @wraps(fn)
+            def inner(inputs):
+                v, mask = inputs
+                v = fn(pairwise_repr=v, mask=mask)
+                return v, mask
+
+            return inner
+
+        for block in self.pairformer_stack:
+            wrapped_layers.append(block_wrapper(block))
+
+        v, _ = checkpoint_sequential(
+            wrapped_layers, self.checkpoint_segments, inputs, use_reentrant=False
+        )
+
+        return v
 
     @typecheck
     def forward(
@@ -1404,7 +1467,6 @@ class TemplateEmbedder(Module):
         :param mask: The mask tensor.
         :return: The output tensor.
         """
-
         num_templates = templates.shape[1]
 
         pairwise_repr = self.pairwise_to_embed_input(pairwise_repr)
@@ -1412,15 +1474,26 @@ class TemplateEmbedder(Module):
 
         v = self.template_feats_to_embed_input(templates) + pairwise_repr
 
-        v, unpack_one = pack_one(v, "* i j d")  # noqa: F811
+        v, unpack_one = pack_one(v, "* i j d")
 
         has_templates = reduce(template_mask, "b t -> b", "any")
 
         if exists(mask):
             mask = repeat(mask, "b n -> (b t) n", t=num_templates)
 
-        for block in self.pairformer_stack:
-            v = block(pairwise_repr=v, mask=mask) + v
+        # going through the pairformer stack
+
+        if should_checkpoint(self, v):
+            to_layers_fn = self.to_checkpointed_layers
+        else:
+            to_layers_fn = self.to_layers
+
+        # layers
+        # todo - figure out why single-variable names v and u used here and name it better.
+
+        v = to_layers_fn(v)
+
+        # final norm
 
         u = self.final_norm(v)
 

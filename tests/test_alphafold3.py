@@ -380,15 +380,16 @@ def test_relative_position_encoding():
     assert exists(rpe_embed)
 
 
-def test_template_embed():
+@pytest.mark.parametrize("checkpoint", (False, True))
+def test_template_embed(checkpoint):
     """Test the template embedder."""
     template_feats = torch.randn(2, 2, 16, 16, 77)
     template_mask = torch.ones((2, 2)).bool()
 
-    pairwise_repr = torch.randn(2, 16, 16, 128)
+    pairwise_repr = torch.randn(2, 16, 16, 128).requires_grad_()
     mask = torch.ones((2, 16)).bool()
 
-    embedder = TemplateEmbedder(dim_template_feats=77)
+    embedder = TemplateEmbedder(dim_template_feats=77, checkpoint=checkpoint)
 
     template_embed = embedder(
         templates=template_feats,
@@ -398,6 +399,10 @@ def test_template_embed():
     )
 
     assert exists(template_embed)
+
+    if checkpoint:
+        loss = template_embed.sum()
+        loss.backward()
 
 
 def test_confidence_head():

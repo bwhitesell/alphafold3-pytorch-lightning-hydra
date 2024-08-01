@@ -474,7 +474,9 @@ def to_pairwise_mask(
 
 @typecheck
 def should_checkpoint(
-    self: Module, inputs: Tuple[Tensor, ...], check_instance_variable: str | None = "checkpoint"
+    self: Module,
+    inputs: Tensor | Tuple[Tensor, ...],
+    check_instance_variable: str | None = "checkpoint",
 ) -> bool:
     """
     Determine if activation checkpointing should be used.
@@ -484,6 +486,9 @@ def should_checkpoint(
     :param check_instance_variable: The instance variable to check.
     :return: True if activation checkpointing should be used, False otherwise.
     """
+    if torch.is_tensor(inputs):
+        inputs = (inputs,)
+
     return (
         self.training
         and any([i.requires_grad for i in inputs])
