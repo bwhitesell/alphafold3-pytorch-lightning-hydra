@@ -6,6 +6,7 @@ import torch
 import torch.nn.functional as F
 from einops import pack, rearrange, repeat, unpack
 from torch import Tensor
+from torch.nn import Module
 
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
 from alphafold3_pytorch.utils.utils import default, exists
@@ -444,8 +445,7 @@ def repeat_consecutive_with_lens(
 
     # final mask
 
-    if mask_value is None:
-        mask_value = False if dtype == torch.bool else 0
+    mask_value = default(mask_value, False if dtype == torch.bool else 0)
 
     output = einx.where("b n, b n ..., -> b n ...", output_mask, output, mask_value)
 
@@ -467,3 +467,25 @@ def to_pairwise_mask(
     mask_j = default(mask_j, mask_i)
     assert mask_i.shape == mask_j.shape
     return einx.logical_and("... i, ... j -> ... i j", mask_i, mask_j)
+
+
+# checkpointing utils
+
+
+@typecheck
+def should_checkpoint(
+    self: Module, inputs: Tuple[Tensor, ...], check_instance_variable: str | None = "checkpoint"
+) -> bool:
+    """
+    Determine if activation checkpointing should be used.
+
+    :param self: The module.
+    :param inputs: The inputs.
+    :param check_instance_variable: The instance variable to check.
+    :return: True if activation checkpointing should be used, False otherwise.
+    """
+    return (
+        self.training
+        and any([i.requires_grad for i in inputs])
+        and (not exists(check_instance_variable) or getattr(self, check_instance_variable, False))
+    )

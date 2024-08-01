@@ -200,9 +200,10 @@ def test_centre_random_augmentation():
     assert augmented_coords.shape == coords.shape
 
 
+@pytest.mark.parametrize("checkpoint", (True, False))
 @pytest.mark.parametrize("recurrent_depth", (1, 2))
 @pytest.mark.parametrize("enable_attn_softclamp", (True, False))
-def test_pairformer(recurrent_depth, enable_attn_softclamp):
+def test_pairformer(checkpoint, recurrent_depth, enable_attn_softclamp):
     """Test the Pairformer stack."""
     single = torch.randn(2, 16, 384)
     pairwise = torch.randn(2, 16, 16, 128)
@@ -212,6 +213,7 @@ def test_pairformer(recurrent_depth, enable_attn_softclamp):
         depth=4,
         num_register_tokens=4,
         recurrent_depth=recurrent_depth,
+        checkpoint=checkpoint,
         pair_bias_attn_kwargs=dict(enable_attn_softclamp=enable_attn_softclamp),
     )
 
@@ -219,6 +221,10 @@ def test_pairformer(recurrent_depth, enable_attn_softclamp):
 
     assert single.shape == single_out.shape
     assert pairwise.shape == pairwise_out.shape
+
+    if checkpoint:
+        loss = single_out.sum() + pairwise_out.sum()
+        loss.backward()
 
 
 def test_msa_module():
