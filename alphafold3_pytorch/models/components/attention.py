@@ -390,6 +390,9 @@ class Attend(Module):
         :param memory_kv: The memory key and value tensors.
         :return: The output tensor.
         """
+
+        dtype = q.dtype
+
         is_windowed_attn_bias = None
 
         if exists(attn_bias):
@@ -456,7 +459,9 @@ class Attend(Module):
 
         # attention
 
-        attn = sim.softmax(dim=-1)
+        attn = sim.softmax(dim=-1, dtype=torch.float32)
+        attn = attn.to(dtype)
+
         attn = self.attn_dropout(attn)
 
         # aggregate values
