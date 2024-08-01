@@ -808,10 +808,13 @@ def filter_structure_chain_sequences(
                 interface_is_novel = True
                 for interface in matching_interfaces:
                     ptnr1_chain_id, ptnr2_chain_id = interface.split("+")
-                    ptnr1_sequence = chain_sequences[ptnr1_chain_id]
-                    ptnr2_sequence = chain_sequences[ptnr2_chain_id]
+                    ptnr1_sequence = chain_sequences.get(ptnr1_chain_id, None)
+                    ptnr2_sequence = chain_sequences.get(ptnr2_chain_id, None)
                     ptnr1_molecule_type = ptnr1_chain_id.split(":")[1].split("-")[0]
                     ptnr2_molecule_type = ptnr2_chain_id.split(":")[1].split("-")[0]
+
+                    if not (exists(ptnr1_sequence) and exists(ptnr2_sequence)):
+                        continue
 
                     if ptnr1_molecule_type == "ligand":
                         # NOTE: We currently do not filter out interfaces
