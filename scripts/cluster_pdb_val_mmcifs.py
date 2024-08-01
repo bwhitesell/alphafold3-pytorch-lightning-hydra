@@ -38,6 +38,7 @@
 import argparse
 import glob
 import json
+import multiprocessing
 import os
 import subprocess
 from collections import defaultdict
@@ -67,6 +68,10 @@ from alphafold3_pytorch.utils.tensor_typing import IntType, typecheck
 from alphafold3_pytorch.utils.utils import exists, np_mode
 
 logger = RankedLogger(__name__, rank_zero_only=True)
+
+# Create a multiprocessing context for `polars` using the `spawn` method
+
+polars_mp_context = multiprocessing.get_context("spawn")
 
 # Constants
 
@@ -799,18 +804,11 @@ def filter_structure_chain_sequences(
                             max_sim=max_ligand_similarity,
                         )
                     else:
-                        # TODO: Speed up filter(), as it is currently freezing the script
-                        ptnr1_is_novel = not (
-                            sequence_names[
-                                sequence_names.filter(
-                                    (
-                                        pl.col("query").str.contains(
-                                            f"{structure_id}{ptnr1_chain_id}"
-                                        )
-                                    )
-                                    & (pl.col("fident") <= max_polymer_similarity)
-                                )
-                            ].empty
+                        matching_ptnr1_sequence_names = sequence_names.filter(
+                            sequence_names["query"] == f"{structure_id}{ptnr1_chain_id}"
+                        )
+                        ptnr1_is_novel = not matching_ptnr1_sequence_names.is_empty() and (
+                            matching_ptnr1_sequence_names["fident"].max() <= max_polymer_similarity
                         )
 
                     if ptnr2_molecule_type == "ligand":
@@ -820,21 +818,15 @@ def filter_structure_chain_sequences(
                             max_sim=max_ligand_similarity,
                         )
                     else:
-                        ptnr2_is_novel = not (
-                            sequence_names[
-                                sequence_names.filter(
-                                    (
-                                        pl.col("query").str.contains(
-                                            f"{structure_id}{ptnr2_chain_id}"
-                                        )
-                                    )
-                                    & (pl.col("fident") <= max_polymer_similarity)
-                                )
-                            ].empty
+                        matching_ptnr2_sequence_names = sequence_names.filter(
+                            sequence_names["query"] == f"{structure_id}{ptnr2_chain_id}"
+                        )
+                        ptnr2_is_novel = not matching_ptnr2_sequence_names.is_empty() and (
+                            matching_ptnr2_sequence_names["fident"].max() <= max_polymer_similarity
                         )
 
                     if not (ptnr1_is_novel or ptnr2_is_novel):
-                        # NOTE: An interface is considered novel if at least one of its chains is novel
+                        # NOTE: An interface is only considered novel if at least one of its chains is novel
                         interface_is_novel = False
                         break
 
@@ -896,7 +888,7 @@ def filter_chains_by_sequence_names(
     filtered_chain_sequences = []
     filtered_interface_chain_ids = defaultdict(set)
 
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+    with ProcessPoolExecutor(max_workers=max_workers, mp_context=polars_mp_context) as executor:
         future_to_structure = {
             executor.submit(
                 filter_structure_chain_sequences,
@@ -1034,26 +1026,31 @@ def search_sequences_using_mmseqs2(
             f"Output alignment file '{output_alignment_filepath}' does not exist. No input sequences were found."
         )
         return set()
-
-    chain_search_mapping = pl.read_csv(
-        output_alignment_filepath,
-        separator="\t",
-        has_header=False,
-        new_columns=[
-            "query",
-            "target",
-            "fident",
-            "alnlen",
-            "mismatch",
-            "gapopen",
-            "qstart",
-            "qend",
-            "tstart",
-            "tend",
-            "evalue",
-            "bits",
-        ],
-    )
+    try:
+        chain_search_mapping = pl.read_csv(
+            output_alignment_filepath,
+            separator="\t",
+            has_header=False,
+            new_columns=[
+                "query",
+                "target",
+                "fident",
+                "alnlen",
+                "mismatch",
+                "gapopen",
+                "qstart",
+                "qend",
+                "tstart",
+                "tend",
+                "evalue",
+                "bits",
+            ],
+        )
+    except Exception as e:
+        logger.warning(
+            f"Failed to read MMseqs2 alignment file '{output_alignment_filepath}' due to: {e}"
+        )
+        return set()
 
     # For monomers, filter out sequences with reference sequence identity greater than the maximum threshold;
     # For multimers, return the chain search results for all input-reference combinations
