@@ -38,12 +38,11 @@
 import argparse
 import glob
 import json
-import multiprocessing
 import os
 import subprocess
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from typing import Dict, List, Literal, Set, Tuple, Union
+from typing import Dict, List, Literal, Set, Tuple
 
 import numpy as np
 import polars as pl
@@ -68,10 +67,6 @@ from alphafold3_pytorch.utils.tensor_typing import IntType, typecheck
 from alphafold3_pytorch.utils.utils import exists, np_mode
 
 logger = RankedLogger(__name__, rank_zero_only=True)
-
-# Create a multiprocessing context for `polars` using the `spawn` method
-
-polars_mp_context = multiprocessing.get_context("spawn")
 
 # Constants
 
@@ -497,6 +492,8 @@ def filter_to_low_homology_sequences(
         extra_parameters={
             # force protein mode
             "--dbtype": 1,
+            # force sensitivity level 8 per @milot-mirdita's suggestion
+            "-s": 8,
         },
     )
     input_monomer_nucleic_acid_sequence_names = search_sequences_using_mmseqs2(
@@ -510,6 +507,8 @@ def filter_to_low_homology_sequences(
             "--dbtype": 2,
             # force nucleotide search mode
             "--search-type": 3,
+            # force sensitivity level 8 per @milot-mirdita's suggestion
+            "-s": 8,
             # 7 or 8 should work best, something to test
             "-k": 8,
             # there is currently an issue in mmseqs2 with nucleotide search and spaced k-mers
@@ -527,6 +526,8 @@ def filter_to_low_homology_sequences(
         extra_parameters={
             # force protein mode
             "--dbtype": 1,
+            # force sensitivity level 8 per @milot-mirdita's suggestion
+            "-s": 8,
             # spacepharer optimized parameters
             "--gap-open": 16,
             "--gap-extend": 2,
@@ -573,6 +574,8 @@ def filter_to_low_homology_sequences(
         extra_parameters={
             # force protein mode
             "--dbtype": 1,
+            # force sensitivity level 8 per @milot-mirdita's suggestion
+            "-s": 8,
         },
     )
     input_multimer_nucleic_acid_chain_mappings = search_sequences_using_mmseqs2(
@@ -588,6 +591,8 @@ def filter_to_low_homology_sequences(
             "--dbtype": 2,
             # force nucleotide search mode
             "--search-type": 3,
+            # force sensitivity level 8 per @milot-mirdita's suggestion
+            "-s": 8,
             # 7 or 8 should work best, something to test
             "-k": 8,
             # there is currently an issue in mmseqs2 with nucleotide search and spaced k-mers
@@ -607,6 +612,8 @@ def filter_to_low_homology_sequences(
         extra_parameters={
             # force protein mode
             "--dbtype": 1,
+            # force sensitivity level 8 per @milot-mirdita's suggestion
+            "-s": 8,
             # spacepharer optimized parameters
             "--gap-open": 16,
             "--gap-extend": 2,
@@ -645,7 +652,7 @@ def filter_to_low_homology_sequences(
     )
     input_multimer_chain_sequences, input_interface_chain_ids = filter_chains_by_sequence_names(
         input_multimer_chain_sequences,
-        input_multimer_chain_mappings,
+        input_multimer_chain_mappings.select(["query", "fident"]).to_numpy(),
         interface_chain_ids=input_interface_chain_ids,
         reference_ligand_chain_sequences=reference_ligand_chain_sequences,
         max_polymer_similarity=0.4,
@@ -756,7 +763,7 @@ def is_novel_ligand(
 
 def filter_structure_chain_sequences(
     structure_chain_sequences: Dict[str, Dict[str, str]],
-    sequence_names: Set[str] | pl.DataFrame,
+    sequence_names: Set[str] | np.ndarray,
     interface_chain_ids: CHAIN_INTERFACES | None,
     reference_ligand_chain_sequences: List[str] | None,
     max_polymer_similarity: float,
@@ -769,8 +776,8 @@ def filter_structure_chain_sequences(
 
     if interfaces_provided:
         assert isinstance(
-            sequence_names, pl.DataFrame
-        ), "Sequence names must be provided as a DataFrame if interfaces are also provided."
+            sequence_names, np.ndarray
+        ), "Sequence names must be provided as a NumPy array if interfaces are also provided."
         assert exists(
             reference_ligand_chain_sequences
         ), "Reference ligand sequences must be provided if interfaces are also provided."
@@ -804,11 +811,11 @@ def filter_structure_chain_sequences(
                             max_sim=max_ligand_similarity,
                         )
                     else:
-                        matching_ptnr1_sequence_names = sequence_names.filter(
-                            sequence_names["query"] == f"{structure_id}{ptnr1_chain_id}"
-                        )
-                        ptnr1_is_novel = not matching_ptnr1_sequence_names.is_empty() and (
-                            matching_ptnr1_sequence_names["fident"].max() <= max_polymer_similarity
+                        matching_ptnr1_sequence_names = sequence_names[
+                            sequence_names[:, 0] == f"{structure_id}{ptnr1_chain_id}"
+                        ]
+                        ptnr1_is_novel = not matching_ptnr1_sequence_names.size or (
+                            matching_ptnr1_sequence_names[:, 1].max() <= max_polymer_similarity
                         )
 
                     if ptnr2_molecule_type == "ligand":
@@ -818,11 +825,11 @@ def filter_structure_chain_sequences(
                             max_sim=max_ligand_similarity,
                         )
                     else:
-                        matching_ptnr2_sequence_names = sequence_names.filter(
-                            sequence_names["query"] == f"{structure_id}{ptnr2_chain_id}"
-                        )
-                        ptnr2_is_novel = not matching_ptnr2_sequence_names.is_empty() and (
-                            matching_ptnr2_sequence_names["fident"].max() <= max_polymer_similarity
+                        matching_ptnr2_sequence_names = sequence_names[
+                            sequence_names[:, 0] == f"{structure_id}{ptnr2_chain_id}"
+                        ]
+                        ptnr2_is_novel = not matching_ptnr2_sequence_names.size or (
+                            matching_ptnr2_sequence_names[:, 1].max() <= max_polymer_similarity
                         )
 
                     if not (ptnr1_is_novel or ptnr2_is_novel):
@@ -859,19 +866,19 @@ def filter_structure_chain_sequences(
 @typecheck
 def filter_chains_by_sequence_names(
     all_chain_sequences: CHAIN_SEQUENCES,
-    sequence_names: Set[str] | pl.DataFrame,
+    sequence_names: Set[str] | np.ndarray,
     interface_chain_ids: CHAIN_INTERFACES | None = None,
     reference_ligand_chain_sequences: List[str] | None = None,
     max_polymer_similarity: float = 0.4,
     max_ligand_similarity: float = 0.85,
     max_workers: int = 2,
-) -> Union[CHAIN_SEQUENCES, Tuple[CHAIN_SEQUENCES, CHAIN_INTERFACES]]:
+) -> CHAIN_SEQUENCES | Tuple[CHAIN_SEQUENCES, CHAIN_INTERFACES]:
     """Return only chains (and potentially interfaces) with sequence names in the given set."""
     filtered_structure_ids = set(
         name.split("-assembly1")[0] + "-assembly1"
         for name in (
-            sequence_names["query"].to_list()
-            if isinstance(sequence_names, pl.DataFrame)
+            sequence_names[:, 0].tolist()
+            if isinstance(sequence_names, np.ndarray)
             else sequence_names
         )
     )
@@ -879,8 +886,8 @@ def filter_chains_by_sequence_names(
 
     if interfaces_provided:
         assert isinstance(
-            sequence_names, pl.DataFrame
-        ), "Sequence names must be provided as a DataFrame if interfaces are also provided."
+            sequence_names, np.ndarray
+        ), "Sequence names must be provided as a NumPy array if interfaces are also provided."
         assert exists(
             reference_ligand_chain_sequences
         ), "Reference ligand sequences must be provided if interfaces are also provided."
@@ -888,7 +895,7 @@ def filter_chains_by_sequence_names(
     filtered_chain_sequences = []
     filtered_interface_chain_ids = defaultdict(set)
 
-    with ProcessPoolExecutor(max_workers=max_workers, mp_context=polars_mp_context) as executor:
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
         future_to_structure = {
             executor.submit(
                 filter_structure_chain_sequences,
@@ -987,7 +994,7 @@ def search_sequences_using_mmseqs2(
     max_seq_id: float = 0.4,
     interface_chain_ids: CHAIN_INTERFACES | None = None,
     alignment_file_prefix: str = "alnRes_",
-    extra_parameters: Dict[str, Union[int, float, str]] | None = None,
+    extra_parameters: Dict[str, int | float | str] | None = None,
 ) -> Set[str] | pl.DataFrame:
     """Run MMseqs2 on the input FASTA file and write the resulting search outputs to a local output directory."""
     assert input_filepath.endswith(".fasta"), "The input file must be a FASTA file."
@@ -1058,12 +1065,28 @@ def search_sequences_using_mmseqs2(
     if exists(interface_chain_ids):
         return chain_search_mapping
     else:
-        return set(
-            chain_search_mapping.group_by("query")
-            .agg(pl.max("fident"))
-            .filter(pl.col("fident") <= max_seq_id)
-            .get_column("query")
-            .to_list()
+        input_queries = set()
+        with open(input_filepath, "r") as f:
+            for line in f:
+                if line.startswith(">"):
+                    input_queries.add(line.strip().lstrip(">"))
+
+        # Re-insert the names of input queries for which MMseqs2 could not find a match,
+        # as these are safely not homologous to any reference sequence (due to MMseqs2's
+        # default sensitivity settings)
+
+        mappable_queries = set(chain_search_mapping.get_column("query").to_list())
+        unmappable_queries = input_queries - mappable_queries
+
+        return (
+            set(
+                chain_search_mapping.group_by("query")
+                .agg(pl.max("fident"))
+                .filter(pl.col("fident") <= max_seq_id)
+                .get_column("query")
+                .to_list()
+            )
+            | unmappable_queries
         )
 
 
@@ -1075,7 +1098,7 @@ def cluster_sequences_using_mmseqs2(
     min_seq_id: float = 0.5,
     coverage: float = 0.8,
     coverage_mode: Literal[0, 1, 2, 3] = 1,
-    extra_parameters: Dict[str, Union[int, float, str]] | None = None,
+    extra_parameters: Dict[str, int | float | str] | None = None,
 ) -> Dict[str, int]:
     """Run MMseqs2 on the input FASTA file and write the resulting clusters to a local output directory."""
     assert input_filepath.endswith(".fasta"), "The input file must be a FASTA file."
