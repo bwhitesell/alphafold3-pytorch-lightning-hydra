@@ -1484,7 +1484,6 @@ class TemplateEmbedder(Module):
             to_layers_fn = self.to_layers
 
         # layers
-        # todo - figure out why single-variable names v and u used here and name it better.
 
         templates = to_layers_fn(templates)
 
