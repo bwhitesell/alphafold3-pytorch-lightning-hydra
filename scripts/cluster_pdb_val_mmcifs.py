@@ -47,6 +47,7 @@ from typing import Dict, List, Literal, Set, Tuple
 import numpy as np
 import polars as pl
 import rootutils
+import timeout_decorator
 from Bio.Data import PDBData
 from Bio.PDB.NeighborSearch import NeighborSearch
 from rdkit import Chem, DataStructs
@@ -115,6 +116,10 @@ INTERFACE_SAMPLE_SIZES = {
     "dna-rna": None,
     "ligand-rna": None,
 }
+
+IS_NOVEL_LIGAND_MAX_SECONDS_PER_INPUT = (
+    20  # Maximum time allocated to check a single ligand for novelty (in seconds)
+)
 
 
 # Helper functions
@@ -734,6 +739,7 @@ def write_sequences_to_fasta(
     return molecule_ids
 
 
+@timeout_decorator.timeout(IS_NOVEL_LIGAND_MAX_SECONDS_PER_INPUT, use_signals=False)
 def is_novel_ligand(
     ligand_sequence: str,
     reference_ligand_fps: List[DataStructs.cDataStructs.ExplicitBitVect],
@@ -813,11 +819,17 @@ def filter_structure_chain_sequences(
                         # than 0.5 or with multiple residues, due to a lack
                         # of available metadata within the context of this
                         # clustering script. This may be revisited in the future.
-                        ptnr1_is_novel = is_novel_ligand(
-                            ptnr1_sequence,
-                            reference_ligand_fps,
-                            max_sim=max_ligand_similarity,
-                        )
+                        try:
+                            ptnr1_is_novel = is_novel_ligand(
+                                ptnr1_sequence,
+                                reference_ligand_fps,
+                                max_sim=max_ligand_similarity,
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to check if partner 1 ligand is novel due to: {e}. Assuming it is not novel..."
+                            )
+                            ptnr1_is_novel = False
                     else:
                         matching_ptnr1_sequence_names = sequence_names[
                             sequence_names[:, 0] == f"{structure_id}{ptnr1_chain_id}"
@@ -827,11 +839,17 @@ def filter_structure_chain_sequences(
                         )
 
                     if ptnr2_molecule_type == "ligand":
-                        ptnr2_is_novel = is_novel_ligand(
-                            ptnr2_sequence,
-                            reference_ligand_fps,
-                            max_sim=max_ligand_similarity,
-                        )
+                        try:
+                            ptnr2_is_novel = is_novel_ligand(
+                                ptnr2_sequence,
+                                reference_ligand_fps,
+                                max_sim=max_ligand_similarity,
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to check if partner 2 ligand is novel due to: {e}. Assuming it is not novel..."
+                            )
+                            ptnr2_is_novel = False
                     else:
                         matching_ptnr2_sequence_names = sequence_names[
                             sequence_names[:, 0] == f"{structure_id}{ptnr2_chain_id}"
