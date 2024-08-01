@@ -469,6 +469,28 @@ def to_pairwise_mask(
     return einx.logical_and("... i, ... j -> ... i j", mask_i, mask_j)
 
 
+@typecheck
+def masked_average(
+    t: Shaped["..."],  # type: ignore
+    mask: Shaped["..."],  # type: ignore
+    *,
+    dim: int | Tuple[int, ...],
+    eps=1.0,
+) -> Float["..."]:  # type: ignore
+    """
+    Compute the masked average of a Tensor.
+
+    :param t: The Tensor.
+    :param mask: The mask.
+    :param dim: The dimension(s) to average over.
+    :param eps: The epsilon value.
+    :return: The masked average.
+    """
+    num = (t * mask).sum(dim=dim)
+    den = mask.sum(dim=dim)
+    return num / den.clamp(min=eps)
+
+
 # checkpointing utils
 
 

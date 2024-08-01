@@ -47,6 +47,7 @@ from alphafold3_pytorch.utils.model_utils import (
     exclusive_cumsum,
     lens_to_mask,
     log,
+    masked_average,
     max_neg_value,
     maybe,
     mean_pool_with_lens,
@@ -3838,8 +3839,8 @@ class ComputeConfidenceScore(Module):
                             mask_i = (asym_id[b] == chain_i)[:, None]
                             mask_j = (asym_id[b] == chain_j)[None, :]
                             pair_mask = mask_i * mask_j
-                            pair_residue_weights = pair_mask * (
-                                residue_weights[b, None, :] * residue_weights[b, :, None]
+                            pair_residue_weights = pair_mask * einx.multiply(
+                                "... i, ... j -> ... i j", residue_weights[b], residue_weights[b]
                             )
 
                             if pair_residue_weights.sum() == 0:
@@ -4043,7 +4044,7 @@ class ComputeRankingScore(Module):
         is_protein_mask = atom_is_molecule_types[..., IS_PROTEIN_INDEX]
         mask = atom_mask * is_protein_mask
 
-        atom_rasa = 1 - plddt
+        atom_rasa = 1.0 - plddt
 
         disorder = ((atom_rasa > 0.581) * mask).sum(dim=-1) / (self.eps + mask.sum(dim=1))
         return disorder
@@ -4217,7 +4218,7 @@ class ComputeRankingScore(Module):
         )
 
         mask = atom_is_modified_residue * atom_mask
-        plddt_mean = (plddt * mask).sum(dim=-1) / (self.eps + mask.sum(dim=-1))
+        plddt_mean = masked_average(plddt, mask, dim=-1, eps=self.eps)
 
         return plddt_mean
 
@@ -4353,9 +4354,7 @@ class ComputeModelSelectionScore(Module):
         contact_prob = contact_prob * mask
 
         # Section 5.7 equation 16
-        gpde = einsum(contact_prob * pde, "b i j -> b") / einsum(contact_prob, "b i j -> b").clamp(
-            min=1.0
-        )
+        gpde = masked_average(pde, contact_prob, dim=(-1, -2))
 
         return gpde
 
@@ -4417,9 +4416,7 @@ class ComputeModelSelectionScore(Module):
         mask = mask * pairwise_mask
 
         # Calculate masked averaging
-        lddt_sum = (lddt * mask).sum(dim=(-1, -2))
-        lddt_count = mask.sum(dim=(-1, -2))
-        lddt_mean = lddt_sum / lddt_count.clamp(min=1)
+        lddt_mean = masked_average(lddt, mask, dim=(-1, -2))
 
         return lddt_mean
 
