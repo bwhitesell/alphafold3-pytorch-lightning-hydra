@@ -40,7 +40,7 @@ from alphafold3_pytorch.data import mmcif_parsing
 from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.data_utils import RESIDUE_MOLECULE_TYPE, get_residue_molecule_type
 from alphafold3_pytorch.utils.tensor_typing import IntType, typecheck
-from alphafold3_pytorch.utils.utils import np_mode
+from alphafold3_pytorch.utils.utils import exists, np_mode
 
 logger = RankedLogger(__name__, rank_zero_only=True)
 
@@ -329,6 +329,7 @@ def write_sequences_to_fasta(
     all_chain_sequences: CHAIN_SEQUENCES,
     fasta_filepath: str,
     molecule_type: CLUSTERING_MOLECULE_TYPE,
+    interface_chain_ids: CHAIN_INTERFACES | None = None,
 ) -> List[str]:
     """Write sequences of a particular molecule type to a FASTA file, and return all molecule IDs."""
     assert fasta_filepath.endswith(".fasta"), "The output file must be a FASTA file."
@@ -355,6 +356,12 @@ def write_sequences_to_fasta(
                             else ""
                         )
                         molecule_id = f"{structure_id}{chain_id_}:{molecule_type_and_name[0]}{molecule_index_postfix}"
+
+                        if exists(interface_chain_ids) and not any(
+                            chain_id in interface_chain_id.split("+")
+                            for interface_chain_id in interface_chain_ids[structure_id]
+                        ):
+                            continue
 
                         mapped_sequence = (
                             sequence.replace("X", "N")
@@ -923,5 +930,3 @@ if __name__ == "__main__":
         interface_chain_ids,
         args.output_dir,
     )
-
-# %%
