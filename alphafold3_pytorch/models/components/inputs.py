@@ -140,6 +140,8 @@ def compose(*fns: Callable):
 @typecheck
 @dataclass
 class AtomInput:
+    """Dataclass for atom-level inputs."""
+
     atom_inputs: Float["m dai"]  # type: ignore
     molecule_ids: Int[" n"]  # type: ignore
     molecule_atom_lens: Int[" n"]  # type: ignore
@@ -174,6 +176,8 @@ class AtomInput:
 @typecheck
 @dataclass
 class BatchedAtomInput:
+    """Dataclass for batched atom-level inputs."""
+
     atom_inputs: Float["b m dai"]  # type: ignore
     molecule_ids: Int["b n"]  # type: ignore
     molecule_atom_lens: Int["b n"]  # type: ignore
@@ -341,6 +345,8 @@ def default_extract_atompair_feats_fn(mol: Mol):
 @typecheck
 @dataclass
 class MoleculeInput:
+    """Dataclass for molecule-level inputs."""
+
     molecules: List[Mol]
     molecule_token_pool_lens: List[int]
     molecule_ids: Int[" n"]  # type: ignore
@@ -652,6 +658,8 @@ imm_list = partial(field, default_factory=list)
 @typecheck
 @dataclass
 class Alphafold3Input:
+    """Dataclass for Alphafold3 inputs."""
+
     proteins: List[Int[" _"] | str] = imm_list()  # type: ignore
     ss_dna: List[Int[" _"] | str] = imm_list()  # type: ignore
     ss_rna: List[Int[" _"] | str] = imm_list()  # type: ignore
@@ -1147,6 +1155,8 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
 @typecheck
 @dataclass
 class PDBInput:
+    """Dataclass for PDB inputs."""
+
     mmcif_filepath: Biomolecule | None = None
     biomol: Biomolecule | None = None
     msa_dir: str | None = None

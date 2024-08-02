@@ -1113,6 +1113,12 @@ class PairformerStack(Module):
         pairwise_repr: Float["b n n dp"],  # type: ignore
         mask: Bool["b n"] | None = None,  # type: ignore
     ) -> Tuple[Float["b n ds"], Float["b n n dp"]]:  # type: ignore
+        """Convert the module to a non-checkpointed version.
+
+        :param single_repr: The single representation tensor.
+        :param pairwise_repr: The pairwise representation tensor.
+        :param mask: The mask tensor. :return The output tensors.
+        """
         for _ in range(self.recurrent_depth):
             for pairwise_block, pair_bias_attn, single_transition in self.layers:
                 pairwise_repr = pairwise_block(pairwise_repr=pairwise_repr, mask=mask)
@@ -3626,6 +3632,8 @@ class ConfidenceHead(Module):
 
 
 class ConfidenceScore(NamedTuple):
+    """The ConfidenceScore class."""
+
     plddt: Float["b n"]  # type: ignore
     ptm: Float[" b"]  # type: ignore
     iptm: Float[" b"] | None  # type: ignore
@@ -5549,6 +5557,8 @@ class Alphafold3(Module):
 
 
 class Alphafold3WithHubMixin(Alphafold3, PyTorchModelHubMixin):
+    """An AlphaFold 3 model that can be loaded from the HuggingFace Hub."""
+
     @classmethod
     def _from_pretrained(
         cls,

@@ -81,6 +81,7 @@ class Alphafold3LitModule(LightningModule):
 
     @property
     def is_main(self) -> bool:
+        """Check if the current process is the main process."""
         return self.trainer.global_rank == 0
 
     @typecheck

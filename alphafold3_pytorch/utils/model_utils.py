@@ -119,8 +119,11 @@ def exclusive_cumsum(t: Tensor, dim: int = -1) -> Tensor:
 
 
 def maybe(fn):
+    """Decorator to check if a Tensor exists before running a function on it."""
+
     @wraps(fn)
     def inner(t, *args, **kwargs):
+        """Inner function to check if a Tensor exists before running a function on it."""
         if not exists(t):
             return None
         return fn(t, *args, **kwargs)
