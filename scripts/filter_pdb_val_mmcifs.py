@@ -1,7 +1,8 @@
 # %% [markdown]
 # # Curating AlphaFold 3 PDB Validation Dataset
 #
-# For validating AlphaFold 3 during model training, we follow the validation procedure outlined in Abramson et al (2024).
+# For validating AlphaFold 3 during model training, we propose a modified (i.e., more stringent) version of the
+# validation procedure outlined in Abramson et al (2024).
 #
 # The validation set for model selection during training was composed of all low homology chains and interfaces from
 # a subset of all PDB targets released after 2021-09-30 and before 2023-01-13, with maximum length 2048 tokens.

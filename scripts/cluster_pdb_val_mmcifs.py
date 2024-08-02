@@ -1,8 +1,8 @@
 # %% [markdown]
 # # Clustering AlphaFold 3 PDB Validation Dataset
 #
-# For clustering AlphaFold 3's PDB validation dataset, we propose a modified (i.e., more stringent)
-# clustering procedure inspired by Abramson et al (2024).
+# For clustering AlphaFold 3's PDB validation dataset, we propose a modified (i.e., more stringent) version of the
+# validation dataset's clustering procedure outlined in Abramson et al (2024).
 #
 # The process for selecting these targets was broken up into two separate stages. The first was for selecting multimers,
 # the second for selecting monomers. Multimer selection proceeded as follows:

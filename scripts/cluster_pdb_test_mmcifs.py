@@ -1,8 +1,8 @@
 # %% [markdown]
 # # Clustering AlphaFold 3 PDB Evaluation Dataset
 #
-# For clustering AlphaFold 3's PDB evaluation dataset, we propose a modified (i.e., more stringent) clustering procedure
-# inspired by Abramson et al (2024).
+# For clustering AlphaFold 3's PDB evaluation dataset, we propose a modified (i.e., more stringent) version of the
+# evalution dataset's clustering procedure outlined in Abramson et al (2024).
 #
 # With the full evaluation set curated by the PDB test set filtering script we create a “low homology” subset
 # that is filtered on homology to the training and validation sets.
@@ -10,7 +10,8 @@
 # For intra-chain metrics, we keep polymers (or ligands) that have less than 30% sequence identity (or less than 0.3 Tanimoto similarity)
 # to the training or validation sets.
 # Here we define sequence identity as the percent of residues in the evaluation set chain that are identical to the
-# training or validation set chain. For interface metrics the following filters are applied:
+# training or validation set chain, and we define Tanimoto similarity using RDKit's Morgan fingerprint and Tanimoto
+# similarity functions, respectively. For interface metrics the following filters are applied:
 # • Polymer-polymer interfaces: If either polymer has greater than 30% sequence identity to a chain in the training or
 # validation sets, then this interface is filtered out.
 # • Polymer-ligand interfaces: If either the polymer (or the ligand) has greater than 30% sequence identity

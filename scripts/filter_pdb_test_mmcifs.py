@@ -2,7 +2,7 @@
 # # Curating AlphaFold 3 PDB Evaluation Dataset
 #
 # For evaluating trained AlphaFold 3 models, we propose a modified (i.e., more stringent) version of the
-# evaluation procedure inspired by Abramson et al (2024).
+# evaluation procedure outlined in Abramson et al (2024).
 #
 # The recent PDB evaluation set construction started by taking all PDB entries released between 2023-01-14 and
 # 2024-04-30, a date range falling after any data in our training or validation sets which had maximum release dates
