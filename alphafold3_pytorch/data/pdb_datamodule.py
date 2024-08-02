@@ -1,12 +1,13 @@
 import os
 from functools import partial
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Literal, Optional
 
 import torch
 from lightning import LightningDataModule
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 
+from alphafold3_pytorch.data.weighted_pdb_sampler import WeightedPDBSampler
 from alphafold3_pytorch.models.components.attention import (
     full_attn_bias_to_windowed,
     full_pairwise_repr_to_windowed,
@@ -237,9 +238,12 @@ class PDBDataModule(LightningDataModule):
 
     def __init__(
         self,
-        data_dir: str = "data" + os.sep,
-        train_val_test_split: Tuple[int, int, int] = (2, 2, 2),
-        sequence_crop_size: int = 384,
+        data_dir: str = os.path.join("data", "pdb_data"),
+        sample_type: Literal["default", "clustered"] = "default",
+        contiguous_weight: float = 0.2,
+        spatial_weight: float = 0.4,
+        spatial_interface_weight: float = 0.4,
+        crop_size: int = 384,
         sampling_weight_for_disorder_pdb_distillation: float = 0.02,
         train_on_transcription_factor_distillation_sets: bool = False,
         pdb_distillation: Optional[bool] = None,
@@ -251,6 +255,10 @@ class PDBDataModule(LightningDataModule):
         pin_memory: bool = False,
     ) -> None:
         super().__init__()
+
+        assert (
+            sum([contiguous_weight, spatial_weight, spatial_interface_weight]) == 1.0
+        ), "The sum of contiguous_weight, spatial_weight, and spatial_interface_weight must be equal to 1.0."
 
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt
@@ -301,9 +309,146 @@ class PDBDataModule(LightningDataModule):
 
         # load dataset splits only if not loaded already
         if not self.data_train and not self.data_val and not self.data_test:
-            self.data_train = PDBDataset(data_length=self.hparams.train_val_test_split[0])
-            self.data_val = PDBDataset(data_length=self.hparams.train_val_test_split[1])
-            self.data_test = PDBDataset(data_length=self.hparams.train_val_test_split[2])
+            # training set
+
+            self.data_train = PDBDataset(
+                folder=os.path.join(self.hparams.data_dir, "train_mmcifs"),
+                sampler=WeightedPDBSampler(
+                    chain_mapping_paths=[
+                        os.path.join(
+                            self.hparams.data_dir,
+                            "data_caches",
+                            "train_clusterings",
+                            "ligand_chain_cluster_mapping.csv",
+                        ),
+                        os.path.join(
+                            self.hparams.data_dir,
+                            "data_caches",
+                            "train_clusterings",
+                            "nucleic_acid_chain_cluster_mapping.csv",
+                        ),
+                        os.path.join(
+                            self.hparams.data_dir,
+                            "data_caches",
+                            "train_clusterings",
+                            "peptide_chain_cluster_mapping.csv",
+                        ),
+                        os.path.join(
+                            self.hparams.data_dir,
+                            "data_caches",
+                            "train_clusterings",
+                            "protein_chain_cluster_mapping.csv",
+                        ),
+                    ],
+                    interface_mapping_path=os.path.join(
+                        self.hparams.data_dir,
+                        "data_caches",
+                        "train_clusterings",
+                        "interface_cluster_mapping.csv",
+                    ),
+                    batch_size=1,
+                ),
+                sample_type=self.hparams.sample_type,
+                contiguous_weight=self.hparams.contiguous_weight,
+                spatial_weight=self.hparams.spatial_weight,
+                spatial_interface_weight=self.hparams.spatial_interface_weight,
+                crop_size=self.hparams.crop_size,
+                training=True,
+            )
+
+            # validation set
+
+            self.data_val = PDBDataset(
+                folder=os.path.join(self.hparams.data_dir, "deprecated_val_mmcifs"),
+                sampler=WeightedPDBSampler(
+                    chain_mapping_paths=[
+                        os.path.join(
+                            self.hparams.data_dir,
+                            "data_caches",
+                            "deprecated_val_clusterings",
+                            "ligand_chain_cluster_mapping.csv",
+                        ),
+                        os.path.join(
+                            self.hparams.data_dir,
+                            "data_caches",
+                            "deprecated_val_clusterings",
+                            "nucleic_acid_chain_cluster_mapping.csv",
+                        ),
+                        os.path.join(
+                            self.hparams.data_dir,
+                            "data_caches",
+                            "deprecated_val_clusterings",
+                            "peptide_chain_cluster_mapping.csv",
+                        ),
+                        os.path.join(
+                            self.hparams.data_dir,
+                            "data_caches",
+                            "deprecated_val_clusterings",
+                            "protein_chain_cluster_mapping.csv",
+                        ),
+                    ],
+                    interface_mapping_path=os.path.join(
+                        self.hparams.data_dir,
+                        "data_caches",
+                        "deprecated_val_clusterings",
+                        "interface_cluster_mapping.csv",
+                    ),
+                    batch_size=1,
+                ),
+                sample_type=self.hparams.sample_type,
+                contiguous_weight=self.hparams.contiguous_weight,
+                spatial_weight=self.hparams.spatial_weight,
+                spatial_interface_weight=self.hparams.spatial_interface_weight,
+                crop_size=self.hparams.crop_size,
+                training=False,
+            )
+
+            # evaluation set
+
+            self.data_test = PDBDataset(
+                folder=os.path.join(self.hparams.data_dir, "deprecated_test_mmcifs"),
+                sampler=WeightedPDBSampler(
+                    chain_mapping_paths=[
+                        os.path.join(
+                            self.hparams.data_dir,
+                            "data_caches",
+                            "deprecated_test_clusterings",
+                            "ligand_chain_cluster_mapping.csv",
+                        ),
+                        os.path.join(
+                            self.hparams.data_dir,
+                            "data_caches",
+                            "deprecated_test_clusterings",
+                            "nucleic_acid_chain_cluster_mapping.csv",
+                        ),
+                        os.path.join(
+                            self.hparams.data_dir,
+                            "data_caches",
+                            "deprecated_test_clusterings",
+                            "peptide_chain_cluster_mapping.csv",
+                        ),
+                        os.path.join(
+                            self.hparams.data_dir,
+                            "data_caches",
+                            "deprecated_test_clusterings",
+                            "protein_chain_cluster_mapping.csv",
+                        ),
+                    ],
+                    interface_mapping_path=os.path.join(
+                        self.hparams.data_dir,
+                        "data_caches",
+                        "deprecated_test_clusterings",
+                        "interface_cluster_mapping.csv",
+                    ),
+                    batch_size=1,
+                ),
+                sample_type=self.hparams.sample_type,
+                contiguous_weight=self.hparams.contiguous_weight,
+                spatial_weight=self.hparams.spatial_weight,
+                spatial_interface_weight=self.hparams.spatial_interface_weight,
+                crop_size=self.hparams.crop_size,
+                training=False,
+            )
 
     def train_dataloader(self) -> DataLoader[Any]:
         """Create and return the train dataloader.

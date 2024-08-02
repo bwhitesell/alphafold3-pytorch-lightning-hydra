@@ -1,7 +1,10 @@
 _target_: alphafold3_pytorch.data.pdb_datamodule.PDBDataModule
-data_dir: ${paths.data_dir}
-train_val_test_split: [2, 2, 2]
-sequence_crop_size: 384 # NOTE: must be one of (initial_training: 384, fine_tuning_1: 640, fine_tuning_2: 768, fine_tuning_3: 768), proceeding from left to right following Table 6 in the paper
+data_dir: ${paths.data_dir}/pdb_data/ # NOTE: this is the directory where the PDB data should be set up
+sample_type: default # NOTE: must be one of (`default`, `clustered`)
+contiguous_weight: 0.2 # NOTE: the sum of `contiguous_weight`, `spatial_weight`, and `spatial_interface_weight` should be 1
+spatial_weight: 0.4
+spatial_interface_weight: 0.4
+crop_size: 384 # NOTE: must be one of (initial_training: 384, fine_tuning_1: 640, fine_tuning_2: 768, fine_tuning_3: 768), proceeding from left to right following Table 6 in the paper
 sampling_weight_for_disorder_pdb_distillation: 0.02 # NOTE: must be one of (initial_training: 0.02, fine_tuning_1: 0.01, fine_tuning_2: 0.02, fine_tuning_3: 0.02), proceeding from left to right following Table 6 in the paper
 train_on_transcription_factor_distillation_sets: false # NOTE: must be one of (initial_training: False, fine_tuning_1: False, fine_tuning_2: True, fine_tuning_3: True), proceeding from left to right following Table 6 in the paper
 pdb_distillation: null # NOTE: does not appear to be used in Table 6 of the paper
