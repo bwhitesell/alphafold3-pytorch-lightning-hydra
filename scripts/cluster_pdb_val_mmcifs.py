@@ -10,7 +10,9 @@
 # # ... (see the PDB validation set filtering script)
 # 2. Filter to only low homology interfaces, which are defined as those where no target in the training set contains
 # a chain with high homology to either chain involved in the interface, where high homology here means >
-# 40% sequence identity for polymers or > 0.85 Tanimoto similarity for ligands.
+# 40% sequence identity for polymers or > 0.85 Tanimoto similarity for ligands. For non-interfacing polymers within a
+# multimeric structure, for clustering we retain only those polymers that are of low homology to the training set along
+# with any remaining ligands within the filtered structure.
 # 3. Assign interfaces to clusters as per subsubsection 2.5.3.
 # 4. Take the following interface types only, possibly reducing number of clusters by sampling a subset of clusters
 # (number of samples given in brackets if reduced): protein-protein (600), protein-DNA (100), DNA-DNA (100),
@@ -21,8 +23,9 @@
 # Monomer selection proceeded similarly:
 #
 # ... (see the PDB validation set filtering script)
-# 2. Filter to only low homology polymers, which are defined as those where no target in the training set contains
-# a chain with high homology to the polymer, where high homology here means > 40% sequence identity for the polymers.
+# 2. Filter to only low homology polymers and any ligands within the filtered structure, where low homology polymers
+# are defined as those where no target in the training set contains a chain with high homology to the polymer and
+# where high homology here means > 40% sequence identity for the polymers.
 # 3. Assign polymers to clusters as per subsubsection 2.5.3.
 # 4. Sample 40 protein monomers and take all DNA and RNA monomers.
 # 5. Make the set of scored chains and interfaces equal to all low homology chains and interfaces in the remaining targets.
@@ -166,19 +169,16 @@ def filter_to_low_homology_sequences(
         input_multimer_chain_sequences,
         input_multimer_fasta_filepath,
         molecule_type="protein",
-        interface_chain_ids=input_interface_chain_ids,
     )
     write_sequences_to_fasta(
         input_multimer_chain_sequences,
         input_multimer_fasta_filepath,
         molecule_type="nucleic_acid",
-        interface_chain_ids=input_interface_chain_ids,
     )
     write_sequences_to_fasta(
         input_multimer_chain_sequences,
         input_multimer_fasta_filepath,
         molecule_type="peptide",
-        interface_chain_ids=input_interface_chain_ids,
     )
 
     write_sequences_to_fasta(
@@ -434,14 +434,14 @@ def is_novel_ligand(
     if not exists(ligand_smiles):
         if verbose:
             logger.warning(f"Could not find SMILES for ligand sequence: {ligand_sequence}")
-        return True
+        return False
     ligand_mol = Chem.MolFromSmiles(ligand_smiles)
     if not exists(ligand_mol):
         if verbose:
             logger.warning(
                 f"Could not generate RDKit molecule for ligand sequence: {ligand_sequence}"
             )
-        return True
+        return False
     ligand_fp = fpgen.GetFingerprint(ligand_mol)
 
     for reference_ligand_fp in reference_ligand_fps:
@@ -460,7 +460,7 @@ def filter_structure_chain_sequences(
     max_polymer_similarity: float,
     max_ligand_similarity: float,
     filtered_structure_ids: Set[str],
-):
+) -> Tuple[str, Dict[str, str], CHAIN_INTERFACES]:
     """Filter chain sequences based on either sequence names or Tanimoto similarity."""
     structure_id, chain_sequences = list(structure_chain_sequences.items())[0]
     interfaces_provided = exists(interface_chain_ids)
@@ -487,7 +487,6 @@ def filter_structure_chain_sequences(
             ]
 
             if any(matching_interfaces):
-                interface_is_novel = True
                 for interface in matching_interfaces:
                     ptnr1_chain_id, ptnr2_chain_id = interface.split("+")
                     ptnr1_sequence = chain_sequences.get(ptnr1_chain_id, None)
@@ -543,33 +542,38 @@ def filter_structure_chain_sequences(
                             matching_ptnr2_sequence_names[:, 1].max() <= max_polymer_similarity
                         )
 
-                    if not (ptnr1_is_novel or ptnr2_is_novel):
-                        # NOTE: An interface is only considered novel if at least one of its chains is novel
-                        interface_is_novel = False
-                        break
+                    # NOTE: Only if both of the interface's chains are novel
+                    # will the interface be kept. For the validation dataset,
+                    # this is the only filter that screens for novel ligands.
+                    interface_is_novel = ptnr1_is_novel and ptnr2_is_novel
+                    if interface_is_novel:
+                        # NOTE: If at least one of a chain's associated interfaces
+                        # are novel, the chain will be kept.
+                        filtered_structure_chain_sequences[chain_id] = sequence
+                        if (
+                            f"{ptnr2_chain_id}:{ptnr1_chain_id}"
+                            not in filtered_interface_chain_ids[structure_id]
+                        ):
+                            filtered_interface_chain_ids[structure_id].add(interface)
 
-                if interface_is_novel:
-                    # NOTE: Only if all of a chain's associated interfaces are novel will the chain be kept
-                    filtered_structure_chain_sequences[chain_id] = sequence
-            else:
-                # NOTE: Chains within a multimeric structure that are not interfacing with any other chain are kept as is
+            elif sequence_name in sequence_names or (
+                structure_id in filtered_structure_ids and molecule_type == "ligand"
+            ):
+                # NOTE: For the validation dataset, non-interfacing polymer chains within a
+                # multimeric structure are kept only if the polymer chain is novel, and any
+                # ligand chains within the (polymer-)filtered structure are kept. In other
+                # words, here we do not filter for only novel ligands, but in the context
+                # of the evaluation dataset, we will only keep novel ligands.
                 filtered_structure_chain_sequences[chain_id] = sequence
 
-        elif not interfaces_provided and (
-            sequence_name in sequence_names
-            or (structure_id in filtered_structure_ids and molecule_type == "ligand")
+        elif sequence_name in sequence_names or (
+            structure_id in filtered_structure_ids and molecule_type == "ligand"
         ):
+            # NOTE: For the validation dataset's monomers, sequence non-redundant polymers or
+            # any ligand chains within the (polymer-)filtered structure are kept. In other words,
+            # here we do not filter for only novel ligands, but in the context of the evaluation
+            # dataset, we will only keep novel ligands.
             filtered_structure_chain_sequences[chain_id] = sequence
-
-    if filtered_structure_chain_sequences and interfaces_provided:
-        for interface_chain_id in interface_chain_ids[structure_id]:
-            chain_id_1, chain_id_2 = interface_chain_id.split("+")
-            if (
-                chain_id_1 in filtered_structure_chain_sequences
-                and chain_id_2 in filtered_structure_chain_sequences
-                and f"{chain_id_2}:{chain_id_1}" not in filtered_interface_chain_ids[structure_id]
-            ):
-                filtered_interface_chain_ids[structure_id].add(interface_chain_id)
 
     return structure_id, filtered_structure_chain_sequences, filtered_interface_chain_ids
 
@@ -771,7 +775,7 @@ def search_sequences_using_mmseqs2(
 
         # Re-insert the names of input queries for which MMseqs2 could not find a match,
         # as these are safely not homologous to any reference sequence (due to MMseqs2's
-        # default sensitivity settings)
+        # high sensitivity, e.g., 8)
 
         mappable_queries = set(chain_search_mapping.get_column("query").to_list())
         unmappable_queries = input_queries - mappable_queries
@@ -1104,7 +1108,21 @@ if __name__ == "__main__":
         os.path.join(args.output_dir, "interface_cluster_mapping.csv")
     )
 
-    # Sample one member of 40 random protein chain clusters and leave the RNA and DNA chain clusters unchanged
+    # Subsample protein monomer chain clusters to 40 random clusters,
+    # and leave the RNA and DNA monomer chain clusters unchanged
+
+    (
+        _,
+        multimer_chain_sequences,
+    ) = separate_monomer_and_multimer_chain_sequences(all_chain_sequences)
+    multimer_pdb_ids = set(
+        list(multimer_chain_sequence.keys())[0]
+        for multimer_chain_sequence in multimer_chain_sequences
+    )
+    # Retain all protein multimer chain clusters during monomer chain subsampling
+    protein_multimer_chain_clusters = protein_chain_clusters[
+        protein_chain_clusters["pdb_id"].is_in(multimer_pdb_ids)
+    ]
 
     protein_chain_clusters_grouped = protein_chain_clusters.group_by("cluster_id").agg(
         pl.col("*").sample(1, seed=42)
@@ -1123,6 +1141,7 @@ if __name__ == "__main__":
         )
         .select(["pdb_id", "chain_id", "molecule_id", "cluster_id"])
     )
+    protein_chain_clusters = pl.concat([protein_chain_clusters, protein_multimer_chain_clusters])
     protein_chain_clusters.write_csv(
         os.path.join(args.output_dir, "protein_chain_cluster_mapping.csv")
     )
