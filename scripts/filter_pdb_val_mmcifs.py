@@ -17,7 +17,7 @@
 #
 # 1. Take all polymer monomer targets released after 2021-09-30 and before 2023-01-13 (can include monomer poly-
 # mers with ligand chains) and remove targets with total number of tokens greater than 2048 or resolution greater
-# than 4.5
+# than 4.5.
 # ... (see the PDB validation set clustering script)
 #
 
