@@ -8,7 +8,7 @@ from einops import pack, rearrange, repeat, unpack
 from torch import Tensor
 from torch.nn import Module
 
-from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
+from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, Shaped, typecheck
 from alphafold3_pytorch.utils.utils import default, exists
 
 # constants
