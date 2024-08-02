@@ -7,8 +7,8 @@
 # With the full evaluation set curated by the PDB test set filtering script we create a “low homology” subset
 # that is filtered on homology to the training and validation sets.
 # Evaluation is done either on individual chains, or on specific interfaces extracted from the full complex prediction.
-# For intra-chain metrics, we keep polymers (or ligands) that have less than 30% sequence identity (or less than 0.3 Tanimoto similarity)
-# to the training or validation sets.
+# For intra-chain metrics, we keep polymers (or ligands) that have 30% or less sequence identity
+# (or 0.3 or less Tanimoto similarity) to the training or validation sets.
 # Here we define sequence identity as the percent of residues in the evaluation set chain that are identical to the
 # training or validation set chain, and we define Tanimoto similarity using RDKit's Morgan fingerprint and Tanimoto
 # similarity functions, respectively. For interface metrics the following filters are applied:
@@ -69,7 +69,7 @@ def filter_structure_chain_sequences(
     max_polymer_similarity: float,
     max_ligand_similarity: float,
     filtered_structure_ids: Set[str],
-):
+) -> Tuple[str, Dict[str, str], CHAIN_INTERFACES]:
     """Filter chain sequences based on either sequence names or Tanimoto similarity."""
     structure_id, chain_sequences = list(structure_chain_sequences.items())[0]
     interfaces_provided = exists(interface_chain_ids)
@@ -96,7 +96,6 @@ def filter_structure_chain_sequences(
             ]
 
             if any(matching_interfaces):
-                interface_is_novel = True
                 for interface in matching_interfaces:
                     ptnr1_chain_id, ptnr2_chain_id = interface.split("+")
                     ptnr1_sequence = chain_sequences.get(ptnr1_chain_id, None)
@@ -152,33 +151,42 @@ def filter_structure_chain_sequences(
                             matching_ptnr2_sequence_names[:, 1].max() <= max_polymer_similarity
                         )
 
-                    if not (ptnr1_is_novel or ptnr2_is_novel):
-                        # NOTE: An interface is only considered novel if at least one of its chains is novel
-                        interface_is_novel = False
-                        break
+                    # NOTE: Only if both of the interface's chains are novel
+                    # will the interface be kept.
+                    interface_is_novel = ptnr1_is_novel and ptnr2_is_novel
+                    if interface_is_novel:
+                        # NOTE: If at least one of a chain's associated interfaces
+                        # are novel, the chain will be kept.
+                        filtered_structure_chain_sequences[chain_id] = sequence
+                        if (
+                            f"{ptnr2_chain_id}:{ptnr1_chain_id}"
+                            not in filtered_interface_chain_ids[structure_id]
+                        ):
+                            filtered_interface_chain_ids[structure_id].add(interface)
 
-                if interface_is_novel:
-                    # NOTE: Only if all of a chain's associated interfaces are novel will the chain be kept
-                    filtered_structure_chain_sequences[chain_id] = sequence
-            else:
-                # NOTE: Chains within a multimeric structure that are not interfacing with any other chain are kept as is
+            elif sequence_name in sequence_names or (
+                structure_id in filtered_structure_ids and molecule_type == "ligand"
+            ):
+                # NOTE: For the evaluation dataset, non-interfacing polymer chains within a
+                # multimeric structure are kept only if the polymer chain is novel, and any
+                # ligand chains within the (polymer-)filtered structure are kept only if
+                # the ligand chain is novel as well.
+                if molecule_type == "ligand" and not is_novel_ligand(
+                    sequence, reference_ligand_fps, max_sim=max_ligand_similarity
+                ):
+                    continue
                 filtered_structure_chain_sequences[chain_id] = sequence
 
-        elif not interfaces_provided and (
-            sequence_name in sequence_names
-            or (structure_id in filtered_structure_ids and molecule_type == "ligand")
+        elif sequence_name in sequence_names or (
+            structure_id in filtered_structure_ids and molecule_type == "ligand"
         ):
-            filtered_structure_chain_sequences[chain_id] = sequence
-
-    if filtered_structure_chain_sequences and interfaces_provided:
-        for interface_chain_id in interface_chain_ids[structure_id]:
-            chain_id_1, chain_id_2 = interface_chain_id.split("+")
-            if (
-                chain_id_1 in filtered_structure_chain_sequences
-                and chain_id_2 in filtered_structure_chain_sequences
-                and f"{chain_id_2}:{chain_id_1}" not in filtered_interface_chain_ids[structure_id]
+            # NOTE: For the evaluation dataset's monomers, sequence non-redundant polymers or
+            # any novel ligand chains within the (polymer-)filtered structure are kept.
+            if molecule_type == "ligand" and not is_novel_ligand(
+                sequence, reference_ligand_fps, max_sim=max_ligand_similarity
             ):
-                filtered_interface_chain_ids[structure_id].add(interface_chain_id)
+                continue
+            filtered_structure_chain_sequences[chain_id] = sequence
 
     return structure_id, filtered_structure_chain_sequences, filtered_interface_chain_ids
 
@@ -307,19 +315,16 @@ def filter_to_low_homology_sequences(
         input_multimer_chain_sequences,
         input_multimer_fasta_filepath,
         molecule_type="protein",
-        interface_chain_ids=input_interface_chain_ids,
     )
     write_sequences_to_fasta(
         input_multimer_chain_sequences,
         input_multimer_fasta_filepath,
         molecule_type="nucleic_acid",
-        interface_chain_ids=input_interface_chain_ids,
     )
     write_sequences_to_fasta(
         input_multimer_chain_sequences,
         input_multimer_fasta_filepath,
         molecule_type="peptide",
-        interface_chain_ids=input_interface_chain_ids,
     )
 
     write_sequences_to_fasta(
