@@ -45,8 +45,7 @@ def max_neg_value(t: Tensor) -> Tensor:
 
 
 def log(t: Tensor, eps=1e-20) -> Tensor:
-    """
-    Run a safe log function that clamps the input to be above `eps` to avoid `log(0)`.
+    """Run a safe log function that clamps the input to be above `eps` to avoid `log(0)`.
 
     :param t: The input tensor.
     :param eps: The epsilon value.
@@ -56,8 +55,7 @@ def log(t: Tensor, eps=1e-20) -> Tensor:
 
 
 def divisible_by(num: int, den: int) -> bool:
-    """
-    Check if a number is divisible by another number.
+    """Check if a number is divisible by another number.
 
     :param num: The numerator.
     :param den: The denominator.
@@ -67,8 +65,7 @@ def divisible_by(num: int, den: int) -> bool:
 
 
 def compact(*args):
-    """
-    Compact a tuple of objects by removing any `None` values.
+    """Compact a tuple of objects by removing any `None` values.
 
     :param args: The objects to compact.
     :return: The compacted objects.
@@ -77,8 +74,7 @@ def compact(*args):
 
 
 def pack_one(t: Tensor, pattern: str) -> Tuple[Tensor, List[Shape]]:
-    """
-    Pack a single tensor into a tuple of tensors with the given pattern.
+    """Pack a single tensor into a tuple of tensors with the given pattern.
 
     :param t: The tensor to pack.
     :param pattern: The pattern with which to pack.
@@ -87,8 +83,7 @@ def pack_one(t: Tensor, pattern: str) -> Tuple[Tensor, List[Shape]]:
     packed, ps = pack([t], pattern)
 
     def unpack_one(to_unpack, unpack_pattern=None):
-        """
-        Unpack a single tensor.
+        """Unpack a single tensor.
 
         :param to_unpack: The tensor to unpack.
         :param pattern: The pattern with which to unpack.
@@ -101,8 +96,7 @@ def pack_one(t: Tensor, pattern: str) -> Tuple[Tensor, List[Shape]]:
 
 
 def softclamp(t: Tensor, value: float) -> Tensor:
-    """
-    Perform a soft clamp on a Tensor.
+    """Perform a soft clamp on a Tensor.
 
     :param t: The Tensor.
     :param value: The value to clamp to.
@@ -112,8 +106,7 @@ def softclamp(t: Tensor, value: float) -> Tensor:
 
 
 def exclusive_cumsum(t: Tensor, dim: int = -1) -> Tensor:
-    """
-    Perform an exclusive cumulative summation on a Tensor.
+    """Perform an exclusive cumulative summation on a Tensor.
 
     :param t: The Tensor.
     :param dim: The dimension to sum over.
@@ -155,8 +148,7 @@ def pad_at_dim(t, pad: Tuple[int, int], *, dim=-1, value=0.0) -> Tensor:
 
 @typecheck
 def slice_at_dim(t: Tensor, dim_slice: slice, *, dim: int) -> Tensor:
-    """
-    Slice a Tensor at a specific dimension.
+    """Slice a Tensor at a specific dimension.
 
     :param t: The Tensor.
     :param dim_slice: The slice object.
@@ -171,8 +163,7 @@ def slice_at_dim(t: Tensor, dim_slice: slice, *, dim: int) -> Tensor:
 
 @typecheck
 def pad_to_length(t: Tensor, length: int, *, dim: int = -1, value=0) -> Tensor:
-    """
-    Pad a Tensor to a specific length at a specific dimension.
+    """Pad a Tensor to a specific length at a specific dimension.
 
     :param t: The Tensor.
     :param length: The length to pad to.
@@ -190,8 +181,7 @@ def pad_to_length(t: Tensor, length: int, *, dim: int = -1, value=0) -> Tensor:
 
 @typecheck
 def pad_or_slice_to(t: Tensor, length: int, *, dim: int, pad_value=0) -> Tensor:
-    """
-    Pad or slice a Tensor to a specific length at a specific dimension.
+    """Pad or slice a Tensor to a specific length at a specific dimension.
 
     :param t: The Tensor.
     :param length: The length to pad or slice to.
@@ -211,8 +201,7 @@ def pad_or_slice_to(t: Tensor, length: int, *, dim: int, pad_value=0) -> Tensor:
 
 @typecheck
 def pad_to_multiple(t: Tensor, multiple: int, *, dim=-1, value=0.0) -> Tensor:
-    """
-    Pad a Tensor to a multiple of a specific number at a specific dimension.
+    """Pad a Tensor to a multiple of a specific number at a specific dimension.
 
     :param t: The Tensor.
     :param multiple: The multiple to pad to.
@@ -231,8 +220,7 @@ def pad_to_multiple(t: Tensor, multiple: int, *, dim=-1, value=0.0) -> Tensor:
 
 @typecheck
 def concat_previous_window(t: Tensor, *, dim_seq: int, dim_window: int) -> Tensor:
-    """
-    Concatenate the previous window of a Tensor.
+    """Concatenate the previous window of a Tensor.
 
     :param t: The Tensor.
     :param dim_seq: The sequence dimension.
@@ -254,8 +242,7 @@ def concat_previous_window(t: Tensor, *, dim_seq: int, dim_window: int) -> Tenso
 
 @typecheck
 def pad_and_window(t: Float["b n ..."] | Int["b n ..."], window_size: int) -> Tensor:  # type: ignore
-    """
-    Pad and window a Tensor.
+    """Pad and window a Tensor.
 
     :param t: The Tensor.
     :param window_size: The window size.
@@ -274,8 +261,7 @@ def atom_ref_pos_to_atompair_inputs(
     atom_ref_pos: Float["... m 3"],  # type: ignore
     atom_ref_space_uid: Int["... m"],  # type: ignore
 ) -> Float["... m m 5"]:  # type: ignore
-    """
-    Convert atom reference positions and spaces to atompair inputs.
+    """Convert atom reference positions and spaces to atompair inputs.
 
     :param atom_ref_pos: The atom reference positions.
     :param atom_ref_space_uid: The atom reference space UIDs.
@@ -335,8 +321,7 @@ def atom_ref_pos_to_atompair_inputs(
 def lens_to_mask(
     lens: Int["b ..."], max_len: int | None = None  # type: ignore
 ) -> Bool["... m"]:  # type: ignore
-    """
-    Convert a Tensor of lengths to a mask Tensor.
+    """Convert a Tensor of lengths to a mask Tensor.
 
     :param lens: The lengths Tensor.
     :param max_len: The maximum length.
@@ -354,8 +339,7 @@ def mean_pool_with_lens(
     feats: Float["b m d"],  # type: ignore
     lens: Int["b n"],  # type: ignore
 ) -> Float["b n d"]:  # type: ignore
-    """
-    Perform mean pooling on a Tensor with the given lengths.
+    """Perform mean pooling on a Tensor with the given lengths.
 
     :param feats: The features Tensor.
     :param lens: The lengths Tensor.
@@ -392,8 +376,7 @@ def repeat_consecutive_with_lens(
     lens: Int["b n"],  # type: ignore
     mask_value: float | int | bool | None = None,  # type: ignore
 ) -> Float["b m ..."] | Bool["b m ..."] | Bool["b m"] | Int["b m"]:  # type: ignore
-    """
-    Repeat a Tensor's values consecutively with the given lengths.
+    """Repeat a Tensor's values consecutively with the given lengths.
 
     :param feats: The features Tensor.
     :param lens: The lengths Tensor.
@@ -457,8 +440,7 @@ def to_pairwise_mask(
     mask_i: Bool["... n"],  # type: ignore
     mask_j: Bool["... n"] | None = None,  # type: ignore
 ) -> Bool["... n n"]:  # type: ignore
-    """
-    Convert two masks into a pairwise mask.
+    """Convert two masks into a pairwise mask.
 
     :param mask_i: The first mask.
     :param mask_j: The second mask.
@@ -477,8 +459,7 @@ def masked_average(
     dim: int | Tuple[int, ...],
     eps=1.0,
 ) -> Float["..."]:  # type: ignore
-    """
-    Compute the masked average of a Tensor.
+    """Compute the masked average of a Tensor.
 
     :param t: The Tensor.
     :param mask: The mask.
@@ -500,8 +481,7 @@ def should_checkpoint(
     inputs: Tensor | Tuple[Tensor, ...],
     check_instance_variable: str | None = "checkpoint",
 ) -> bool:
-    """
-    Determine if activation checkpointing should be used.
+    """Determine if activation checkpointing should be used.
 
     :param self: The module.
     :param inputs: The inputs.

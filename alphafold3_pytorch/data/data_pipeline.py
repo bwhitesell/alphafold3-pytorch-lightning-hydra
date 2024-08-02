@@ -5,7 +5,11 @@ from typing import MutableMapping, Optional, Tuple
 
 import numpy as np
 
-from alphafold3_pytorch.common.biomolecule import Biomolecule, _from_mmcif_object, to_mmcif
+from alphafold3_pytorch.common.biomolecule import (
+    Biomolecule,
+    _from_mmcif_object,
+    to_mmcif,
+)
 from alphafold3_pytorch.data import mmcif_parsing
 from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.utils import exists
@@ -24,8 +28,7 @@ def make_sequence_features(sequence: str, description: str) -> FeatureDict:
 
 
 def get_assembly(biomol: Biomolecule, assembly_id: Optional[str] = None) -> Biomolecule:
-    """
-    Get a specified (Biomolecule) assembly of a given Biomolecule.
+    """Get a specified (Biomolecule) assembly of a given Biomolecule.
 
     Adapted from: https://github.com/biotite-dev/biotite
 

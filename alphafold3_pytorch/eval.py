@@ -26,7 +26,10 @@ rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 # more info: https://github.com/ashleve/rootutils
 # ------------------------------------------------------------------------------------ #
 
-from alphafold3_pytorch import register_custom_omegaconf_resolvers, resolve_omegaconf_variable
+from alphafold3_pytorch import (
+    register_custom_omegaconf_resolvers,
+    resolve_omegaconf_variable,
+)
 from alphafold3_pytorch.utils import (
     RankedLogger,
     extras,

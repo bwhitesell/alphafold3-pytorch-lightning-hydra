@@ -13,8 +13,7 @@ RESIDUE_MOLECULE_TYPE = Literal["protein", "rna", "dna", "ligand"]
 def is_polymer(
     res_chem_type: str, polymer_chem_types: Set[str] = {"peptide", "dna", "rna"}
 ) -> bool:
-    """
-    Check if a residue is polymeric using its chemical type string.
+    """Check if a residue is polymeric using its chemical type string.
 
     :param res_chem_type: The chemical type of the residue as a descriptive string.
     :param polymer_chem_types: The set of polymer chemical types.
@@ -25,8 +24,7 @@ def is_polymer(
 
 @typecheck
 def is_water(res_name: str, water_res_names: Set[str] = {"HOH", "WAT"}) -> bool:
-    """
-    Check if a residue is a water residue using its residue name string.
+    """Check if a residue is a water residue using its residue name string.
 
     :param res_name: The name of the residue as a descriptive string.
     :param water_res_names: The set of water residue names.
@@ -52,9 +50,8 @@ def get_residue_molecule_type(res_chem_type: str) -> RESIDUE_MOLECULE_TYPE:
 def get_biopython_chain_residue_by_composite_id(
     chain: ChainType, res_name: str, res_id: int
 ) -> ResidueType:
-    """
-    Get a Biopython `Residue` or `DisorderedResidue` object
-    by its residue name-residue index composite ID.
+    """Get a Biopython `Residue` or `DisorderedResidue` object by its residue name-residue index
+    composite ID.
 
     :param chain: Biopython `Chain` object
     :param res_name: Residue name
@@ -95,8 +92,7 @@ def get_biopython_chain_residue_by_composite_id(
 
 @typecheck
 def matrix_rotate(v: np.ndarray, matrix: np.ndarray) -> np.ndarray:
-    """
-    Perform a rotation using a rotation matrix.
+    """Perform a rotation using a rotation matrix.
 
     :param v: The coordinates to rotate.
     :param matrix: The rotation matrix.
@@ -119,8 +115,7 @@ def matrix_rotate(v: np.ndarray, matrix: np.ndarray) -> np.ndarray:
 def deep_merge_dicts(
     dict1: Dict[Any, Any], dict2: Dict[Any, Any], value_op: Literal["union", "concat"]
 ) -> Dict[Any, Any]:
-    """
-    Deeply merge two dictionaries, merging values where possible.
+    """Deeply merge two dictionaries, merging values where possible.
 
     :param dict1: The first dictionary to merge.
     :param dict2: The second dictionary to merge.

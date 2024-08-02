@@ -23,8 +23,7 @@ log = RankedLogger(__name__, rank_zero_only=False)
 
 
 class Alphafold3LitModule(LightningModule):
-    """A `LightningModule` for AlphaFold 3.
-    Implements details from Section 5.4 of the paper.
+    """A `LightningModule` for AlphaFold 3. Implements details from Section 5.4 of the paper.
 
     A `LightningModule` implements 8 key methods:
 

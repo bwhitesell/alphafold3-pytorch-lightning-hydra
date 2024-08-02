@@ -173,7 +173,7 @@ class ParseError(Exception):
 def mmcif_loop_to_list(prefix: str, parsed_info: MmCIFDict) -> Sequence[Mapping[str, str]]:
     """Extracts loop associated with a prefix from mmCIF data as a list.
 
-    Reference for loop_ in mmCIF:
+    Reference for `loop_` in mmCIF:
       http://mmcif.wwpdb.org/docs/tutorials/mechanics/pdbx-mmcif-syntax.html
 
     :param prefix: Prefix shared by each of the data items in the loop.
@@ -205,15 +205,13 @@ def mmcif_loop_to_dict(
 ) -> Mapping[str, Mapping[str, str]]:
     """Extracts loop associated with a prefix from mmCIF data as a dictionary.
 
-    :param prefix: Prefix shared by each of the data items in the loop.
-        e.g. '_entity_poly_seq.', where the data items are _entity_poly_seq.num,
-        _entity_poly_seq.mon_id. Should include the trailing period.
+    :param prefix: Prefix shared by each of the data items in the loop. e.g. '_entity_poly_seq.',
+        where the data items are _entity_poly_seq.num, _entity_poly_seq.mon_id. Should include the
+        trailing period.
     :param index: Which item of loop data should serve as the key.
-    :param parsed_info: A dict of parsed mmCIF data, e.g. _mmcif_dict from a Biopython
-        parser.
-
-    :return: A dict of dicts; each dict represents 1 entry from an mmCIF loop,
-      indexed by the index column.
+    :param parsed_info: A dict of parsed mmCIF data, e.g. _mmcif_dict from a Biopython parser.
+    :return: A dict of dicts; each dict represents 1 entry from an mmCIF loop, indexed by the index
+        column.
     """
     entries = mmcif_loop_to_list(prefix, parsed_info)
     return {entry[index]: entry for entry in entries}
@@ -224,9 +222,8 @@ def apply_transformations(
     transformation_dict: Mapping[str, Tuple[np.ndarray, np.ndarray]],
     operations: Sequence[Tuple[str, str]],
 ) -> Any:
-    """
-    Gets subassembly by applying the given operations to the input
-    Biomolecule containing affected asym IDs.
+    """Gets subassembly by applying the given operations to the input Biomolecule containing
+    affected asym IDs.
 
     Adapted from: https://github.com/biotite-dev/biotite
 
@@ -259,9 +256,8 @@ def apply_transformations(
 def get_transformations(
     struct_oper: Mapping[str, str]
 ) -> Mapping[str, Tuple[np.ndarray, np.ndarray]]:
-    """
-    Gets transformation operations in terms of rotation matrix and
-    translation for each operation ID in `pdbx_struct_oper_list`.
+    """Gets transformation operations in terms of rotation matrix and translation for each
+    operation ID in `pdbx_struct_oper_list`.
 
     Adapted from: https://github.com/biotite-dev/biotite
 
@@ -288,9 +284,8 @@ def get_transformations(
 
 
 def parse_operation_expression(expression: str) -> Sequence[Tuple[str, str]]:
-    """
-    Gets successive operation steps (IDs) for the given
-    ``oper_expression``. Forms the cartesian product, if necessary.
+    """Gets successive operation steps (IDs) for the given ``oper_expression``. Forms the cartesian
+    product, if necessary.
 
     Adapted from: https://github.com/biotite-dev/biotite
 
@@ -335,17 +330,15 @@ def parse(
 ) -> ParsingResult:
     """Entry point, parses an mmcif_string.
 
-    :param file_id: A string identifier for this file. Should be unique within the
-        collection of files being processed.
+    :param file_id: A string identifier for this file. Should be unique within the collection of
+        files being processed.
     :param mmcif_string: Contents of an mmCIF file.
-    :param catch_all_errors: If True, all exceptions are caught and error messages are
-        returned as part of the ParsingResult. If False exceptions will be allowed
-        to propagate.
-    :param auth_chains: If True, use author-assigned chain ids. If False, use internal
-        mmCIF chain ids.
-    :param auth_residues: If True, use author-assigned residue numbers. If False, use
-        internal mmCIF residue numbers.
-
+    :param catch_all_errors: If True, all exceptions are caught and error messages are returned as
+        part of the ParsingResult. If False exceptions will be allowed to propagate.
+    :param auth_chains: If True, use author-assigned chain ids. If False, use internal mmCIF chain
+        ids.
+    :param auth_residues: If True, use author-assigned residue numbers. If False, use internal
+        mmCIF residue numbers.
     :return: A ParsingResult.
     """
     errors = {}
@@ -668,8 +661,8 @@ def _get_complex_chains(
     """Extracts polymer information for complex chains.
 
     :param parsed_info: _mmcif_dict produced by the Biopython parser.
-
-    :return: A dict mapping mmcif chain id to a tuple of a list of Monomers and a list of ChemComps.
+    :return: A dict mapping mmcif chain id to a tuple of a list of Monomers and a list of
+        ChemComps.
     """
     # Get (non-)polymer information for each entity in the structure.
     poly_scheme = mmcif_loop_to_list("_pdbx_poly_seq_scheme.", parsed_info)
@@ -762,8 +755,9 @@ def _is_set(data: str) -> bool:
 def parse_mmcif_object(
     filepath: str, file_id: str, auth_chains: bool = True, auth_residues: bool = True
 ) -> MmcifObject:
-    """Parse an mmCIF file into an `MmcifObject` containing a BioPython `Structure` object as well as associated metadata."""
-    with open(filepath, "r") as f:
+    """Parse an mmCIF file into an `MmcifObject` containing a BioPython `Structure` object as well
+    as associated metadata."""
+    with open(filepath) as f:
         mmcif_string = f.read()
 
     parsing_result = parse(

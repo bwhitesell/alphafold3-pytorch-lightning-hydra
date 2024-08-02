@@ -35,7 +35,7 @@
 import argparse
 import json
 import os
-import subprocess
+import subprocess  # nosec
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import Dict, List, Set, Tuple
@@ -133,7 +133,8 @@ def search_sequences_using_mmseqs2(
     alignment_file_prefix: str = "alnRes_",
     extra_parameters: Dict[str, int | float | str] | None = None,
 ) -> Set[str] | pl.DataFrame:
-    """Run MMseqs2 on the input FASTA file and write the resulting search outputs to a local output directory."""
+    """Run MMseqs2 on the input FASTA file and write the resulting search outputs to a local output
+    directory."""
     assert input_filepath.endswith(".fasta"), "The input file must be a FASTA file."
     assert reference_filepath.endswith(".fasta"), "The reference file must be a FASTA file."
 
@@ -164,7 +165,7 @@ def search_sequences_using_mmseqs2(
         for key, value in extra_parameters.items():
             mmseqs_command.extend([key, str(value)])
 
-    subprocess.run(mmseqs_command)
+    subprocess.run(mmseqs_command)  # nosec
     if not os.path.isfile(output_alignment_filepath):
         logger.warning(
             f"Output alignment file '{output_alignment_filepath}' does not exist. No input sequences were found."
@@ -203,7 +204,7 @@ def search_sequences_using_mmseqs2(
         return chain_search_mapping
     else:
         input_queries = set()
-        with open(input_filepath, "r") as f:
+        with open(input_filepath) as f:
             for line in f:
                 if line.startswith(">"):
                     input_queries.add(line.strip().lstrip(">"))
@@ -234,7 +235,8 @@ def is_novel_ligand(
     max_sim: float = 0.85,
     verbose: bool = False,
 ) -> bool:
-    """Check if a ligand sequence is novel based on Tanimoto similarity to a reference set of ligand sequences."""
+    """Check if a ligand sequence is novel based on Tanimoto similarity to a reference set of
+    ligand sequences."""
     fpgen = AllChem.GetRDKitFPGenerator()
     ligand_smiles = CCD_COMPONENTS_SMILES.get(ligand_sequence, None)
     if not exists(ligand_smiles):
@@ -395,14 +397,14 @@ def filter_chains_by_sequence_names(
     max_workers: int = 2,
 ) -> CHAIN_SEQUENCES | Tuple[CHAIN_SEQUENCES, CHAIN_INTERFACES]:
     """Return only chains (and potentially interfaces) with sequence names in the given set."""
-    filtered_structure_ids = set(
+    filtered_structure_ids = {
         name.split("-assembly1")[0] + "-assembly1"
         for name in (
             sequence_names[:, 0].tolist()
             if isinstance(sequence_names, np.ndarray)
             else sequence_names
         )
-    )
+    }
     interfaces_provided = exists(interface_chain_ids)
 
     if interfaces_provided:
@@ -842,10 +844,10 @@ if __name__ == "__main__":
     if os.path.exists(
         os.path.join(args.output_dir, "all_chain_sequences.json")
     ) and os.path.exists(os.path.join(args.output_dir, "interface_chain_ids.json")):
-        with open(os.path.join(args.output_dir, "all_chain_sequences.json"), "r") as f:
+        with open(os.path.join(args.output_dir, "all_chain_sequences.json")) as f:
             all_chain_sequences = json.load(f)
 
-        with open(os.path.join(args.output_dir, "interface_chain_ids.json"), "r") as f:
+        with open(os.path.join(args.output_dir, "interface_chain_ids.json")) as f:
             interface_chain_ids = json.load(f)
     else:
         # Parse all chain sequences and interfaces from mmCIF files
@@ -872,15 +874,13 @@ if __name__ == "__main__":
     if os.path.exists(
         os.path.join(args.output_dir, "filtered_all_chain_sequences.json")
     ) and os.path.exists(os.path.join(args.output_dir, "filtered_interface_chain_ids.json")):
-        with open(os.path.join(args.output_dir, "filtered_all_chain_sequences.json"), "r") as f:
+        with open(os.path.join(args.output_dir, "filtered_all_chain_sequences.json")) as f:
             all_chain_sequences = json.load(f)
 
-        with open(os.path.join(args.output_dir, "filtered_interface_chain_ids.json"), "r") as f:
+        with open(os.path.join(args.output_dir, "filtered_interface_chain_ids.json")) as f:
             interface_chain_ids = json.load(f)
     else:
-        with open(
-            os.path.join(args.reference_clustering_dir, "all_chain_sequences.json"), "r"
-        ) as f:
+        with open(os.path.join(args.reference_clustering_dir, "all_chain_sequences.json")) as f:
             reference_all_chain_sequences = json.load(f)
 
         (
@@ -1115,10 +1115,10 @@ if __name__ == "__main__":
         _,
         multimer_chain_sequences,
     ) = separate_monomer_and_multimer_chain_sequences(all_chain_sequences)
-    multimer_pdb_ids = set(
+    multimer_pdb_ids = {
         list(multimer_chain_sequence.keys())[0]
         for multimer_chain_sequence in multimer_chain_sequences
-    )
+    }
     # Retain all protein multimer chain clusters during monomer chain subsampling
     protein_multimer_chain_clusters = protein_chain_clusters[
         protein_chain_clusters["pdb_id"].is_in(multimer_pdb_ids)

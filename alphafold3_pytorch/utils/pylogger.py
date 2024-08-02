@@ -5,9 +5,8 @@ from lightning_utilities.core.rank_zero import rank_prefixed_message, rank_zero_
 
 
 class RankedLogger(logging.LoggerAdapter):
-    """
-    A multi-GPU-friendly python command line logger that logs on all processes
-    with their rank prefixed in the log message.
+    """A multi-GPU-friendly python command line logger that logs on all processes with their rank
+    prefixed in the log message.
 
     :param name: The name of the logger. Default is ``__name__``.
     :param rank_zero_only: Whether to force all logs to only occur on the rank zero process. Default is `False`.

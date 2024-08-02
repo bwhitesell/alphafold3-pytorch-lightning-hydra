@@ -140,8 +140,7 @@ def default(v: Any, d: Any) -> Any:
 
 
 def first(arr: Iterable[Any]) -> Any:
-    """
-    Return the first element of an iterable object such as a list.
+    """Return the first element of an iterable object such as a list.
 
     :param arr: An iterable object.
     :return: The first element of the iterable object.

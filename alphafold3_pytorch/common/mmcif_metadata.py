@@ -1,4 +1,4 @@
-"""mmCIF metadata."""
+"""MmCIF metadata."""
 
 from importlib.metadata import version
 from typing import Mapping, Sequence

@@ -4,10 +4,7 @@ from typing import Optional
 
 import numpy as np
 
-from alphafold3_pytorch.common.biomolecule import (
-    _from_mmcif_object,
-    to_mmcif,
-)
+from alphafold3_pytorch.common.biomolecule import _from_mmcif_object, to_mmcif
 from alphafold3_pytorch.data.data_pipeline import get_assembly
 from alphafold3_pytorch.data.mmcif_parsing import MmcifObject, parse_mmcif_object
 from alphafold3_pytorch.utils.utils import exists
@@ -30,7 +27,8 @@ def write_mmcif(
     insert_alphafold_mmcif_metadata: bool = True,
     sampled_atom_positions: Optional[np.ndarray] = None,
 ):
-    """Write a BioPython `Structure` object to an mmCIF file using an intermediate `Biomolecule` object."""
+    """Write a BioPython `Structure` object to an mmCIF file using an intermediate `Biomolecule`
+    object."""
     biomol = (
         _from_mmcif_object(mmcif_object)
         if "assembly" in mmcif_object.file_id

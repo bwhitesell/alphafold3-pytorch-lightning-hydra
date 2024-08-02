@@ -16,41 +16,37 @@ CLUSTERING_RESIDUE_MOLECULE_TYPE = Literal["protein", "rna", "dna", "ligand", "p
 # helper functions
 
 
-def get_chain_count(molecule_type: CLUSTERING_RESIDUE_MOLECULE_TYPE) -> Tuple[int, int, int]:
-    """
-    Returns the number of protein (or `peptide`), nucleic acid (i.e., `rna` or `dna`), and
+def get_chain_count(molecule_type: CLUSTERING_RESIDUE_MOLECULE_TYPE) -> tuple[int, int, int]:
+    """Returns the number of protein (or `peptide`), nucleic acid (i.e., `rna` or `dna`), and
     ligand chains in a molecule based on its type.
 
     Example:
         n_prot, n_nuc, n_ligand = get_chain_count("protein")
     """
-    match molecule_type:
-        case "protein":
-            return 1, 0, 0
-        case "rna":
-            return 0, 1, 0
-        case "dna":
-            return 0, 1, 0
-        case "ligand":
-            return 0, 0, 1
-        case "peptide":
-            return 1, 0, 0
-        case _:
-            raise ValueError(f"Unknown molecule type: {molecule_type}")
+    if molecule_type == "protein":
+        return 1, 0, 0
+    elif molecule_type == "rna":
+        return 0, 1, 0
+    elif molecule_type == "dna":
+        return 0, 1, 0
+    elif molecule_type == "ligand":
+        return 0, 0, 1
+    elif molecule_type == "peptide":
+        return 1, 0, 0
+    else:
+        raise ValueError(f"Unknown molecule type: {molecule_type}")
 
 
 def calculate_weight(
-    alphas: Dict[str, float],
+    alphas: dict[str, float],
     beta: float,
     n_prot: int,
     n_nuc: int,
     n_ligand: int,
     cluster_size: int,
 ) -> float:
-    """
-    Calculates the weight of a chain or an interface according to the formula
-    provided in Section 2.5.1 of the AlphaFold 3 supplementary materials.
-    """
+    """Calculates the weight of a chain or an interface according to the formula provided in
+    Section 2.5.1 of the AlphaFold 3 supplementary materials."""
     return (beta / cluster_size) * (
         alphas["prot"] * n_prot + alphas["nuc"] * n_nuc + alphas["ligand"] * n_ligand
     )
@@ -60,7 +56,7 @@ def calculate_weight(
 def get_chain_weight(
     molecule_type: CLUSTERING_RESIDUE_MOLECULE_TYPE,
     cluster_size: int,
-    alphas: Dict[str, float],
+    alphas: dict[str, float],
     beta: float,
 ) -> float:
     """Calculates the weight of a chain based on its type."""
@@ -73,7 +69,7 @@ def get_interface_weight(
     molecule_type_1: CLUSTERING_RESIDUE_MOLECULE_TYPE,
     molecule_type_2: CLUSTERING_RESIDUE_MOLECULE_TYPE,
     cluster_size: int,
-    alphas: Dict[str, float],
+    alphas: dict[str, float],
     beta: float,
 ) -> float:
     """Calculates the weight of an interface based on the types of the two molecules."""
@@ -91,18 +87,16 @@ def get_interface_weight(
 def get_cluster_sizes(
     mapping: pl.DataFrame,
     cluster_id_col: str,
-) -> Dict[int, int]:
-    """
-    Returns a dictionary where keys are cluster IDs and values are the number
-    of chains/interfaces in the cluster.
-    """
+) -> dict[int, int]:
+    """Returns a dictionary where keys are cluster IDs and values are the number of
+    chains/interfaces in the cluster."""
     cluster_sizes = mapping.group_by(cluster_id_col).agg(pl.len()).sort(cluster_id_col)
     return {row[0]: row[1] for row in cluster_sizes.iter_rows()}
 
 
 @typecheck
 def compute_chain_weights(
-    chains: pl.DataFrame, alphas: Dict[str, float], beta: float
+    chains: pl.DataFrame, alphas: dict[str, float], beta: float
 ) -> pl.Series:
     """Computes the weights of the chains based on the cluster sizes."""
     molecule_idx = chains.get_column_index("molecule_id")
@@ -126,7 +120,7 @@ def compute_chain_weights(
 
 @typecheck
 def compute_interface_weights(
-    interfaces: pl.DataFrame, alphas: Dict[str, float], beta: float
+    interfaces: pl.DataFrame, alphas: dict[str, float], beta: float
 ) -> pl.Series:
     """Computes the weights of the interfaces based on the chain weights."""
     molecule_idx_1 = interfaces.get_column_index("interface_molecule_id_1")
@@ -151,8 +145,7 @@ def compute_interface_weights(
 
 
 class WeightedPDBSampler(Sampler[List[str]]):
-    """
-    Initializes a sampler for weighted sampling of PDB and chain/interface IDs.
+    """Initializes a sampler for weighted sampling of PDB and chain/interface IDs.
 
     :param chain_mapping_paths: Path to the CSV file containing chain cluster
         mappings. If multiple paths are provided, they will be concatenated.
@@ -166,7 +159,7 @@ class WeightedPDBSampler(Sampler[List[str]]):
     :param alpha_ligand: Weighting factor for ligand chains.
     :param pdb_ids_to_skip: List of PDB IDs to skip during sampling.
         Allow extra data filtering to ensure we avoid training
-        on anomolous complexes that passed through all filtering
+        on anomalous complexes that passed through all filtering
         and clustering steps.
 
     Example:
@@ -179,7 +172,7 @@ class WeightedPDBSampler(Sampler[List[str]]):
 
     def __init__(
         self,
-        chain_mapping_paths: str | List[str],
+        chain_mapping_paths: str | list[str],
         interface_mapping_path: str,
         batch_size: int,
         beta_chain: float = 0.5,
@@ -187,7 +180,7 @@ class WeightedPDBSampler(Sampler[List[str]]):
         alpha_prot: float = 3.0,
         alpha_nuc: float = 3.0,
         alpha_ligand: float = 1.0,
-        pdb_ids_to_skip: List[str] = [],
+        pdb_ids_to_skip: list[str] = [],
     ):
         # Load chain and interface mappings
         if not isinstance(chain_mapping_paths, list):
@@ -258,7 +251,7 @@ class WeightedPDBSampler(Sampler[List[str]]):
         """Returns the number of batches in the dataset."""
         return len(self.mappings) // self.batch_size
 
-    def __iter__(self) -> Iterator[List[str]]:
+    def __iter__(self) -> Iterator[list[str]]:
         """Returns an iterator that yields batches of PDB IDs."""
         while True:
             sampled = self.sample(self.batch_size)
@@ -271,17 +264,16 @@ class WeightedPDBSampler(Sampler[List[str]]):
                 yield pdb_id
 
     @typecheck
-    def sample(self, batch_size: int) -> List[Tuple[str, str, str]]:
+    def sample(self, batch_size: int) -> list[tuple[str, str, str]]:
         """Samples a chain ID or interface ID based on the weights of the chains/interfaces."""
         indices = np.random.choice(len(self.mappings), size=batch_size, p=self.weights)
         return self.mappings[indices].select(["pdb_id", "chain_id_1", "chain_id_2"]).rows()
 
     @typecheck
-    def cluster_based_sample(self, batch_size: int) -> List[Tuple[str, str, str]]:
-        """
-        Samples a chain ID or interface ID based on cluster IDs. For each batch, a number of cluster IDs
-        are selected randomly, and a chain ID or interface ID is sampled from each cluster based on the
-        weights of the chains/interfaces in the cluster.
+    def cluster_based_sample(self, batch_size: int) -> list[tuple[str, str, str]]:
+        """Samples a chain ID or interface ID based on cluster IDs. For each batch, a number of
+        cluster IDs are selected randomly, and a chain ID or interface ID is sampled from each
+        cluster based on the weights of the chains/interfaces in the cluster.
 
         Warning! Significantly slower than the regular `sample` method.
         """

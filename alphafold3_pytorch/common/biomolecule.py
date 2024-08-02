@@ -237,10 +237,8 @@ class Biomolecule:
     def crop_chains_with_masks(
         self, chain_ids_and_lengths: List[Tuple[str, int]], crop_masks: List[np.ndarray]
     ) -> "Biomolecule":
-        """
-        Crop the chains and metadata within a Biomolecule
-        to only include the specified chain residues.
-        """
+        """Crop the chains and metadata within a Biomolecule to only include the specified chain
+        residues."""
         assert len(chain_ids_and_lengths) == len(
             crop_masks
         ), "The number of chains and crop masks must be equal."
@@ -334,10 +332,8 @@ class Biomolecule:
         )
 
     def contiguous_crop(self, n_res: int = 384) -> "Biomolecule":
-        """
-        Crop a Biomolecule to only include contiguous
-        polymer residues and/or ligand atoms for each chain.
-        """
+        """Crop a Biomolecule to only include contiguous polymer residues and/or ligand atoms for
+        each chain."""
         chain_ids_and_lengths = list(collections.Counter(self.chain_id).items())
         random.shuffle(chain_ids_and_lengths)
         crop_masks = create_contiguous_crop_masks(chain_ids_and_lengths, n_res)
@@ -351,10 +347,8 @@ class Biomolecule:
         chain_2: Optional[str] = None,
         interface_distance_threshold: float = 15.0,
     ) -> "Biomolecule":
-        """
-        Crop a Biomolecule to only include polymer residues and ligand atoms
-        near a (random) reference atom within a sampled chain/interface.
-        """
+        """Crop a Biomolecule to only include polymer residues and ligand atoms near a (random)
+        reference atom within a sampled chain/interface."""
 
         # curate a list of candidate token center atoms from which to sample a reference atom
 
@@ -416,7 +410,7 @@ class Biomolecule:
 
         # sample a reference atom for spatial cropping
 
-        reference_atom_index = random.choice(token_center_atom_indices).item()
+        reference_atom_index = random.choice(token_center_atom_indices).item()  # nosec
 
         # perform spatial cropping according to reference atom proximity
 
@@ -457,7 +451,7 @@ class Biomolecule:
                 chain_2=chain_2,
             ),
         ]
-        crop_fn = random.choices(crop_fns, crop_fn_weights)[0]
+        crop_fn = random.choices(crop_fns, crop_fn_weights)[0]  # nosec
         return crop_fn()
 
 
@@ -465,8 +459,8 @@ class Biomolecule:
 def create_contiguous_crop_masks(
     chain_ids_and_lengths: List[Tuple[str, int]], n_res: int
 ) -> List[np.ndarray]:
-    """
-    Create contiguous crop masks for each given chain.
+    """Create contiguous crop masks for each given chain.
+
     Implements Algorithm 1 from the AlphaFold-Multimer paper.
     """
     m_ks = []
@@ -478,9 +472,9 @@ def create_contiguous_crop_masks(
         crop_size_max = min(n_res - n_added, n_k)
         # NOTE: `max(0, n_remaining)` was analytically added to prevent invalid crop sizes.
         crop_size_min = min(n_k, max(0, n_res - (n_added + max(0, n_remaining))))
-        crop_size = random.randrange(crop_size_min, crop_size_max + 1)
+        crop_size = random.randrange(crop_size_min, crop_size_max + 1)  # nosec
         n_added += crop_size
-        crop_start = random.randrange(0, n_k - crop_size + 1)
+        crop_start = random.randrange(0, n_k - crop_size + 1)  # nosec
         m_k = np.zeros(n_k, dtype=bool)
         keep = np.arange(crop_start, crop_start + crop_size)
         m_k[keep] = True
@@ -495,8 +489,8 @@ def create_spatial_crop_masks(
     reference_token_center_atom_index: int,
     n_res: int,
 ) -> List[np.ndarray]:
-    """
-    Create spatial crop masks for each given chain.
+    """Create spatial crop masks for each given chain.
+
     Implements Algorithm 2 from the AlphaFold-Multimer paper.
     """
     # calculate distances with small uniquifying values to break ties
@@ -579,7 +573,8 @@ def get_ligand_atom_name(atom_name: str, atom_types_set: Set[str]) -> str:
 def get_unique_res_atom_names(
     mmcif_object: mmcif_parsing.MmcifObject,
 ) -> List[Tuple[List[List[str]], str, int]]:
-    """Get atom name-chain ID tuples for each (e.g. ligand) "pseudoresidue" of each residue in each chain."""
+    """Get atom name-chain ID tuples for each (e.g. ligand) "pseudoresidue" of each residue in each
+    chain."""
     unique_res_atom_names = []
     for chain in mmcif_object.structure:
         chain_chem_comp = mmcif_object.chem_comp_details[chain.id]
@@ -900,7 +895,6 @@ def remove_metadata_fields_by_prefixes(
 
     :param metadata_dict: The metadata default dictionary from which to remove metadata fields.
     :param field_prefixes: A list of prefixes to remove from the metadata default dictionary.
-
     :return: A metadata dictionary with the specified metadata fields removed.
     """
     return {

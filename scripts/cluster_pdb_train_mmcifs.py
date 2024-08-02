@@ -23,7 +23,7 @@ import argparse
 import glob
 import json
 import os
-import subprocess
+import subprocess  # nosec
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import Dict, List, Literal, Optional, Set, Tuple, Union
 
@@ -38,7 +38,10 @@ rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
 from alphafold3_pytorch.data import mmcif_parsing
 from alphafold3_pytorch.utils import RankedLogger
-from alphafold3_pytorch.utils.data_utils import RESIDUE_MOLECULE_TYPE, get_residue_molecule_type
+from alphafold3_pytorch.utils.data_utils import (
+    RESIDUE_MOLECULE_TYPE,
+    get_residue_molecule_type,
+)
 from alphafold3_pytorch.utils.tensor_typing import IntType, typecheck
 from alphafold3_pytorch.utils.utils import exists, np_mode
 
@@ -85,9 +88,8 @@ DNA_LETTERS_1TO3 = {
 def convert_modified_residue_three_to_one(
     residue_id: str, residue_mol_type: RESIDUE_MOLECULE_TYPE
 ) -> Tuple[str, RESIDUE_MOLECULE_TYPE]:
-    """
-    Convert a three-letter amino acid, nucleotide, or CCD code to a one-letter code (if applicable).
-    Also return the chemically-specific molecule type of the residue.
+    """Convert a three-letter amino acid, nucleotide, or CCD code to a one-letter code (if
+    applicable). Also return the chemically-specific molecule type of the residue.
 
     NOTE: All unknown residues or unmappable modified residues (be they protein, RNA, or DNA) are
     converted to the unknown residue type of the residue's chemical type (e.g., `N` for RNA).
@@ -158,11 +160,9 @@ def parse_chain_sequences_and_interfaces_from_mmcif(
     min_num_residues_for_protein_classification: int = 10,
     interface_distance_threshold: float = 5.0,
 ) -> Tuple[Dict[str, str], Set[str]]:
-    """
-    Parse an mmCIF file and return a dictionary mapping chain IDs
-    to sequences for all molecule types (i.e., proteins, rna, dna, peptides, ligands, etc.)
-    as well as a set of chain ID pairs denoting structural interfaces.
-    """
+    """Parse an mmCIF file and return a dictionary mapping chain IDs to sequences for all molecule
+    types (i.e., proteins, rna, dna, peptides, ligands, etc.) as well as a set of chain ID pairs
+    denoting structural interfaces."""
     assert filepath.endswith(".cif"), "The input file must be an mmCIF file."
     file_id = os.path.splitext(os.path.basename(filepath))[0]
     mmcif_object = mmcif_parsing.parse_mmcif_object(filepath, file_id)
@@ -293,10 +293,9 @@ def parse_chain_sequences_and_interfaces_from_mmcif_file(
 def parse_chain_sequences_and_interfaces_from_mmcif_directory(
     mmcif_dir: str, max_workers: int = 2, assume_one_based_residue_ids: bool = False
 ) -> Tuple[CHAIN_SEQUENCES, CHAIN_INTERFACES]:
-    """
-    Parse all mmCIF files in a directory and return a list of dictionaries mapping chain IDs to sequences
-    as well as a dictionary mapping complex IDs to a list of chain ID pairs denoting structural interfaces.
-    """
+    """Parse all mmCIF files in a directory and return a list of dictionaries mapping chain IDs to
+    sequences as well as a dictionary mapping complex IDs to a list of chain ID pairs denoting
+    structural interfaces."""
     all_chain_sequences = []
     all_interface_chain_ids = {}
 
@@ -331,7 +330,8 @@ def write_sequences_to_fasta(
     molecule_type: CLUSTERING_MOLECULE_TYPE,
     interface_chain_ids: CHAIN_INTERFACES | None = None,
 ) -> List[str]:
-    """Write sequences of a particular molecule type to a FASTA file, and return all molecule IDs."""
+    """Write sequences of a particular molecule type to a FASTA file, and return all molecule
+    IDs."""
     assert fasta_filepath.endswith(".fasta"), "The output file must be a FASTA file."
     fasta_filepath = fasta_filepath.replace(".fasta", f"_{molecule_type}.fasta")
 
@@ -396,7 +396,8 @@ def cluster_sequences_using_mmseqs2(
     coverage_mode: Literal[0, 1, 2, 3] = 1,
     extra_parameters: Optional[Dict[str, Union[int, float, str]]] = None,
 ) -> Dict[str, int]:
-    """Run MMseqs2 on the input FASTA file and write the resulting clusters to a local output directory."""
+    """Run MMseqs2 on the input FASTA file and write the resulting clusters to a local output
+    directory."""
     assert input_filepath.endswith(".fasta"), "The input file must be a FASTA file."
 
     input_filepath = input_filepath.replace(".fasta", f"_{molecule_type}.fasta")
@@ -427,7 +428,7 @@ def cluster_sequences_using_mmseqs2(
         for key, value in extra_parameters.items():
             mmseqs_command.extend([key, str(value)])
 
-    subprocess.run(mmseqs_command)
+    subprocess.run(mmseqs_command)  # nosec
     assert os.path.isfile(
         output_cluster_filepath
     ), f"Output cluster file '{output_cluster_filepath}' does not exist."
@@ -477,7 +478,8 @@ def cluster_sequences_using_mmseqs2(
 def cluster_ligands_by_ccd_code(
     all_chain_sequences: CHAIN_SEQUENCES, output_dir: str
 ) -> Dict[str, int]:
-    """Cluster ligands based on their CCD codes and write the resulting clusters to a local output directory."""
+    """Cluster ligands based on their CCD codes and write the resulting clusters to a local output
+    directory."""
     # Parse the ligand sequences from all chain sequences, while clustering them based on their CCD codes
     chain_cluster_mapping = {}
     ccd_code_to_cluster_mapping = {}
@@ -526,7 +528,8 @@ def map_pdb_chain_id_to_chain_cluster_id(
     peptide_chain_cluster_mapping: Dict[str, IntType],
     ligand_chain_cluster_mapping: Dict[str, IntType],
 ) -> str:
-    """Map a PDB chain ID and molecule ID to a chain cluster ID based on the chain's (majority) molecule type."""
+    """Map a PDB chain ID and molecule ID to a chain cluster ID based on the chain's (majority)
+    molecule type."""
     if "protein" in pdb_chain_id and pdb_chain_id in protein_chain_cluster_mapping:
         chain_cluster = f"{molecule_id}-cluster-{protein_chain_cluster_mapping[pdb_chain_id]}"
     elif (
@@ -736,10 +739,10 @@ if __name__ == "__main__":
     if os.path.exists(
         os.path.join(args.output_dir, "all_chain_sequences.json")
     ) and os.path.exists(os.path.join(args.output_dir, "interface_chain_ids.json")):
-        with open(os.path.join(args.output_dir, "all_chain_sequences.json"), "r") as f:
+        with open(os.path.join(args.output_dir, "all_chain_sequences.json")) as f:
             all_chain_sequences = json.load(f)
 
-        with open(os.path.join(args.output_dir, "interface_chain_ids.json"), "r") as f:
+        with open(os.path.join(args.output_dir, "interface_chain_ids.json")) as f:
             interface_chain_ids = json.load(f)
     else:
         # Parse all chain sequences and interfaces from mmCIF files

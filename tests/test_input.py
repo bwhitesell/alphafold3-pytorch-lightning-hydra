@@ -14,7 +14,11 @@ from alphafold3_pytorch.data import mmcif_writing
 from alphafold3_pytorch.data.life import reverse_complement, reverse_complement_tensor
 from alphafold3_pytorch.data.mocks import MockAtomDataset
 from alphafold3_pytorch.models.components.alphafold3 import Alphafold3
-from alphafold3_pytorch.models.components.inputs import Alphafold3Input, AtomDataset, PDBInput
+from alphafold3_pytorch.models.components.inputs import (
+    Alphafold3Input,
+    AtomDataset,
+    PDBInput,
+)
 
 # reverse complements
 
@@ -114,7 +118,8 @@ def test_alphafold3_input(directed_bonds):
 
 
 def test_alphafold3_atompos_input():
-    """Test the Alphafold3Input class, particularly its input transformations with atom positions."""
+    """Test the Alphafold3Input class, particularly its input transformations with atom
+    positions."""
     contrived_protein = "AG"
 
     mock_atompos = [

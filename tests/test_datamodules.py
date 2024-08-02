@@ -12,9 +12,8 @@ os.environ["TYPECHECK"] = "True"
 
 @pytest.mark.parametrize("batch_size", [4, 8])
 def test_atom_datamodule(batch_size: int) -> None:
-    """Tests `AtomDataModule` to verify that the necessary attributes were
-    created (e.g., the dataloader objects), and that dtypes and batch sizes
-    correctly match.
+    """Tests `AtomDataModule` to verify that the necessary attributes were created (e.g., the
+    dataloader objects), and that dtypes and batch sizes correctly match.
 
     :param batch_size: Batch size of the data to be loaded by the dataloader.
     """

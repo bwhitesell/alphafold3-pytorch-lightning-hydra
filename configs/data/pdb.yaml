@@ -1,4 +1,4 @@
-_target_: alphafold3_pytorch.data.atom_datamodule.PDBDataModule
+_target_: alphafold3_pytorch.data.pdb_datamodule.PDBDataModule
 data_dir: ${paths.data_dir}
 train_val_test_split: [2, 2, 2]
 sequence_crop_size: 384 # NOTE: must be one of (initial_training: 384, fine_tuning_1: 640, fine_tuning_2: 768, fine_tuning_3: 768), proceeding from left to right following Table 6 in the paper

@@ -2,7 +2,7 @@
 # # Clustering AlphaFold 3 PDB Evaluation Dataset
 #
 # For clustering AlphaFold 3's PDB evaluation dataset, we propose a modified (i.e., more stringent) version of the
-# evalution dataset's clustering procedure outlined in Abramson et al (2024).
+# evaluation dataset's clustering procedure outlined in Abramson et al (2024).
 #
 # With the full evaluation set curated by the PDB test set filtering script we create a “low homology” subset
 # that is filtered on homology to the training and validation sets.
@@ -202,14 +202,14 @@ def filter_chains_by_sequence_names(
     max_workers: int = 2,
 ) -> CHAIN_SEQUENCES | Tuple[CHAIN_SEQUENCES, CHAIN_INTERFACES]:
     """Return only chains (and potentially interfaces) with sequence names in the given set."""
-    filtered_structure_ids = set(
+    filtered_structure_ids = {
         name.split("-assembly1")[0] + "-assembly1"
         for name in (
             sequence_names[:, 0].tolist()
             if isinstance(sequence_names, np.ndarray)
             else sequence_names
         )
-    )
+    }
     interfaces_provided = exists(interface_chain_ids)
 
     if interfaces_provided:
@@ -624,10 +624,10 @@ if __name__ == "__main__":
     if os.path.exists(
         os.path.join(args.output_dir, "all_chain_sequences.json")
     ) and os.path.exists(os.path.join(args.output_dir, "interface_chain_ids.json")):
-        with open(os.path.join(args.output_dir, "all_chain_sequences.json"), "r") as f:
+        with open(os.path.join(args.output_dir, "all_chain_sequences.json")) as f:
             all_chain_sequences = json.load(f)
 
-        with open(os.path.join(args.output_dir, "interface_chain_ids.json"), "r") as f:
+        with open(os.path.join(args.output_dir, "interface_chain_ids.json")) as f:
             interface_chain_ids = json.load(f)
     else:
         # Parse all chain sequences and interfaces from mmCIF files
@@ -654,18 +654,16 @@ if __name__ == "__main__":
     if os.path.exists(
         os.path.join(args.output_dir, "filtered_all_chain_sequences.json")
     ) and os.path.exists(os.path.join(args.output_dir, "filtered_interface_chain_ids.json")):
-        with open(os.path.join(args.output_dir, "filtered_all_chain_sequences.json"), "r") as f:
+        with open(os.path.join(args.output_dir, "filtered_all_chain_sequences.json")) as f:
             all_chain_sequences = json.load(f)
 
-        with open(os.path.join(args.output_dir, "filtered_interface_chain_ids.json"), "r") as f:
+        with open(os.path.join(args.output_dir, "filtered_interface_chain_ids.json")) as f:
             interface_chain_ids = json.load(f)
     else:
-        with open(
-            os.path.join(args.reference_1_clustering_dir, "all_chain_sequences.json"), "r"
-        ) as f:
+        with open(os.path.join(args.reference_1_clustering_dir, "all_chain_sequences.json")) as f:
             reference_1_all_chain_sequences = json.load(f)
         with open(
-            os.path.join(args.reference_2_clustering_dir, "filtered_all_chain_sequences.json"), "r"
+            os.path.join(args.reference_2_clustering_dir, "filtered_all_chain_sequences.json")
         ) as f:
             reference_2_all_chain_sequences = json.load(f)
 

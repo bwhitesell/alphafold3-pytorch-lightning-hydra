@@ -62,7 +62,12 @@ from alphafold3_pytorch.utils.data_utils import (
     is_polymer,
     is_water,
 )
-from alphafold3_pytorch.utils.tensor_typing import AtomType, ResidueType, TokenType, typecheck
+from alphafold3_pytorch.utils.tensor_typing import (
+    AtomType,
+    ResidueType,
+    TokenType,
+    typecheck,
+)
 from alphafold3_pytorch.utils.utils import exists
 
 # Constants
@@ -219,7 +224,7 @@ def prefilter_target(
         )
         and filter_resolution(mmcif_object)
         # NOTE: Due to lack of clarity and rationale in the AF3 supplement, we retain
-        # up to 1,000 polymer chains for training, in constrast to the supplement's 300
+        # up to 1,000 polymer chains for training, in contrast to the supplement's 300
         and filter_polymer_chains(mmcif_object)
     )
     return filter_resolved_chains(mmcif_object) if target_passes_prefilters else None
@@ -347,10 +352,9 @@ def remove_clashing_chains(
 
 @typecheck
 def remove_excluded_ligands(
-    mmcif_object: MmcifObject, ligand_exclusion_set: Set[str]
+    mmcif_object: MmcifObject, ligand_exclusion_set: set[str]
 ) -> MmcifObject:
-    """
-    Identify ligands in the ligand exclusion set to be removed.
+    """Identify ligands in the ligand exclusion set to be removed.
 
     NOTE: Here, we remove all excluded ligands, even though
     the AlphaFold 3 supplement doesn't mention removing them.
@@ -375,7 +379,7 @@ def remove_excluded_ligands(
 
 @typecheck
 def remove_non_ccd_atoms(
-    mmcif_object: MmcifObject, ccd_reader_results: Dict[str, CCDReaderResult]
+    mmcif_object: MmcifObject, ccd_reader_results: dict[str, CCDReaderResult]
 ) -> MmcifObject:
     """Identify atoms not in the corresponding CCD code set to remove."""
     atoms_to_remove = set()
@@ -406,10 +410,9 @@ def remove_non_ccd_atoms(
 
 @typecheck
 def remove_leaving_atoms(
-    mmcif_object: MmcifObject, ccd_reader_results: Dict[str, CCDReaderResult]
+    mmcif_object: MmcifObject, ccd_reader_results: dict[str, CCDReaderResult]
 ) -> MmcifObject:
-    """
-    Identify leaving atoms to remove from covalent ligands.
+    """Identify leaving atoms to remove from covalent ligands.
 
     NOTE: We rely on the PDB's `struct_conn` and the CCD's
     `pdbx_leaving_atom_flag` metadata to discern leaving
@@ -484,8 +487,7 @@ def filter_large_ca_distances(
     max_distance: float = 10.0,
     min_num_residues_for_protein_classification: int = 10,
 ) -> MmcifObject:
-    """
-    Identify chains (to be removed) with any large sequential Ca-Ca atom distances.
+    """Identify chains (to be removed) with any large sequential Ca-Ca atom distances.
 
     NOTE: This function currently does not account for residues
     with alternative Ca atom locations.
@@ -525,18 +527,18 @@ def filter_large_ca_distances(
 @typecheck
 def select_closest_chains(
     mmcif_object: MmcifObject,
-    protein_residue_center_atoms: Dict[str, str],
-    nucleic_acid_residue_center_atoms: Dict[str, str],
+    protein_residue_center_atoms: dict[str, str],
+    nucleic_acid_residue_center_atoms: dict[str, str],
     max_chains: int = 20,
 ) -> MmcifObject:
     """Identify the closest chains in large bioassemblies."""
 
     @typecheck
     def get_tokens_from_residues(
-        residues: List[ResidueType],
-        protein_residue_center_atoms: Dict[str, str],
-        nucleic_acid_residue_center_atoms: Dict[str, str],
-    ) -> List[TokenType]:
+        residues: list[ResidueType],
+        protein_residue_center_atoms: dict[str, str],
+        nucleic_acid_residue_center_atoms: dict[str, str],
+    ) -> list[TokenType]:
         """Get tokens from residues."""
         tokens = []
         for res in residues:
@@ -553,8 +555,8 @@ def select_closest_chains(
     @typecheck
     def get_token_center_atom(
         token: TokenType,
-        protein_residue_center_atoms: Dict[str, str],
-        nucleic_acid_residue_center_atoms: Dict[str, str],
+        protein_residue_center_atoms: dict[str, str],
+        nucleic_acid_residue_center_atoms: dict[str, str],
     ) -> AtomType:
         """Get center atom of a token."""
         if isinstance(token, ResidueType):
@@ -568,10 +570,10 @@ def select_closest_chains(
 
     @typecheck
     def get_token_center_atoms(
-        tokens: List[TokenType],
-        protein_residue_center_atoms: Dict[str, str],
-        nucleic_acid_residue_center_atoms: Dict[str, str],
-    ) -> List[AtomType]:
+        tokens: list[TokenType],
+        protein_residue_center_atoms: dict[str, str],
+        nucleic_acid_residue_center_atoms: dict[str, str],
+    ) -> list[AtomType]:
         """Get center atoms of tokens."""
         token_center_atoms = []
         for token in tokens:
@@ -593,11 +595,11 @@ def select_closest_chains(
 
     @typecheck
     def get_interface_tokens(
-        tokens: List[TokenType],
-        protein_residue_center_atoms: Dict[str, str],
-        nucleic_acid_residue_center_atoms: Dict[str, str],
+        tokens: list[TokenType],
+        protein_residue_center_atoms: dict[str, str],
+        nucleic_acid_residue_center_atoms: dict[str, str],
         center_atom_interaction_distance: float = 15.0,
-    ) -> List[TokenType]:
+    ) -> list[TokenType]:
         """Get interface tokens."""
         token_center_atoms = get_token_center_atoms(
             tokens, protein_residue_center_atoms, nucleic_acid_residue_center_atoms
@@ -639,7 +641,7 @@ def select_closest_chains(
         interface_tokens = get_interface_tokens(
             tokens, protein_residue_center_atoms, nucleic_acid_residue_center_atoms
         )
-        random_interface_token = random.choice(interface_tokens)
+        random_interface_token = random.choice(interface_tokens)  # nosec
         chain_min_token_distances = []
         for chain in chains:
             chain_residues = list(chain)
@@ -671,7 +673,7 @@ def select_closest_chains(
 
 @typecheck
 def remove_crystallization_aids(
-    mmcif_object: MmcifObject, crystallography_methods: Dict[str, Set[str]]
+    mmcif_object: MmcifObject, crystallography_methods: dict[str, set[str]]
 ) -> MmcifObject:
     """Identify crystallization aids to remove."""
     if (
@@ -709,11 +711,8 @@ def filter_structure_with_timeout(
     max_cutoff_date: datetime = datetime(2021, 9, 30),
     remove_ligands_in_exclusion_set: bool = False,
 ):
-    """
-    Given an input mmCIF file, create a new filtered mmCIF file
-    using AlphaFold 3's PDB training dataset filtering criteria
-    under a timeout constraint.
-    """
+    """Given an input mmCIF file, create a new filtered mmCIF file using AlphaFold 3's PDB training
+    dataset filtering criteria under a timeout constraint."""
     # Section 2.5.4 of the AlphaFold 3 supplement
     asym_filepath = os.path.join(
         os.path.dirname(filepath).replace("unfiltered_assembly", "unfiltered_asym"),
@@ -772,11 +771,9 @@ def filter_structure_with_timeout(
 
 
 @typecheck
-def filter_structure(args: Tuple[str, str, datetime, datetime, bool]):
-    """
-    Given an input mmCIF file, create a new filtered mmCIF file
-    using AlphaFold 3's PDB training dataset filtering criteria.
-    """
+def filter_structure(args: tuple[str, str, datetime, datetime, bool]):
+    """Given an input mmCIF file, create a new filtered mmCIF file using AlphaFold 3's PDB training
+    dataset filtering criteria."""
     filepath, output_dir, min_cutoff_date, max_cutoff_date, remove_ligands_in_exclusion_set = args
     file_id = os.path.splitext(os.path.basename(filepath))[0]
     output_file_dir = os.path.join(output_dir, file_id[1:3])

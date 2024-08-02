@@ -44,8 +44,8 @@ def test_mmcif_object_parsing(mmcif_dir: str, complex_id: str) -> None:
     if not complex_filepaths:
         pytest.skip(f"File '{complex_filepath}' does not exist.")
 
-    complex_filepath = random.choice(complex_filepaths)
-    with open(complex_filepath, "r") as f:
+    complex_filepath = random.choice(complex_filepaths)  # nosec
+    with open(complex_filepath) as f:
         mmcif_string = f.read()
 
     parsing_result = mmcif_parsing.parse(
@@ -86,8 +86,7 @@ def test_random_mmcif_objects_parsing(
     num_random_complexes_to_parse: int,
     random_seed: int,
 ) -> None:
-    """Tests parsing and `Biomolecule` object creation for a random batch
-    of mmCIF files.
+    """Tests parsing and `Biomolecule` object creation for a random batch of mmCIF files.
 
     :param mmcif_dir: A directory containing PDB mmCIF files.
     :param num_random_complexes_to_parse: The number of random complexes to parse.
@@ -108,7 +107,7 @@ def test_random_mmcif_objects_parsing(
         and os.listdir(os.path.join(mmcif_dir, subdir))
     ]
     for complex_index in range(num_random_complexes_to_parse):
-        random_mmcif_subdir = random.choice(mmcif_subdirs)
+        random_mmcif_subdir = random.choice(mmcif_subdirs)  # nosec
         mmcif_subdir_files = [
             os.path.join(random_mmcif_subdir, mmcif_subdir_file)
             for mmcif_subdir_file in os.listdir(random_mmcif_subdir)
@@ -116,7 +115,7 @@ def test_random_mmcif_objects_parsing(
             and mmcif_subdir_file.endswith(".cif")
         ]
 
-        random_complex_filepath = random.choice(mmcif_subdir_files)
+        random_complex_filepath = random.choice(mmcif_subdir_files)  # nosec
         complex_id = os.path.splitext(os.path.basename(random_complex_filepath))[0]
 
         if not os.path.exists(random_complex_filepath):
@@ -128,7 +127,7 @@ def test_random_mmcif_objects_parsing(
         ):
             continue
 
-        with open(random_complex_filepath, "r") as f:
+        with open(random_complex_filepath) as f:
             mmcif_string = f.read()
 
         parsing_result = mmcif_parsing.parse(

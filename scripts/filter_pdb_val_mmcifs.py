@@ -113,11 +113,8 @@ def filter_structure_with_timeout(
     max_cutoff_date: datetime = datetime(2023, 1, 13),
     keep_ligands_in_exclusion_set: bool = False,
 ):
-    """
-    Given an input mmCIF file, create a new filtered mmCIF file
-    using AlphaFold 3's PDB validation dataset filtering criteria under a
-    timeout constraint.
-    """
+    """Given an input mmCIF file, create a new filtered mmCIF file using AlphaFold 3's PDB
+    validation dataset filtering criteria under a timeout constraint."""
     # Section 2.5.4 of the AlphaFold 3 supplement
     asym_filepath = os.path.join(
         os.path.dirname(filepath).replace("unfiltered_assembly", "unfiltered_asym"),
@@ -167,11 +164,9 @@ def filter_structure_with_timeout(
 
 
 @typecheck
-def filter_structure(args: Tuple[str, str, datetime, datetime, bool]):
-    """
-    Given an input mmCIF file, create a new filtered mmCIF file
-    using AlphaFold 3's PDB validation dataset filtering criteria.
-    """
+def filter_structure(args: tuple[str, str, datetime, datetime, bool]):
+    """Given an input mmCIF file, create a new filtered mmCIF file using AlphaFold 3's PDB
+    validation dataset filtering criteria."""
     filepath, output_dir, min_cutoff_date, max_cutoff_date, keep_ligands_in_exclusion_set = args
     file_id = os.path.splitext(os.path.basename(filepath))[0]
     output_file_dir = os.path.join(output_dir, file_id[1:3])

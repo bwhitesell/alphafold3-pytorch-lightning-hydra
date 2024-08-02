@@ -388,12 +388,10 @@ def mol_from_smile(smile: str) -> Mol:
 def mol_from_template_mmcif_file(
     mmcif_filepath: str, remove_hs: bool = True, remove_hydroxyl_oxygen: bool = True
 ) -> Chem.Mol:
-    """
-    Load an RDKit molecule from a template mmCIF file.
+    """Load an RDKit molecule from a template mmCIF file.
 
-    Note that template atom positions are by default installed for each atom.
-    This means users of this function should override these default atom
-    positions as needed.
+    Note that template atom positions are by default installed for each atom. This means users of
+    this function should override these default atom positions as needed.
 
     :param mmcif_filepath: The path to a residue/ligand template mmCIF file.
     :param remove_hs: Whether to remove hydrogens from the template molecule.

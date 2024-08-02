@@ -1,4 +1,7 @@
-from alphafold3_pytorch.utils.instantiators import instantiate_callbacks, instantiate_loggers
+from alphafold3_pytorch.utils.instantiators import (
+    instantiate_callbacks,
+    instantiate_loggers,
+)
 from alphafold3_pytorch.utils.logging_utils import log_hyperparameters
 from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.rich_utils import enforce_tags, print_config_tree
