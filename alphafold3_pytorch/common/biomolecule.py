@@ -682,7 +682,7 @@ def _from_mmcif_object(
             )
             is_modified_polymer_residue = is_polymer_residue and res_shortname == "X"
             if is_polymer_residue and not (
-                atomize_modified_polymer_residues and is_modified_polymer_residue
+                is_modified_polymer_residue and atomize_modified_polymer_residues
             ):
                 pos = np.zeros((residue_constants.atom_type_num, 3))
                 mask = np.zeros((residue_constants.atom_type_num,))
