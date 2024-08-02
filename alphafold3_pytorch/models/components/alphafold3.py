@@ -1,3 +1,48 @@
+"""
+global ein notation:
+b - batch
+ba - batch with augmentation
+bt - batch with templates dimension merged
+h - heads
+n - molecule sequence length
+i - molecule sequence length (source)
+j - molecule sequence length (target)
+l - present (i.e., non-missing) atom sequence length
+m - atom sequence length
+nw - windowed sequence length
+d - feature dimension
+ds - feature dimension (single)
+dp - feature dimension (pairwise)
+dap - feature dimension (atompair)
+dapi - feature dimension (atompair input)
+da - feature dimension (atom)
+dai - feature dimension (atom input)
+dtf - additional token feats derived from msa (f_profile and f_deletion_mean)
+t - templates
+s - msa
+r - registers
+
+additional_token_feats: [*]:
+- concatted to the single rep
+0: f_profile
+1: f_deletion_mean
+
+additional_molecule_feats: [*, 5]:
+- used for deriving relative positions
+0: molecule_index
+1: token_index
+2: asym_id
+3: entity_id
+4: sym_id
+
+is_molecule_types: [*, 5]:
+0: is_protein
+1: is_rna
+2: is_dna
+3: is_ligand
+4: is_metal_ions_or_misc
+"""
+
 from __future__ import annotations
 
 from functools import partial, wraps
@@ -28,7 +73,6 @@ from alphafold3_pytorch.models.components.attention import (
 )
 from alphafold3_pytorch.models.components.inputs import (
     ADDITIONAL_MOLECULE_FEATS,
-    DEFAULT_NUM_MOLECULE_MODS,
     IS_BIOMOLECULE_INDICES,
     IS_DNA,
     IS_DNA_INDEX,
@@ -62,57 +106,6 @@ from alphafold3_pytorch.utils.model_utils import (
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
 from alphafold3_pytorch.utils.utils import default, exists, identity
 
-"""
-global ein notation:
-b - batch
-ba - batch with augmentation
-bt - batch with templates dimension merged
-h - heads
-n - molecule sequence length
-i - molecule sequence length (source)
-j - molecule sequence length (target)
-l - present (i.e., non-missing) atom sequence length
-m - atom sequence length
-nw - windowed sequence length
-d - feature dimension
-ds - feature dimension (single)
-dp - feature dimension (pairwise)
-dap - feature dimension (atompair)
-dapi - feature dimension (atompair input)
-da - feature dimension (atom)
-dai - feature dimension (atom input)
-dtf - additional token feats derived from msa (f_profile and f_deletion_mean)
-t - templates
-s - msa
-r - registers
-"""
-
-"""
-additional_token_feats: [*]
-- concatted to the single rep
-0: f_profile
-1: f_deletion_mean
-"""
-
-"""
-additional_molecule_feats: [*, 5]:
-- used for deriving relative positions
-0: molecule_index
-1: token_index
-2: asym_id
-3: entity_id
-4: sym_id
-"""
-
-"""
-is_molecule_types: [*, 5]
-0: is_protein
-1: is_rna
-2: is_dna
-3: is_ligand
-4: is_metal_ions_or_misc
-"""
-
 # constants
 
 LinearNoBias = partial(Linear, bias=False)
@@ -135,8 +128,7 @@ class LinearNoBiasThenOuterSum(Module):
     def forward(
         self, t: Float["b n ds"]  # type: ignore
     ) -> Float["b n n dp"]:  # type: ignore
-        """
-        Perform the forward pass.
+        """Perform the forward pass.
 
         :param t: The input tensor.
         :return: The output tensor.
@@ -158,8 +150,7 @@ class SwiGLU(Module):
     def forward(
         self, x: Float["... d"]  # type: ignore
     ) -> Float[" ... (d//2)"]:  # type: ignore
-        """
-        Perform the forward pass.
+        """Perform the forward pass.
 
         :param x: The input tensor.
         :return: The output tensor.
@@ -185,8 +176,7 @@ class Transition(Module):
     def forward(
         self, x: Float["... d"]  # type: ignore
     ) -> Float["... d"]:  # type: ignore
-        """
-        Perform the forward pass.
+        """Perform the forward pass.
 
         :param x: The input tensor.
         :return: The output tensor.
@@ -209,8 +199,7 @@ class Dropout(Module):
 
     @typecheck
     def forward(self, t: Tensor) -> Tensor:
-        """
-        Perform the forward pass.
+        """Perform the forward pass.
 
         :param t: The input tensor.
         :return: The output tensor.
@@ -260,8 +249,7 @@ class PreLayerNorm(Module):
     def forward(
         self, x: Float["... n d"], **kwargs  # type: ignore
     ) -> Float["... n d"]:  # type: ignore
-        """
-        Perform the forward pass.
+        """Perform the forward pass.
 
         :param x: The input tensor.
         :return: The output tensor.
@@ -288,8 +276,7 @@ class AdaptiveLayerNorm(Module):
         x: Float["b n d"],  # type: ignore
         cond: Float["b n dc"],  # type: ignore
     ) -> Float["b n d"]:  # type: ignore
-        """
-        Perform the forward pass.
+        """Perform the forward pass.
 
         :param x: The input tensor.
         :param cond: The conditional tensor.
@@ -333,8 +320,7 @@ class ConditionWrapper(Module):
         cond: Float["b n dc"],  # type: ignore
         **kwargs,
     ) -> Float["b n d"]:  # type: ignore
-        """
-        Perform the forward pass.
+        """Perform the forward pass.
 
         :param x: The input tensor.
         :param cond: The conditional tensor.
@@ -394,8 +380,7 @@ class TriangleMultiplication(Module):
         x: Float["b n n d"],  # type: ignore
         mask: Bool["b n"] | None = None,  # type: ignore
     ) -> Float["b n n d"]:  # type: ignore
-        """
-        Perform the forward pass.
+        """Perform the forward pass.
 
         :param x: The input tensor.
         :param mask: The mask tensor.
@@ -457,8 +442,7 @@ class AttentionPairBias(Module):
         attn_bias: Float["b n n"] | Float["b nw w (w*2)"] | None = None,  # type: ignore
         **kwargs,
     ) -> Float["b n ds"]:  # type: ignore
-        """
-        Perform the forward pass.
+        """Perform the forward pass.
 
         :param single_repr: The single representation tensor.
         :param pairwise_repr: The pairwise representation tensor.
@@ -535,8 +519,7 @@ class TriangleAttention(Module):
         mask: Bool["b n"] | None = None,  # type: ignore
         **kwargs,
     ) -> Float["b n n d"]:  # type: ignore
-        """
-        Perform the forward pass.
+        """Perform the forward pass.
 
         :param pairwise_repr: The pairwise representation tensor.
         :param mask: The mask tensor.
@@ -632,8 +615,7 @@ class PairwiseBlock(Module):
         pairwise_repr: Float["b n n d"],  # type: ignore
         mask: Bool["b n"] | None = None,  # type: ignore
     ):
-        """
-        Perform the forward pass.
+        """Perform the forward pass.
 
         :param pairwise_repr: The pairwise representation tensor.
         :param mask: The mask tensor.
@@ -669,8 +651,7 @@ class OuterProductMean(Module):
         mask: Bool["b n"] | None = None,  # type: ignore
         msa_mask: Bool["b s"] | None = None,  # type: ignore
     ) -> Float["b n n dp"]:  # type: ignore
-        """
-        Perform the forward pass.
+        """Perform the forward pass.
 
         :param msa: The MSA tensor.
         :param mask: The mask tensor.
@@ -757,8 +738,7 @@ class MSAPairWeightedAveraging(Module):
         pairwise_repr: Float["b n n dp"],  # type: ignore
         mask: Bool["b n"] | None = None,  # type: ignore
     ) -> Float["b s n d"]:  # type: ignore
-        """
-        Perform the forward pass.
+        """Perform the forward pass.
 
         :param msa: The MSA tensor.
         :param pairwise_repr: The pairwise representation tensor.
@@ -877,8 +857,7 @@ class MSAModule(Module):
         mask: Bool["b n"] | None = None,  # type: ignore
         msa_mask: Bool["b s"] | None = None,  # type: ignore
     ) -> Float["b n n dp"]:  # type: ignore
-        """
-        Perform the forward pass with individual layers.
+        """Perform the forward pass with individual layers.
 
         :param single_repr: The single representation tensor.
         :param pairwise_repr: The pairwise representation tensor.
@@ -915,8 +894,7 @@ class MSAModule(Module):
         mask: Bool["b n"] | None = None,  # type: ignore
         msa_mask: Bool["b s"] | None = None,  # type: ignore
     ) -> Float["b n n dp"]:  # type: ignore
-        """
-        Perform the forward pass with checkpointed layers.
+        """Perform the forward pass with checkpointed layers.
 
         :param single_repr: The single representation tensor.
         :param pairwise_repr: The pairwise representation tensor.
@@ -992,8 +970,7 @@ class MSAModule(Module):
         mask: Bool["b n"] | None = None,  # type: ignore
         msa_mask: Bool["b s"] | None = None,  # type: ignore
     ) -> Float["b n n dp"]:  # type: ignore
-        """
-        Perform the forward pass.
+        """Perform the forward pass.
 
         :param single_repr: The single representation tensor.
         :param pairwise_repr: The pairwise representation tensor.
@@ -1156,8 +1133,7 @@ class PairformerStack(Module):
         pairwise_repr: Float["b n n dp"],  # type: ignore
         mask: Bool["b n"] | None = None,  # type: ignore
     ) -> Tuple[Float["b n ds"], Float["b n n dp"]]:  # type: ignore
-        """
-        Convert the module to a checkpointed version.
+        """Convert the module to a checkpointed version.
 
         :param single_repr: The single representation tensor.
         :param pairwise_repr: The pairwise representation tensor.
@@ -1214,8 +1190,7 @@ class PairformerStack(Module):
         pairwise_repr: Float["b n n dp"],  # type: ignore
         mask: Bool["b n"] | None = None,  # type: ignore
     ) -> Tuple[Float["b n ds"], Float["b n n dp"]]:  # type: ignore
-        """
-        Perform the forward pass.
+        """Perform the forward pass.
 
         :param single_repr: The single representation tensor.
         :param pairwise_repr: The pairwise representation tensor.
@@ -1290,8 +1265,7 @@ class RelativePositionEncoding(Module):
     def forward(
         self, *, additional_molecule_feats: Int[f"b n {ADDITIONAL_MOLECULE_FEATS}"]  # type: ignore
     ) -> Float["b n n dp"]:  # type: ignore
-        """
-        Perform the forward pass.
+        """Perform the forward pass.
 
         :param additional_molecule_feats: The additional molecule features tensor.
         :return: The output tensor.
@@ -1399,8 +1373,7 @@ class TemplateEmbedder(Module):
         *,
         mask: Bool["bt n"] | None = None,  # type: ignore
     ) -> Float["bt n n dt"]:  # type: ignore
-        """
-        Perform the forward pass with individual layers.
+        """Perform the forward pass with individual layers.
 
         :param templates: The templates tensor.
         :param mask: The mask tensor.
@@ -1418,8 +1391,7 @@ class TemplateEmbedder(Module):
         *,
         mask: Bool["bt n"] | None = None,  # type: ignore
     ) -> Float["bt n n dt"]:  # type: ignore
-        """
-        Perform the forward pass with checkpointed layers.
+        """Perform the forward pass with checkpointed layers.
 
         :param templates: The templates tensor.
         :param mask: The mask tensor.
@@ -1455,8 +1427,7 @@ class TemplateEmbedder(Module):
         pairwise_repr: Float["b n n dp"],  # type: ignore
         mask: Bool["b n"] | None = None,  # type: ignore
     ) -> Float["b n n dp"]:  # type: ignore
-        """
-        Perform the forward pass.
+        """Perform the forward pass.
 
         :param templates: The templates tensor.
         :param template_mask: The template mask tensor.
@@ -1528,8 +1499,7 @@ class FourierEmbedding(Module):
         self,
         times: Float[" b"],  # type: ignore
     ) -> Float["b d"]:  # type: ignore
-        """
-        Perform the forward pass.
+        """Perform the forward pass.
 
         :param times: The times tensor.
         :return: The output tensor.
@@ -1578,8 +1548,7 @@ class PairwiseConditioning(Module):
         pairwise_trunk: Float["b n n dpt"],  # type: ignore
         pairwise_rel_pos_feats: Float["b n n dpr"],  # type: ignore
     ) -> Float["b n n dp"]:  # type: ignore
-        """
-        Perform the forward pass.
+        """Perform the forward pass.
 
         :param pairwise_trunk: The pairwise trunk tensor.
         :param pairwise_rel_pos_feats: The pairwise relative position features tensor.
@@ -1641,8 +1610,7 @@ class SingleConditioning(Module):
         single_trunk_repr: Float["b n dst"],  # type: ignore
         single_inputs_repr: Float["b n dsi"],  # type: ignore
     ) -> Float["b n (dst+dsi)"]:  # type: ignore
-        """
-        Perform the forward pass.
+        """Perform the forward pass.
 
         :param times: The times tensor.
         :param single_trunk_repr: The single trunk representation tensor.
@@ -1782,8 +1750,7 @@ class DiffusionTransformer(Module):
         mask: Bool["b n"] | None = None,  # type: ignore
         windowed_mask: Bool["b nw w (w*2)"] | None = None,  # type: ignore
     ):
-        """
-        Perform the forward pass with checkpointed serial layers.
+        """Perform the forward pass with checkpointed serial layers.
 
         :param noised_repr: The noised representation tensor.
         :param single_repr: The single representation tensor.
@@ -1856,8 +1823,7 @@ class DiffusionTransformer(Module):
         mask: Bool["b n"] | None = None,  # type: ignore
         windowed_mask: Bool["b nw w (w*2)"] | None = None,  # type: ignore
     ):
-        """
-        Perform the forward pass with serial layers.
+        """Perform the forward pass with serial layers.
 
         :param noised_repr: The noised representation tensor.
         :param single_repr: The single representation tensor.
@@ -1898,8 +1864,7 @@ class DiffusionTransformer(Module):
         mask: Bool["b n"] | None = None,  # type: ignore
         windowed_mask: Bool["b nw w (w*2)"] | None = None,  # type: ignore
     ):
-        """
-        Perform the forward pass with parallel layers.
+        """Perform the forward pass with parallel layers.
 
         :param noised_repr: The noised representation tensor.
         :param single_repr: The single representation tensor.
@@ -1945,8 +1910,7 @@ class DiffusionTransformer(Module):
         mask: Bool["b n"] | None = None,  # type: ignore
         windowed_mask: Bool["b nw w (w*2)"] | None = None,  # type: ignore
     ):
-        """
-        Perform the forward pass.
+        """Perform the forward pass.
 
         :param noised_repr: The noised representation tensor.
         :param single_repr: The single representation tensor.
@@ -2022,8 +1986,7 @@ class AtomToTokenPooler(Module):
         atom_mask: Bool["b m"],  # type: ignore
         molecule_atom_lens: Int["b n"],  # type: ignore
     ) -> Float["b n ds"]:  # type: ignore
-        """
-        Perform the forward pass.
+        """Perform the forward pass.
 
         :param atom_feats: The atom features tensor.
         :param atom_mask: The atom mask tensor.
@@ -2199,8 +2162,7 @@ class DiffusionModule(Module):
         atom_parent_ids: Int["b m"] | None = None,  # type: ignore
         missing_atom_mask: Bool["b m"] | None = None,  # type: ignore
     ) -> Float["b m 3"]:  # type: ignore
-        """
-        Perform the forward pass.
+        """Perform the forward pass.
 
         :param noised_atom_pos: The noised atom position tensor.
         :param atom_feats: The atom features tensor.
@@ -2478,8 +2440,7 @@ class ElucidatedAtomDiffusion(Module):
 
     @property
     def device(self):
-        """
-        Return the device of the module.
+        """Return the device of the module.
 
         :return: The device of the module.
         """
@@ -2488,8 +2449,7 @@ class ElucidatedAtomDiffusion(Module):
     # derived preconditioning params - Table 1
 
     def c_skip(self, sigma):
-        """
-        Return the c_skip value.
+        """Return the c_skip value.
 
         :param sigma: The sigma value.
         :return: The c_skip value.
@@ -2497,8 +2457,7 @@ class ElucidatedAtomDiffusion(Module):
         return (self.sigma_data**2) / (sigma**2 + self.sigma_data**2)
 
     def c_out(self, sigma):
-        """
-        Return the c_out value.
+        """Return the c_out value.
 
         :param sigma: The sigma value.
         :return: The c_out value.
@@ -2506,8 +2465,7 @@ class ElucidatedAtomDiffusion(Module):
         return sigma * self.sigma_data * (self.sigma_data**2 + sigma**2) ** -0.5
 
     def c_in(self, sigma):
-        """
-        Return the c_in value.
+        """Return the c_in value.
 
         :param sigma: The sigma value.
         :return: The c_in value.
@@ -2515,8 +2473,7 @@ class ElucidatedAtomDiffusion(Module):
         return 1 * (sigma**2 + self.sigma_data**2) ** -0.5
 
     def c_noise(self, sigma):
-        """
-        Return the c_noise value.
+        """Return the c_noise value.
 
         :param sigma: The sigma value.
         :return: The c_noise value.
@@ -2533,8 +2490,7 @@ class ElucidatedAtomDiffusion(Module):
         network_condition_kwargs: dict,
         clamp=False,
     ):
-        """
-        Run a network forward pass, with the preconditioned inputs.
+        """Run a network forward pass, with the preconditioned inputs.
 
         :param noised_atom_pos: The noised atom position tensor.
         :param sigma: The sigma value.
@@ -2568,9 +2524,7 @@ class ElucidatedAtomDiffusion(Module):
     # equation (7) in the paper
 
     def sample_schedule(self, num_sample_steps=None):
-        """
-        Return the schedule of sigmas for sampling.
-        Algorithm (7) in the paper.
+        """Return the schedule of sigmas for sampling. Algorithm (7) in the paper.
 
         :param num_sample_steps: The number of sample steps.
         :return: The schedule of sigmas for sampling.
@@ -2592,8 +2546,7 @@ class ElucidatedAtomDiffusion(Module):
 
     @torch.no_grad()
     def sample(self, atom_mask: Bool["b m"] | None = None, num_sample_steps=None, clamp=False, use_tqdm_pbar=True, tqdm_pbar_title="Sampling time step", **network_condition_kwargs):  # type: ignore
-        """
-        Sample clean atom positions.
+        """Sample clean atom positions.
 
         :param atom_mask: The atom mask tensor.
         :param num_sample_steps: The number of sample steps.
@@ -2675,8 +2628,7 @@ class ElucidatedAtomDiffusion(Module):
     # training
 
     def loss_weight(self, sigma):
-        """
-        Return the loss weight for training.
+        """Return the loss weight for training.
 
         :param sigma: The sigma value.
         :return: The loss weight for training.
@@ -2684,8 +2636,7 @@ class ElucidatedAtomDiffusion(Module):
         return (sigma**2 + self.sigma_data**2) * (sigma * self.sigma_data) ** -2
 
     def noise_distribution(self, batch_size):
-        """
-        Sample Gaussian-distributed noise.
+        """Sample Gaussian-distributed noise.
 
         :param batch_size: The batch size.
         :return: Sampled Gaussian noise.
@@ -2715,8 +2666,7 @@ class ElucidatedAtomDiffusion(Module):
         ligand_loss_weight=10.0,
         return_loss_breakdown=False,
     ) -> ElucidatedAtomDiffusionReturn:
-        """
-        Perform the forward pass.
+        """Perform the forward pass.
 
         :param atom_pos_ground_truth: The ground truth atom position tensor.
         :param atom_mask: The atom mask tensor.
@@ -2905,8 +2855,7 @@ class SmoothLDDTLoss(Module):
         is_rna: Bool["b n"],  # type: ignore
         coords_mask: Bool["b n"] | None = None,  # type: ignore
     ) -> Float[""]:  # type: ignore
-        """
-        Compute the SmoothLDDT loss.
+        """Compute the SmoothLDDT loss.
 
         :param pred_coords: Predicted coordinates.
         :param true_coords: True coordinates.
@@ -2969,12 +2918,11 @@ class WeightedRigidAlign(Module):
         weights: Float["b n"],  # type: ignore - weights for each atom
         mask: Bool["b n"] | None = None,  # type: ignore - mask for variable lengths
     ) -> Float["b n 3"]:  # type: ignore
-        """
-        Compute the weighted rigid alignment.
+        """Compute the weighted rigid alignment.
 
-        The check for ambiguous rotation and low rank
-        of cross-correlation between aligned point clouds
-        is inspired by https://pytorch3d.readthedocs.io/en/latest/_modules/pytorch3d/ops/points_alignment.html.
+        The check for ambiguous rotation and low rank of cross-correlation between aligned point
+        clouds is inspired by
+        https://pytorch3d.readthedocs.io/en/latest/_modules/pytorch3d/ops/points_alignment.html.
 
         :param pred_coords: Predicted coordinates.
         :param true_coords: True coordinates.
@@ -3056,8 +3004,7 @@ class ExpressCoordinatesInFrame(Module):
         coords: Float["b m 3"],  # type: ignore
         frame: Float["b m 3 3"] | Float["b 3 3"] | Float["3 3"],  # type: ignore
     ) -> Float["b m 3"]:  # type: ignore
-        """
-        Express coordinates in the given frame.
+        """Express coordinates in the given frame.
 
         :param coords: Coordinates to be expressed in the given frame.
         :param frame: Frames defined by three points.
@@ -3110,8 +3057,7 @@ class ComputeAlignmentError(Module):
         pred_frames: Float["b n 3 3"],  # type: ignore
         true_frames: Float["b n 3 3"],  # type: ignore
     ) -> Float["b n n"]:  # type: ignore
-        """
-        Compute the alignment errors.
+        """Compute the alignment errors.
 
         :param pred_coords: Predicted coordinates.
         :param true_coords: True coordinates.
@@ -3163,8 +3109,7 @@ class CentreRandomAugmentation(Module):
 
     @property
     def device(self):
-        """
-        Return the device of the module.
+        """Return the device of the module.
 
         :return: The device of the module.
         """
@@ -3176,8 +3121,7 @@ class CentreRandomAugmentation(Module):
         coords: Float["b n 3"],  # type: ignore
         mask: Bool["b n"] | None = None,  # type: ignore
     ) -> Float["b n 3"]:  # type: ignore
-        """
-        Compute the augmented coordinates.
+        """Compute the augmented coordinates.
 
         :param coords: The coordinates to be augmented by a random rotation and translation.
         :param mask: The mask for variable lengths.
@@ -3214,8 +3158,7 @@ class CentreRandomAugmentation(Module):
 
     @typecheck
     def _random_rotation_matrix(self, batch_size: int) -> Float["b 3 3"]:  # type: ignore
-        """
-        Generate a random rotation matrix.
+        """Generate a random rotation matrix.
 
         :param batch_size: The batch size.
         :return: The random rotation matrix.
@@ -3257,8 +3200,7 @@ class CentreRandomAugmentation(Module):
 
     @typecheck
     def _random_translation_vector(self, batch_size: int) -> Float["b 3"]:  # type: ignore
-        """
-        Generate a random translation vector.
+        """Generate a random translation vector.
 
         :param batch_size: The batch size.
         :return: The random translation vector.
@@ -3362,8 +3304,7 @@ class InputFeatureEmbedder(Module):
         molecule_ids: Int["b n"],  # type: ignore
         additional_token_feats: Float["b n {self.dim_additional_token_feats}"] | None = None,  # type: ignore
     ) -> EmbeddedInputs:
-        """
-        Compute the embedded inputs.
+        """Compute the embedded inputs.
 
         :param atom_inputs: The atom inputs tensor.
         :param atompair_inputs: The atom pair inputs tensor.
@@ -3471,8 +3412,7 @@ class DistogramHead(Module):
     def forward(
         self, pairwise_repr: Float["b n n d"]  # type: ignore
     ) -> Float["b l n n"]:  # type: ignore
-        """
-        Perform the forward pass.
+        """Perform the forward pass.
 
         :param pairwise_repr: The pairwise representation tensor.
         :return: The logits for the distogram.
@@ -3581,8 +3521,7 @@ class ConfidenceHead(Module):
         atom_feats: Float["b m {self.da}"] | None = None,  # type: ignore
         return_pae_logits=True,
     ) -> ConfidenceHeadLogits:
-        """
-        Compute the confidence head logits.
+        """Compute the confidence head logits.
 
         :param single_inputs_repr: The single inputs representation tensor.
         :param single_repr: The single representation tensor.
@@ -3712,8 +3651,7 @@ class ComputeConfidenceScore(Module):
         self,
         breaks: Float[" breaks"],  # type: ignore
     ) -> Float[" breaks+1"]:  # type: ignore
-        """
-        Calculate bin centers from bin edges.
+        """Calculate bin centers from bin edges.
 
         :param breaks: [num_bins -1] bin edges
         :return: bin_centers: [num_bins] bin centers
@@ -3737,8 +3675,7 @@ class ComputeConfidenceScore(Module):
         ptm_residue_weight: Float["b n"] | None = None,  # type: ignore
         multimer_mode: bool = True,
     ) -> ConfidenceScore:
-        """
-        Main function to compute confidence score.
+        """Main function to compute confidence score.
 
         :param confidence_head_logits: ConfidenceHeadLogits
         :param asym_id: [b n] asym_id of each residue
@@ -3770,8 +3707,7 @@ class ComputeConfidenceScore(Module):
         self,
         logits: Float["b plddt m"],  # type: ignore
     ) -> Float["b m"]:  # type: ignore
-        """
-        Compute plDDT from logits.
+        """Compute plDDT from logits.
 
         :param logits: [b c m] logits
         :return: [b m] plDDT
@@ -3795,8 +3731,7 @@ class ComputeConfidenceScore(Module):
         interface: bool = False,
         compute_chain_wise_iptm: bool = False,
     ) -> Float["b n"] | Tuple[Float["b n n"], Float["b n n"], List[List[int]]]:  # type: ignore
-        """
-        Compute pTM from logits.
+        """Compute pTM from logits.
 
         :param logits: [b c n n] logits
         :param asym_id: [b n] asym_id of each residue
@@ -3936,8 +3871,7 @@ class ComputeClash(Module):
         indices: Int[" m"],  # type: ignore
         valid_indices: Int[" m"],  # type: ignore
     ) -> Bool[""]:  # type: ignore
-        """
-        Compute if there is a clash in the chain.
+        """Compute if there is a clash in the chain.
 
         :param atom_pos: [m 3] atom positions
         :param asym_id: [n] asym_id of each residue
@@ -3982,8 +3916,7 @@ class ComputeClash(Module):
         molecule_atom_lens: Int["b n"] | Int[" n"],  # type: ignore
         asym_id: Int["b n"] | Int[" n"],  # type: ignore
     ) -> Bool[""]:  # type: ignore
-        """
-        Compute if there is a clash in the chain.
+        """Compute if there is a clash in the chain.
 
         :param atom_pos: [b m 3] atom positions
         :param atom_mask: [b m] atom mask
@@ -4048,8 +3981,7 @@ class ComputeRankingScore(Module):
         atom_mask: Float["b m"],  # type: ignore
         atom_is_molecule_types: Float["b m"],  # type: ignore
     ) -> Float[" b"]:  # type: ignore
-        """
-        Compute disorder score.
+        """Compute disorder score.
 
         :param plddt: [b m] plddt
         :param atom_mask: [b m] atom mask
@@ -4075,8 +4007,7 @@ class ComputeRankingScore(Module):
         is_molecule_types: Int[f"b n {IS_MOLECULE_TYPES}"],  # type: ignore
         return_confidence_score: bool = False,
     ) -> Float[" b"] | Tuple[Float[" b"], Tuple[ConfidenceScore, Bool[" b"]]]:  # type: ignore
-        """
-        Compute full complex metric.
+        """Compute full complex metric.
 
         :param confidence_head_logits: ConfidenceHeadLogits
         :param asym_id: [b n] asym_id of each residue
@@ -4139,8 +4070,7 @@ class ComputeRankingScore(Module):
         asym_id: Int["b n"],  # type: ignore
         has_frame: Bool["b n"],  # type: ignore
     ) -> Float[" b"]:  # type: ignore
-        """
-        Compute single chain metric.
+        """Compute single chain metric.
 
         :param confidence_head_logits: ConfidenceHeadLogits
         :param asym_id: [b n] asym_id of each residue
@@ -4164,8 +4094,7 @@ class ComputeRankingScore(Module):
         has_frame: Bool["b n"],  # type: ignore
         interface_chains: List,
     ) -> Float[" b"]:  # type: ignore
-        """
-        Compute interface metric.
+        """Compute interface metric.
 
         :param confidence_head_logits: ConfidenceHeadLogits
         :param asym_id: [b n] asym_id of each residue
@@ -4217,8 +4146,7 @@ class ComputeRankingScore(Module):
         atom_mask: Bool["b m"],  # type: ignore
         atom_is_modified_residue: Int["b m"],  # type: ignore
     ) -> Float[" b"]:  # type: ignore
-        """
-        Compute modified residue score.
+        """Compute modified residue score.
 
         :param confidence_head_logits: ConfidenceHeadLogits
         :param atom_mask: [b m] atom mask
@@ -4248,8 +4176,7 @@ def get_cid_molecule_type(
     is_molecule_types: Bool[f"n {IS_MOLECULE_TYPES}"],  # type: ignore
     return_one_hot: bool = False,
 ) -> int | Bool[f" {IS_MOLECULE_TYPES}"]:  # type: ignore
-    """
-    Get the molecule type for where `asym_id == cid`.
+    """Get the molecule type for where `asym_id == cid`.
 
     :param cid: chain id
     :param asym_id: [n] asym_id of each residue
@@ -4342,8 +4269,7 @@ class ComputeModelSelectionScore(Module):
         dist_breaks: Float[" dist_break"],  # type: ignore
         tok_repr_atm_mask: Bool[" b n"],  # type: ignore
     ) -> Float[" b"]:  # type: ignore
-        """
-        Compute global PDE following Section 5.7 of the AF3 supplement.
+        """Compute global PDE following Section 5.7 of the AF3 supplement.
 
         :param pde_logits: [b pde n n] PDE logits
         :param dist_logits: [b dist n n] distance logits
@@ -4383,8 +4309,7 @@ class ComputeModelSelectionScore(Module):
         pairwise_mask: Bool["b m m"],  # type: ignore
         coords_mask: Bool["b m"] | None = None,  # type: ignore
     ) -> Float[" b"]:  # type: ignore
-        """
-        Compute lDDT.
+        """Compute lDDT.
 
         :param pred_coords: predicted coordinates
         :param true_coords: true coordinates
@@ -4445,8 +4370,7 @@ class ComputeModelSelectionScore(Module):
         is_molecule_types: Bool[f"b m {IS_MOLECULE_TYPES}"] | Bool[f"m {IS_MOLECULE_TYPES}"],  # type: ignore
         coords_mask: Bool["b m"] | Bool[" m"] | None = None,  # type: ignore
     ) -> Float[" b"]:  # type: ignore
-        """
-        Compute the plDDT between atoms maked by `asym_mask_a` and `asym_mask_b`.
+        """Compute the plDDT between atoms marked by `asym_mask_a` and `asym_mask_b`.
 
         :param asym_mask_a: [b m] asym_mask_a
         :param asym_mask_b: [b m] asym_mask_b
@@ -4497,8 +4421,7 @@ class ComputeModelSelectionScore(Module):
         lddt_type: Literal["interface", "intra-chain", "unresolved"],
         is_fine_tuning: bool = None,
     ) -> int:
-        """
-        Get a specified lDDT weight.
+        """Get a specified lDDT weight.
 
         :param type_chain_a: type of chain a
         :param type_chain_b: type of chain b
@@ -4539,8 +4462,7 @@ class ComputeModelSelectionScore(Module):
         chains_list: List[Tuple[int, int] | Tuple[int]],
         is_fine_tuning: bool = None,
     ) -> Float[" b"]:  # type: ignore
-        """
-        Compute the weighted lDDT.
+        """Compute the weighted lDDT.
 
         :param pred_coords: [b m 3] predicted coordinates
         :param true_coords: [b m 3] true coordinates
@@ -4935,8 +4857,7 @@ class Alphafold3(Module):
 
     @typecheck
     def save(self, path: str | Path, overwrite=False):
-        """
-        Save the model to a file.
+        """Save the model to a file.
 
         :param path: The path to save the model.
         :param overwrite: Whether to overwrite an existing file.
@@ -4954,8 +4875,7 @@ class Alphafold3(Module):
 
     @typecheck
     def load(self, path: str | Path, strict=False, map_location="cpu"):
-        """
-        Load a saved model.
+        """Load a saved model.
 
         :param path: The path to the saved model.
         :param strict: Whether to strictly load the model.
@@ -4983,8 +4903,7 @@ class Alphafold3(Module):
     @staticmethod
     @typecheck
     def init_and_load(path: str | Path, map_location="cpu"):
-        """
-        Initialize and load a saved model.
+        """Initialize and load a saved model.
 
         :param path: The path to the saved model.
         :param map_location: The device to map the model to.
@@ -5051,8 +4970,7 @@ class Alphafold3(Module):
         | Float[""]  # type: ignore
         | Tuple[Float[""], LossBreakdown]  # type: ignore
     ):
-        """
-        Run the forward pass of AlphaFold 3.
+        """Run the forward pass of AlphaFold 3.
 
         :param atom_inputs: The atom inputs tensor.
         :param atompair_inputs: The atom pair inputs tensor.
@@ -5067,7 +4985,8 @@ class Alphafold3(Module):
         :param template_mask: The template mask tensor.
         :param num_recycling_steps: The number of recycling steps.
         :param diffusion_add_bond_loss: Whether to add a bond loss in the diffusion module.
-        :param diffusion_add_smooth_lddt_loss: Whether to add a smooth LDDT loss in the diffusion module.
+        :param diffusion_add_smooth_lddt_loss: Whether to add a smooth LDDT loss in the diffusion
+            module.
         :param molecule_atom_indices: The molecule atom indices tensor.
         :param num_sample_steps: The number of sample steps.
         :param atom_pos: The atom positions tensor.
@@ -5647,8 +5566,7 @@ class Alphafold3WithHubMixin(Alphafold3, PyTorchModelHubMixin):
         model_filename: str = "alphafold3.bin",
         **model_kwargs,
     ):
-        """
-        Load a pretrained model from the HuggingFace Hub.
+        """Load a pretrained model from the HuggingFace Hub.
 
         :param model_id: The model ID.
         :param revision: The revision.

@@ -26,8 +26,7 @@ from alphafold3_pytorch.utils.utils import default, exists
 def full_pairwise_repr_to_windowed(
     pairwise_repr: Shaped["... m m dp"], window_size: int  # type: ignore
 ) -> Shaped["... n w (w*2) dp"]:  # type: ignore
-    """
-    Convert a full pairwise representation matrix to a local windowed one.
+    """Convert a full pairwise representation matrix to a local windowed one.
 
     :param pairwise_repr: The full pairwise representation matrix.
     :param window_size: The window size.
@@ -55,8 +54,7 @@ def full_pairwise_repr_to_windowed(
 def full_attn_bias_to_windowed(
     attn_bias: Shaped["... m m"], window_size: int  # type: ignore
 ) -> Shaped["... n w (w*2)"]:  # type: ignore
-    """
-    Convert a full attention bias matrix to a local windowed one.
+    """Convert a full attention bias matrix to a local windowed one.
 
     :param attn_bias: The full attention bias matrix.
     :param window_size: The window size.
@@ -146,8 +144,7 @@ class Attention(Module):
         windowed_mask: Bool["b nw w (w*2)"] | None = None,  # type: ignore
         attn_bias: Float["... i j"] | Float["... nw w (w*2)"] | None = None,  # type: ignore
     ) -> Float["b i d"]:  # type: ignore
-        """
-        Run multi-head attention on a sequence.
+        """Run multi-head attention on a sequence.
 
         :param seq: The input sequence.
         :param mask: The mask to apply to the sequence.
@@ -243,8 +240,7 @@ class Attend(Module):
         attn_bias: Float["... n n"] | Float["... nw w (w*2)"] | None = None,  # type: ignore
         memory_kv: Float["2 h m d"] | None = None,  # type: ignore
     ) -> Float["b h n d"]:  # type: ignore
-        """
-        Run simple local attention with a radius of 1 window size.
+        """Run simple local attention with a radius of 1 window size.
 
         :param q: The query tensor.
         :param k: The key tensor.
@@ -379,8 +375,7 @@ class Attend(Module):
         attn_bias: Float["... i j"] | Float["... nw w (w*2)"] | None = None,  # type: ignore
         memory_kv: Float["2 h m d"] | None = None,  # type: ignore
     ) -> Float["b h i d"]:  # type: ignore
-        """
-        Run attention.
+        """Run attention.
 
         :param q: The query tensor.
         :param k: The key tensor.

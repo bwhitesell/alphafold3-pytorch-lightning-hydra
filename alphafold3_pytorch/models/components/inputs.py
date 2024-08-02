@@ -45,7 +45,10 @@ from alphafold3_pytorch.data.life import (
     reverse_complement_tensor,
 )
 from alphafold3_pytorch.data.weighted_pdb_sampler import WeightedPDBSampler
-from alphafold3_pytorch.utils.data_utils import RESIDUE_MOLECULE_TYPE, get_residue_molecule_type
+from alphafold3_pytorch.utils.data_utils import (
+    RESIDUE_MOLECULE_TYPE,
+    get_residue_molecule_type,
+)
 from alphafold3_pytorch.utils.model_utils import exclusive_cumsum
 from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
@@ -1272,7 +1275,8 @@ def add_atom_positions_to_mol(
     atom_positions: np.ndarray,
     missing_atom_indices: Set[int],
 ) -> Mol:
-    """Add atom positions to an RDKit molecule's first conformer while accounting for missing atoms."""
+    """Add atom positions to an RDKit molecule's first conformer while accounting for missing
+    atoms."""
     assert len(missing_atom_indices) <= mol.GetNumAtoms(), (
         f"The number of missing atom positions ({len(missing_atom_indices)}) and atoms in the RDKit molecule ({mol.GetNumAtoms()}) are not reconcilable. "
         "Please ensure that these input features are all correctly paired."
@@ -1304,12 +1308,14 @@ def create_mol_from_atom_positions_and_types(
     missing_atom_indices: Set[int],
     num_bond_attempts: int = 2,
 ) -> Mol:
-    """
-    Create an RDKit molecule from a NumPy array of atom positions and a list of their element types.
+    """Create an RDKit molecule from a NumPy array of atom positions and a list of their element
+    types.
 
-    :param atom_positions: A NumPy array of shape (num_atoms, 3) containing the 3D coordinates of each atom.
+    :param atom_positions: A NumPy array of shape (num_atoms, 3) containing the 3D coordinates of
+        each atom.
     :param element_types: A list of element symbols for each atom in the molecule.
-    :param missing_atom_indices: A set of atom indices that are missing from the atom_positions array.
+    :param missing_atom_indices: A set of atom indices that are missing from the atom_positions
+        array.
     :param num_bond_attempts: The number of attempts to determine the bonds in the molecule.
     :return: An RDKit molecule with the specified atom positions and element types.
     """
@@ -1340,7 +1346,11 @@ def create_mol_from_atom_positions_and_types(
         try:
             rdDetermineBonds.DetermineBonds(mol, charge=Chem.GetFormalCharge(mol))
             determined_bonds = True
-        except Exception:
+        except Exception as e:
+            logger.warning(
+                f"Failed to determine bonds in the input molecule due to: {e}. "
+                "Retrying once more."
+            )
             continue
     if not determined_bonds:
         raise ValueError("Failed to determine bonds in the input molecule.")
@@ -1361,8 +1371,8 @@ def extract_template_molecules_from_biomolecule_chains(
     chain_chem_types: List[RESIDUE_MOLECULE_TYPE],
     mol_keyname: str = "rdchem_mol",
 ) -> Tuple[List[Mol], List[RESIDUE_MOLECULE_TYPE]]:
-    """
-    Extract RDKit template molecules and their types for the residues of each `Biomolecule` chain.
+    """Extract RDKit template molecules and their types for the residues of each `Biomolecule`
+    chain.
 
     NOTE: Missing atom indices are marked as a comma-separated property string for each RDKit molecule
     and can be retrieved via `mol.GetProp('missing_atom_indices')`.
@@ -1545,7 +1555,8 @@ def get_token_index_from_composite_atom_id(
     atom_index: int,
     is_polymer_residue: bool,
 ) -> np.int64:
-    """Get the token index (indices) of an atom (residue) in a biomolecule from its chain ID, residue ID, and atom name."""
+    """Get the token index (indices) of an atom (residue) in a biomolecule from its chain ID,
+    residue ID, and atom name."""
     chain_mask = biomol.chain_id == chain_id
     res_mask = biomol.residue_index == res_id
     atom_mask = biomol.atom_name == atom_name
@@ -1560,14 +1571,15 @@ def get_token_index_from_composite_atom_id(
 def find_mismatched_symmetry(
     asym_ids: np.ndarray, entity_ids: np.ndarray, sym_ids: np.ndarray, chemid: np.ndarray
 ) -> bool:
-    """
-    Find mismatched symmetry in a biomolecule's asymmetry, entity, symmetry, and token chemical IDs.
+    """Find mismatched symmetry in a biomolecule's asymmetry, entity, symmetry, and token chemical
+    IDs.
 
-    This function compares the chemical IDs of (related) regions with the same entity ID
-    but different symmetry IDs. If the chemical IDs of these regions' matching asymmetric
-    chain ID regions are not equal, then their symmetry is "mismatched".
+    This function compares the chemical IDs of (related) regions with the same entity ID but
+    different symmetry IDs. If the chemical IDs of these regions' matching asymmetric chain ID
+    regions are not equal, then their symmetry is "mismatched".
 
-    :param asym_ids: An array of asymmetric unit (i.e., chain) IDs for each token in the biomolecule.
+    :param asym_ids: An array of asymmetric unit (i.e., chain) IDs for each token in the
+        biomolecule.
     :param entity_ids: An array of entity IDs for each token in the biomolecule.
     :param sym_ids: An array of symmetry IDs for each token in the biomolecule.
     :param chemid: An array of chemical IDs for each token in the biomolecule.

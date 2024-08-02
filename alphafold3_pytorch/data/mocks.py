@@ -33,7 +33,7 @@ class MockAtomDataset(Dataset):
 
     def __getitem__(self, idx: int) -> AtomInput:
         """Return a random item from the dataset."""
-        seq_len = randrange(1, self.max_seq_len)
+        seq_len = randrange(1, self.max_seq_len)  # nosec
         atom_seq_len = self.atoms_per_window * seq_len
 
         atom_inputs = torch.randn(atom_seq_len, 77)
@@ -57,7 +57,7 @@ class MockAtomDataset(Dataset):
         msa = torch.randn(7, seq_len, 64)
 
         msa_mask = None
-        if random() > 0.5:
+        if random() > 0.5:  # nosec
             msa_mask = torch.ones((7,)).bool()
 
         # required for training, but omitted on inference

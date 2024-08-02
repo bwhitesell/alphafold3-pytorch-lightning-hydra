@@ -42,12 +42,12 @@ repos:
       - id: isort
         args: ["--profile", "black", "--filter-files"]
 
-  # python upgrading syntax to newer version
-  - repo: https://github.com/asottile/pyupgrade
-    rev: v3.3.1
-    hooks:
-      - id: pyupgrade
-        args: [--py38-plus]
+  # # python upgrading syntax to newer version
+  # - repo: https://github.com/asottile/pyupgrade
+  #   rev: v3.3.1
+  #   hooks:
+  #     - id: pyupgrade
+  #       args: [--py38-plus]
 
   # python docstring formatting
   - repo: https://github.com/myint/docformatter
@@ -61,6 +61,12 @@ repos:
             --wrap-descriptions=99,
             --style=sphinx,
             --black,
+            --exclude=alphafold3_pytorch/data/life.py,
+            alphafold3_pytorch/models/alphafold3_module.py,
+            alphafold3_pytorch/models/components/alphafold3.py,
+            alphafold3_pytorch/models/components/attention.py,
+            alphafold3_pytorch/models/components/inputs.py,
+            alphafold3_pytorch/utils/model_utils.py,
           ]
 
   # python docstring coverage checking
@@ -68,21 +74,23 @@ repos:
     rev: 1.7.0 # or master if you're bold
     hooks:
       - id: interrogate
-        args: [
+        args:
+          [
             --verbose,
+            -vv,
             --fail-under=80,
             --ignore-init-module,
             --ignore-init-method,
             --ignore-module,
             --ignore-nested-functions,
-            -vv,
-            --exclude=alphafold3_pytorch/data/life.py
-            --exclude=alphafold3_pytorch/models/alphafold3_module.py
-            --exclude=alphafold3_pytorch/models/components/alphafold3.py
-            --exclude=alphafold3_pytorch/models/components/attention.py
-            --exclude=alphafold3_pytorch/models/components/inputs.py,
-            --exclude=alphafold3_pytorch/utils/model_utils.py,
+            --exclude=alphafold3_pytorch/data/life.py,
+            alphafold3_pytorch/models/alphafold3_module.py,
+            alphafold3_pytorch/models/components/alphafold3.py,
+            alphafold3_pytorch/models/components/attention.py,
+            alphafold3_pytorch/models/components/inputs.py,
+            alphafold3_pytorch/utils/model_utils.py,
           ]
+        pass_filenames: false
 
   # python check (PEP8), programming errors and code complexity
   - repo: https://github.com/PyCQA/flake8
@@ -138,7 +146,7 @@ repos:
     hooks:
       - id: codespell
         args:
-          - --skip=logs/**,data/**,*.ipynb,README.md,alphafold3_pytorch/data/life.py,
+          - --skip=logs/**,data/**,*.ipynb,README.md,alphafold3_pytorch/common/*_constants.pyp,alphafold3_pytorch/data/chemical/*,alphafold3_pytorch/data/life.py
           # - --ignore-words-list=abc,def
 
   # jupyter notebook cell output clearing
