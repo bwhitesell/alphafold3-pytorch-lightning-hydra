@@ -1,6 +1,7 @@
 import os
+import random
 from functools import partial
-from typing import Any, Callable, Dict, List, Literal, Optional
+from typing import Any, Callable, Dict, List, Literal, Tuple
 
 import torch
 from lightning import LightningDataModule
@@ -246,10 +247,12 @@ class PDBDataModule(LightningDataModule):
         crop_size: int = 384,
         sampling_weight_for_disorder_pdb_distillation: float = 0.02,
         train_on_transcription_factor_distillation_sets: bool = False,
-        pdb_distillation: Optional[bool] = None,
+        pdb_distillation: bool | None = None,
         max_number_of_chains: int = 20,
         atoms_per_window: int | None = None,
-        map_dataset_input_fn: Optional[Callable] = None,
+        map_dataset_input_fn: Callable | None = None,
+        train_val_test_split: Tuple[int, int, int] | None = None,
+        shuffle_train_val_test_subsets: bool = True,
         batch_size: int = 256,
         num_workers: int = 0,
         pin_memory: bool = False,
@@ -264,9 +267,9 @@ class PDBDataModule(LightningDataModule):
         # also ensures init params will be stored in ckpt
         self.save_hyperparameters(logger=False)
 
-        self.data_train: Optional[Dataset] = None
-        self.data_val: Optional[Dataset] = None
-        self.data_test: Optional[Dataset] = None
+        self.data_train: Dataset | None = None
+        self.data_val: Dataset | None = None
+        self.data_test: Dataset | None = None
 
         self.batch_size_per_device = batch_size
 
@@ -289,7 +292,7 @@ class PDBDataModule(LightningDataModule):
         """
         pass
 
-    def setup(self, stage: Optional[str] = None) -> None:
+    def setup(self, stage: str | None = None) -> None:
         """Load data. Set variables: `self.data_train`, `self.data_val`, `self.data_test`.
 
         This method is called by Lightning before `trainer.fit()`, `trainer.validate()`, `trainer.test()`, and
@@ -450,6 +453,26 @@ class PDBDataModule(LightningDataModule):
                 training=False,
             )
 
+            # subsample datasets as requested
+
+            if exists(self.hparams.train_val_test_split):
+                train_count, val_count, test_count = self.hparams.train_val_test_split
+
+                train_indices = list(range(len(self.data_train)))
+                val_indices = list(range(len(self.data_val)))
+                test_indices = list(range(len(self.data_test)))
+
+                if self.hparams.shuffle_train_val_test_subsets:
+                    random.shuffle(train_indices)  # nosec
+                    random.shuffle(val_indices)  # nosec
+                    random.shuffle(test_indices)  # nosec
+
+                self.data_train = torch.utils.data.Subset(
+                    self.data_train, train_indices[:train_count]
+                )
+                self.data_val = torch.utils.data.Subset(self.data_val, val_indices[:val_count])
+                self.data_test = torch.utils.data.Subset(self.data_test, test_indices[:test_count])
+
     def train_dataloader(self) -> DataLoader[Any]:
         """Create and return the train dataloader.
 
@@ -492,7 +515,7 @@ class PDBDataModule(LightningDataModule):
             drop_last=False,
         )
 
-    def teardown(self, stage: Optional[str] = None) -> None:
+    def teardown(self, stage: str | None = None) -> None:
         """Lightning hook for cleaning up after `trainer.fit()`, `trainer.validate()`,
         `trainer.test()`, and `trainer.predict()`.
 
