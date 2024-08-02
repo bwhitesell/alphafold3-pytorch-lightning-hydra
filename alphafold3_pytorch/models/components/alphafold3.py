@@ -28,6 +28,7 @@ from alphafold3_pytorch.models.components.attention import (
 )
 from alphafold3_pytorch.models.components.inputs import (
     ADDITIONAL_MOLECULE_FEATS,
+    DEFAULT_NUM_MOLECULE_MODS,
     IS_BIOMOLECULE_INDICES,
     IS_DNA,
     IS_DNA_INDEX,
@@ -4916,6 +4917,7 @@ class Alphafold3(Module):
         self.w = atoms_per_window
         self.dapi = self.dim_atompair_inputs
         self.dai = self.dim_atom_inputs
+        self.num_mods = num_molecule_mods
 
     @property
     def device(self):
@@ -5015,7 +5017,7 @@ class Alphafold3(Module):
         additional_token_feats: Float["b n {self.dim_additional_token_feats}"] | None = None,  # type: ignore
         atom_ids: Int["b m"] | None = None,  # type: ignore
         atompair_ids: Int["b m m"] | Int["b nw {self.w} {self.w*2}"] | None = None,  # type: ignore
-        is_molecule_mod: Bool["b n num_mods"] | None = None,  # type: ignore
+        is_molecule_mod: Bool["b n {self.num_mods}"] | None = None,  # type: ignore
         atom_mask: Bool["b m"] | None = None,  # type: ignore
         missing_atom_mask: Bool["b m"] | None = None,  # type: ignore
         atom_parent_ids: Int["b m"] | None = None,  # type: ignore
