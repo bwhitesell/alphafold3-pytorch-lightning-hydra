@@ -122,305 +122,6 @@ def separate_monomer_and_multimer_chain_sequences(
     return monomer_chain_sequences, multimer_chain_sequences
 
 
-@typecheck
-def filter_to_low_homology_sequences(
-    input_all_chain_sequences: CHAIN_SEQUENCES,
-    reference_all_chain_sequences: CHAIN_SEQUENCES,
-    input_interface_chain_ids: CHAIN_INTERFACES,
-    input_fasta_filepath: str,
-    reference_fasta_filepath: str,
-    max_polymer_similarity: float = 0.4,
-    max_ligand_similarity: float = 0.85,
-    max_workers: int = 2,
-) -> Tuple[CHAIN_SEQUENCES, CHAIN_INTERFACES]:
-    """Filter targets to only low homology sequences."""
-    input_monomer_fasta_filepath = input_fasta_filepath.replace(".fasta", "_monomer.fasta")
-    input_multimer_fasta_filepath = input_fasta_filepath.replace(".fasta", "_multimer.fasta")
-
-    reference_monomer_fasta_filepath = reference_fasta_filepath.replace(".fasta", "_monomer.fasta")
-    reference_multimer_fasta_filepath = reference_fasta_filepath.replace(
-        ".fasta", "_multimer.fasta"
-    )
-
-    # Separate monomer and multimer sequences
-
-    (
-        input_monomer_chain_sequences,
-        input_multimer_chain_sequences,
-    ) = separate_monomer_and_multimer_chain_sequences(input_all_chain_sequences)
-    (
-        reference_monomer_chain_sequences,
-        reference_multimer_chain_sequences,
-    ) = separate_monomer_and_multimer_chain_sequences(reference_all_chain_sequences)
-
-    # Write monomer and multimer sequences to FASTA files
-
-    write_sequences_to_fasta(
-        input_monomer_chain_sequences, input_monomer_fasta_filepath, molecule_type="protein"
-    )
-    write_sequences_to_fasta(
-        input_monomer_chain_sequences, input_monomer_fasta_filepath, molecule_type="nucleic_acid"
-    )
-    write_sequences_to_fasta(
-        input_monomer_chain_sequences, input_monomer_fasta_filepath, molecule_type="peptide"
-    )
-
-    write_sequences_to_fasta(
-        input_multimer_chain_sequences,
-        input_multimer_fasta_filepath,
-        molecule_type="protein",
-    )
-    write_sequences_to_fasta(
-        input_multimer_chain_sequences,
-        input_multimer_fasta_filepath,
-        molecule_type="nucleic_acid",
-    )
-    write_sequences_to_fasta(
-        input_multimer_chain_sequences,
-        input_multimer_fasta_filepath,
-        molecule_type="peptide",
-    )
-
-    write_sequences_to_fasta(
-        reference_monomer_chain_sequences,
-        reference_monomer_fasta_filepath,
-        molecule_type="protein",
-    )
-    write_sequences_to_fasta(
-        reference_monomer_chain_sequences,
-        reference_monomer_fasta_filepath,
-        molecule_type="nucleic_acid",
-    )
-    write_sequences_to_fasta(
-        reference_monomer_chain_sequences,
-        reference_monomer_fasta_filepath,
-        molecule_type="peptide",
-    )
-
-    write_sequences_to_fasta(
-        reference_multimer_chain_sequences,
-        reference_multimer_fasta_filepath,
-        molecule_type="protein",
-    )
-    write_sequences_to_fasta(
-        reference_multimer_chain_sequences,
-        reference_multimer_fasta_filepath,
-        molecule_type="nucleic_acid",
-    )
-    write_sequences_to_fasta(
-        reference_multimer_chain_sequences,
-        reference_multimer_fasta_filepath,
-        molecule_type="peptide",
-    )
-
-    # Use MMseqs2 to perform all-against-all sequence identity comparisons for monomers
-
-    input_monomer_protein_sequence_names = search_sequences_using_mmseqs2(
-        input_monomer_fasta_filepath,
-        reference_monomer_fasta_filepath,
-        args.output_dir,
-        molecule_type="protein",
-        max_seq_id=max_polymer_similarity,
-        extra_parameters={
-            # force protein mode
-            "--dbtype": 1,
-            # force sensitivity level 8 per @milot-mirdita's suggestion
-            "-s": 8,
-        },
-    )
-    input_monomer_nucleic_acid_sequence_names = search_sequences_using_mmseqs2(
-        input_monomer_fasta_filepath,
-        reference_monomer_fasta_filepath,
-        args.output_dir,
-        molecule_type="nucleic_acid",
-        max_seq_id=max_polymer_similarity,
-        extra_parameters={
-            # force nucleotide mode
-            "--dbtype": 2,
-            # force nucleotide search mode
-            "--search-type": 3,
-            # force sensitivity level 8 per @milot-mirdita's suggestion
-            "-s": 8,
-            # 7 or 8 should work best, something to test
-            "-k": 8,
-            # there is currently an issue in mmseqs2 with nucleotide search and spaced k-mers
-            "--spaced-kmer-mode": 0,
-        },
-    )
-    input_monomer_peptide_sequence_names = search_sequences_using_mmseqs2(
-        input_monomer_fasta_filepath,
-        reference_monomer_fasta_filepath,
-        args.output_dir,
-        molecule_type="peptide",
-        max_seq_id=max_polymer_similarity,
-        # some of these parameters are from the spacepharer optimized parameters
-        # these were for short CRISPR spacer recognition, so they should work well for arbitrary peptides
-        extra_parameters={
-            # force protein mode
-            "--dbtype": 1,
-            # force sensitivity level 8 per @milot-mirdita's suggestion
-            "-s": 8,
-            # spacepharer optimized parameters
-            "--gap-open": 16,
-            "--gap-extend": 2,
-            "--sub-mat": "VTML40.out",
-            # we would like to try using ungapped prefilter mode to avoid
-            # minimum consecutive k-mer match restrictions, but the cluster workflow doesn't expose this yet
-            # let's use a real small k-mer size instead
-            # "--prefilter-mode": 1,
-            "-k": 5,
-            "--spaced-kmer-mode": 0,
-            # Don't try suppresing FP hits since the peptides are too short
-            "--mask": 0,
-            "--comp-bias-corr": 0,
-            # let more things through the prefilter
-            "--min-ungapped-score": 5,
-            # Let's disable e-values as these are too short for reliable homology anyway
-            # The most we can do is to collapse nearly identical peptides
-            "-e": "inf",
-        },
-    )
-    input_monomer_sequence_names = (
-        input_monomer_protein_sequence_names
-        | input_monomer_nucleic_acid_sequence_names
-        | input_monomer_peptide_sequence_names
-    )
-
-    # Identify monomer sequences that passed the sequence identity criterion
-
-    input_monomer_chain_sequences = filter_chains_by_sequence_names(
-        input_monomer_chain_sequences,
-        input_monomer_sequence_names,
-        max_polymer_similarity=max_polymer_similarity,
-        max_ligand_similarity=max_ligand_similarity,
-        max_workers=max_workers,
-    )
-
-    # Use MMseqs2 and RDKit to perform all-against-all sequence identity
-    # and thresholded Tanimoto similarity comparisons for multimers
-
-    input_multimer_protein_chain_mappings = search_sequences_using_mmseqs2(
-        input_multimer_fasta_filepath,
-        reference_multimer_fasta_filepath,
-        args.output_dir,
-        molecule_type="protein",
-        max_seq_id=max_polymer_similarity,
-        interface_chain_ids=input_interface_chain_ids,
-        alignment_file_prefix="alnRes_multimer_",
-        extra_parameters={
-            # force protein mode
-            "--dbtype": 1,
-            # force sensitivity level 8 per @milot-mirdita's suggestion
-            "-s": 8,
-        },
-    )
-    input_multimer_nucleic_acid_chain_mappings = search_sequences_using_mmseqs2(
-        input_multimer_fasta_filepath,
-        reference_multimer_fasta_filepath,
-        args.output_dir,
-        molecule_type="nucleic_acid",
-        max_seq_id=max_polymer_similarity,
-        interface_chain_ids=input_interface_chain_ids,
-        alignment_file_prefix="alnRes_multimer_",
-        extra_parameters={
-            # force nucleotide mode
-            "--dbtype": 2,
-            # force nucleotide search mode
-            "--search-type": 3,
-            # force sensitivity level 8 per @milot-mirdita's suggestion
-            "-s": 8,
-            # 7 or 8 should work best, something to test
-            "-k": 8,
-            # there is currently an issue in mmseqs2 with nucleotide search and spaced k-mers
-            "--spaced-kmer-mode": 0,
-        },
-    )
-    input_multimer_peptide_chain_mappings = search_sequences_using_mmseqs2(
-        input_multimer_fasta_filepath,
-        reference_multimer_fasta_filepath,
-        args.output_dir,
-        molecule_type="peptide",
-        max_seq_id=max_polymer_similarity,
-        interface_chain_ids=input_interface_chain_ids,
-        alignment_file_prefix="alnRes_multimer_",
-        # some of these parameters are from the spacepharer optimized parameters
-        # these were for short CRISPR spacer recognition, so they should work well for arbitrary peptides
-        extra_parameters={
-            # force protein mode
-            "--dbtype": 1,
-            # force sensitivity level 8 per @milot-mirdita's suggestion
-            "-s": 8,
-            # spacepharer optimized parameters
-            "--gap-open": 16,
-            "--gap-extend": 2,
-            "--sub-mat": "VTML40.out",
-            # we would like to try using ungapped prefilter mode to avoid
-            # minimum consecutive k-mer match restrictions, but the cluster workflow doesn't expose this yet
-            # let's use a real small k-mer size instead
-            # "--prefilter-mode": 1,
-            "-k": 5,
-            "--spaced-kmer-mode": 0,
-            # Don't try suppresing FP hits since the peptides are too short
-            "--mask": 0,
-            "--comp-bias-corr": 0,
-            # let more things through the prefilter
-            "--min-ungapped-score": 5,
-            # Let's disable e-values as these are too short for reliable homology anyway
-            # The most we can do is to collapse nearly identical peptides
-            "-e": "inf",
-        },
-    )
-
-    input_multimer_chain_mappings_list = []
-    if len(input_multimer_protein_chain_mappings):
-        input_multimer_chain_mappings_list.append(input_multimer_protein_chain_mappings)
-    if len(input_multimer_nucleic_acid_chain_mappings):
-        input_multimer_chain_mappings_list.append(input_multimer_nucleic_acid_chain_mappings)
-    if len(input_multimer_peptide_chain_mappings):
-        input_multimer_chain_mappings_list.append(input_multimer_peptide_chain_mappings)
-    input_multimer_chain_mappings = pl.concat(input_multimer_chain_mappings_list)
-
-    # Identify multimer sequences and interfaces that passed the sequence identity and Tanimoto similarity criteria
-
-    fpgen = AllChem.GetRDKitFPGenerator()
-    reference_ligand_ccd_codes = filter_chains_by_molecule_type(
-        reference_multimer_chain_sequences,
-        molecule_type="ligand",
-    )
-    reference_ligand_fps = []
-    for reference_ligand_ccd_code in reference_ligand_ccd_codes:
-        reference_ligand_smiles = CCD_COMPONENTS_SMILES.get(reference_ligand_ccd_code, None)
-        if not exists(reference_ligand_smiles):
-            logger.warning(
-                f"Could not find SMILES for reference CCD ligand: {reference_ligand_ccd_code}"
-            )
-            continue
-        reference_ligand_mol = Chem.MolFromSmiles(reference_ligand_smiles)
-        if not exists(reference_ligand_mol):
-            logger.warning(
-                f"Could not generate RDKit molecule for reference CCD ligand: {reference_ligand_ccd_code}"
-            )
-            continue
-        reference_ligand_fp = fpgen.GetFingerprint(reference_ligand_mol)
-        reference_ligand_fps.append(reference_ligand_fp)
-
-    input_multimer_chain_sequences, input_interface_chain_ids = filter_chains_by_sequence_names(
-        input_multimer_chain_sequences,
-        input_multimer_chain_mappings.select(["query", "fident"]).to_numpy(),
-        interface_chain_ids=input_interface_chain_ids,
-        reference_ligand_fps=reference_ligand_fps,
-        max_polymer_similarity=max_polymer_similarity,
-        max_ligand_similarity=max_ligand_similarity,
-        max_workers=max_workers,
-    )
-
-    # Assemble monomer and multimer chain sequences
-
-    input_chain_sequences = input_monomer_chain_sequences + input_multimer_chain_sequences
-
-    return input_chain_sequences, input_interface_chain_ids
-
-
 @timeout_decorator.timeout(IS_NOVEL_LIGAND_MAX_SECONDS_PER_INPUT, use_signals=False)
 def is_novel_ligand(
     ligand_sequence: str,
@@ -790,6 +491,305 @@ def search_sequences_using_mmseqs2(
             )
             | unmappable_queries
         )
+
+
+@typecheck
+def filter_to_low_homology_sequences(
+    input_all_chain_sequences: CHAIN_SEQUENCES,
+    reference_all_chain_sequences: CHAIN_SEQUENCES,
+    input_interface_chain_ids: CHAIN_INTERFACES,
+    input_fasta_filepath: str,
+    reference_fasta_filepath: str,
+    max_polymer_similarity: float = 0.4,
+    max_ligand_similarity: float = 0.85,
+    max_workers: int = 2,
+) -> Tuple[CHAIN_SEQUENCES, CHAIN_INTERFACES]:
+    """Filter targets to only low homology sequences."""
+    input_monomer_fasta_filepath = input_fasta_filepath.replace(".fasta", "_monomer.fasta")
+    input_multimer_fasta_filepath = input_fasta_filepath.replace(".fasta", "_multimer.fasta")
+
+    reference_monomer_fasta_filepath = reference_fasta_filepath.replace(".fasta", "_monomer.fasta")
+    reference_multimer_fasta_filepath = reference_fasta_filepath.replace(
+        ".fasta", "_multimer.fasta"
+    )
+
+    # Separate monomer and multimer sequences
+
+    (
+        input_monomer_chain_sequences,
+        input_multimer_chain_sequences,
+    ) = separate_monomer_and_multimer_chain_sequences(input_all_chain_sequences)
+    (
+        reference_monomer_chain_sequences,
+        reference_multimer_chain_sequences,
+    ) = separate_monomer_and_multimer_chain_sequences(reference_all_chain_sequences)
+
+    # Write monomer and multimer sequences to FASTA files
+
+    write_sequences_to_fasta(
+        input_monomer_chain_sequences, input_monomer_fasta_filepath, molecule_type="protein"
+    )
+    write_sequences_to_fasta(
+        input_monomer_chain_sequences, input_monomer_fasta_filepath, molecule_type="nucleic_acid"
+    )
+    write_sequences_to_fasta(
+        input_monomer_chain_sequences, input_monomer_fasta_filepath, molecule_type="peptide"
+    )
+
+    write_sequences_to_fasta(
+        input_multimer_chain_sequences,
+        input_multimer_fasta_filepath,
+        molecule_type="protein",
+    )
+    write_sequences_to_fasta(
+        input_multimer_chain_sequences,
+        input_multimer_fasta_filepath,
+        molecule_type="nucleic_acid",
+    )
+    write_sequences_to_fasta(
+        input_multimer_chain_sequences,
+        input_multimer_fasta_filepath,
+        molecule_type="peptide",
+    )
+
+    write_sequences_to_fasta(
+        reference_monomer_chain_sequences,
+        reference_monomer_fasta_filepath,
+        molecule_type="protein",
+    )
+    write_sequences_to_fasta(
+        reference_monomer_chain_sequences,
+        reference_monomer_fasta_filepath,
+        molecule_type="nucleic_acid",
+    )
+    write_sequences_to_fasta(
+        reference_monomer_chain_sequences,
+        reference_monomer_fasta_filepath,
+        molecule_type="peptide",
+    )
+
+    write_sequences_to_fasta(
+        reference_multimer_chain_sequences,
+        reference_multimer_fasta_filepath,
+        molecule_type="protein",
+    )
+    write_sequences_to_fasta(
+        reference_multimer_chain_sequences,
+        reference_multimer_fasta_filepath,
+        molecule_type="nucleic_acid",
+    )
+    write_sequences_to_fasta(
+        reference_multimer_chain_sequences,
+        reference_multimer_fasta_filepath,
+        molecule_type="peptide",
+    )
+
+    # Use MMseqs2 to perform all-against-all sequence identity comparisons for monomers
+
+    input_monomer_protein_sequence_names = search_sequences_using_mmseqs2(
+        input_monomer_fasta_filepath,
+        reference_monomer_fasta_filepath,
+        args.output_dir,
+        molecule_type="protein",
+        max_seq_id=max_polymer_similarity,
+        extra_parameters={
+            # force protein mode
+            "--dbtype": 1,
+            # force sensitivity level 8 per @milot-mirdita's suggestion
+            "-s": 8,
+        },
+    )
+    input_monomer_nucleic_acid_sequence_names = search_sequences_using_mmseqs2(
+        input_monomer_fasta_filepath,
+        reference_monomer_fasta_filepath,
+        args.output_dir,
+        molecule_type="nucleic_acid",
+        max_seq_id=max_polymer_similarity,
+        extra_parameters={
+            # force nucleotide mode
+            "--dbtype": 2,
+            # force nucleotide search mode
+            "--search-type": 3,
+            # force sensitivity level 8 per @milot-mirdita's suggestion
+            "-s": 8,
+            # 7 or 8 should work best, something to test
+            "-k": 8,
+            # there is currently an issue in mmseqs2 with nucleotide search and spaced k-mers
+            "--spaced-kmer-mode": 0,
+        },
+    )
+    input_monomer_peptide_sequence_names = search_sequences_using_mmseqs2(
+        input_monomer_fasta_filepath,
+        reference_monomer_fasta_filepath,
+        args.output_dir,
+        molecule_type="peptide",
+        max_seq_id=max_polymer_similarity,
+        # some of these parameters are from the spacepharer optimized parameters
+        # these were for short CRISPR spacer recognition, so they should work well for arbitrary peptides
+        extra_parameters={
+            # force protein mode
+            "--dbtype": 1,
+            # force sensitivity level 8 per @milot-mirdita's suggestion
+            "-s": 8,
+            # spacepharer optimized parameters
+            "--gap-open": 16,
+            "--gap-extend": 2,
+            "--sub-mat": "VTML40.out",
+            # we would like to try using ungapped prefilter mode to avoid
+            # minimum consecutive k-mer match restrictions, but the cluster workflow doesn't expose this yet
+            # let's use a real small k-mer size instead
+            # "--prefilter-mode": 1,
+            "-k": 5,
+            "--spaced-kmer-mode": 0,
+            # Don't try suppresing FP hits since the peptides are too short
+            "--mask": 0,
+            "--comp-bias-corr": 0,
+            # let more things through the prefilter
+            "--min-ungapped-score": 5,
+            # Let's disable e-values as these are too short for reliable homology anyway
+            # The most we can do is to collapse nearly identical peptides
+            "-e": "inf",
+        },
+    )
+    input_monomer_sequence_names = (
+        input_monomer_protein_sequence_names
+        | input_monomer_nucleic_acid_sequence_names
+        | input_monomer_peptide_sequence_names
+    )
+
+    # Identify monomer sequences that passed the sequence identity criterion
+
+    input_monomer_chain_sequences = filter_chains_by_sequence_names(
+        input_monomer_chain_sequences,
+        input_monomer_sequence_names,
+        max_polymer_similarity=max_polymer_similarity,
+        max_ligand_similarity=max_ligand_similarity,
+        max_workers=max_workers,
+    )
+
+    # Use MMseqs2 and RDKit to perform all-against-all sequence identity
+    # and thresholded Tanimoto similarity comparisons for multimers
+
+    input_multimer_protein_chain_mappings = search_sequences_using_mmseqs2(
+        input_multimer_fasta_filepath,
+        reference_multimer_fasta_filepath,
+        args.output_dir,
+        molecule_type="protein",
+        max_seq_id=max_polymer_similarity,
+        interface_chain_ids=input_interface_chain_ids,
+        alignment_file_prefix="alnRes_multimer_",
+        extra_parameters={
+            # force protein mode
+            "--dbtype": 1,
+            # force sensitivity level 8 per @milot-mirdita's suggestion
+            "-s": 8,
+        },
+    )
+    input_multimer_nucleic_acid_chain_mappings = search_sequences_using_mmseqs2(
+        input_multimer_fasta_filepath,
+        reference_multimer_fasta_filepath,
+        args.output_dir,
+        molecule_type="nucleic_acid",
+        max_seq_id=max_polymer_similarity,
+        interface_chain_ids=input_interface_chain_ids,
+        alignment_file_prefix="alnRes_multimer_",
+        extra_parameters={
+            # force nucleotide mode
+            "--dbtype": 2,
+            # force nucleotide search mode
+            "--search-type": 3,
+            # force sensitivity level 8 per @milot-mirdita's suggestion
+            "-s": 8,
+            # 7 or 8 should work best, something to test
+            "-k": 8,
+            # there is currently an issue in mmseqs2 with nucleotide search and spaced k-mers
+            "--spaced-kmer-mode": 0,
+        },
+    )
+    input_multimer_peptide_chain_mappings = search_sequences_using_mmseqs2(
+        input_multimer_fasta_filepath,
+        reference_multimer_fasta_filepath,
+        args.output_dir,
+        molecule_type="peptide",
+        max_seq_id=max_polymer_similarity,
+        interface_chain_ids=input_interface_chain_ids,
+        alignment_file_prefix="alnRes_multimer_",
+        # some of these parameters are from the spacepharer optimized parameters
+        # these were for short CRISPR spacer recognition, so they should work well for arbitrary peptides
+        extra_parameters={
+            # force protein mode
+            "--dbtype": 1,
+            # force sensitivity level 8 per @milot-mirdita's suggestion
+            "-s": 8,
+            # spacepharer optimized parameters
+            "--gap-open": 16,
+            "--gap-extend": 2,
+            "--sub-mat": "VTML40.out",
+            # we would like to try using ungapped prefilter mode to avoid
+            # minimum consecutive k-mer match restrictions, but the cluster workflow doesn't expose this yet
+            # let's use a real small k-mer size instead
+            # "--prefilter-mode": 1,
+            "-k": 5,
+            "--spaced-kmer-mode": 0,
+            # Don't try suppresing FP hits since the peptides are too short
+            "--mask": 0,
+            "--comp-bias-corr": 0,
+            # let more things through the prefilter
+            "--min-ungapped-score": 5,
+            # Let's disable e-values as these are too short for reliable homology anyway
+            # The most we can do is to collapse nearly identical peptides
+            "-e": "inf",
+        },
+    )
+
+    input_multimer_chain_mappings_list = []
+    if len(input_multimer_protein_chain_mappings):
+        input_multimer_chain_mappings_list.append(input_multimer_protein_chain_mappings)
+    if len(input_multimer_nucleic_acid_chain_mappings):
+        input_multimer_chain_mappings_list.append(input_multimer_nucleic_acid_chain_mappings)
+    if len(input_multimer_peptide_chain_mappings):
+        input_multimer_chain_mappings_list.append(input_multimer_peptide_chain_mappings)
+    input_multimer_chain_mappings = pl.concat(input_multimer_chain_mappings_list)
+
+    # Identify multimer sequences and interfaces that passed the sequence identity and Tanimoto similarity criteria
+
+    fpgen = AllChem.GetRDKitFPGenerator()
+    reference_ligand_ccd_codes = filter_chains_by_molecule_type(
+        reference_multimer_chain_sequences,
+        molecule_type="ligand",
+    )
+    reference_ligand_fps = []
+    for reference_ligand_ccd_code in reference_ligand_ccd_codes:
+        reference_ligand_smiles = CCD_COMPONENTS_SMILES.get(reference_ligand_ccd_code, None)
+        if not exists(reference_ligand_smiles):
+            logger.warning(
+                f"Could not find SMILES for reference CCD ligand: {reference_ligand_ccd_code}"
+            )
+            continue
+        reference_ligand_mol = Chem.MolFromSmiles(reference_ligand_smiles)
+        if not exists(reference_ligand_mol):
+            logger.warning(
+                f"Could not generate RDKit molecule for reference CCD ligand: {reference_ligand_ccd_code}"
+            )
+            continue
+        reference_ligand_fp = fpgen.GetFingerprint(reference_ligand_mol)
+        reference_ligand_fps.append(reference_ligand_fp)
+
+    input_multimer_chain_sequences, input_interface_chain_ids = filter_chains_by_sequence_names(
+        input_multimer_chain_sequences,
+        input_multimer_chain_mappings.select(["query", "fident"]).to_numpy(),
+        interface_chain_ids=input_interface_chain_ids,
+        reference_ligand_fps=reference_ligand_fps,
+        max_polymer_similarity=max_polymer_similarity,
+        max_ligand_similarity=max_ligand_similarity,
+        max_workers=max_workers,
+    )
+
+    # Assemble monomer and multimer chain sequences
+
+    input_chain_sequences = input_monomer_chain_sequences + input_multimer_chain_sequences
+
+    return input_chain_sequences, input_interface_chain_ids
 
 
 if __name__ == "__main__":
