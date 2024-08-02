@@ -26,7 +26,6 @@ def cfg_train_global() -> DictConfig:
         cfg = compose(
             config_name="train.yaml",
             return_hydra_config=True,
-            overrides=["ckpt_path=."],
         )
 
         # set defaults for all tests
@@ -73,7 +72,6 @@ def cfg_eval_global() -> DictConfig:
         cfg = compose(
             config_name="eval.yaml",
             return_hydra_config=True,
-            overrides=["ckpt_path=."],
         )
 
         # set defaults for all tests
