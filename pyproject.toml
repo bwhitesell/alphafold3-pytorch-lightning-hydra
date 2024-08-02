@@ -1,6 +1,6 @@
 [project]
 name = "alphafold3-pytorch-lightning-hydra"
-version = "0.2.75"
+version = "0.2.76"
 description = "AlphaFold 3 - Pytorch"
 authors = [
     { name = "Phil Wang", email = "lucidrains@gmail.com" },
@@ -115,40 +115,8 @@ markers = [
 minversion = "6.0"
 testpaths = "tests/"
 
-[tool.ruff]
-line-length = 5000
-# Enable pycodestyle (`E`) and Pyflakes (`F`) codes by default.
-select = ["E", "F", "I"] # <-- Note: I suggest including the "I" for additional checks!
-ignore = [
-  "E402",
-  "F401",
-  "F722", # Ignore Jaxtyping forward references: https://github.com/google/jaxtyping/blob/v0.2.12/FAQ.md
-  "F821",
-]
-
 # Assuming you're developing for Python 3.10
 target-version = "py310"
-
-[tool.black]
-exclude = '''
-/(
-    \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | _build
-  | buck-out
-  | build
-  | dist
-  | env
-  | .env
-  | venv
-  | .venv
-)/
-'''
-line-length = 99
-target-version = ["py310"]
 
 [tool.hatch.metadata]
 allow-direct-references = true

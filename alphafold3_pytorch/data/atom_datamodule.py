@@ -1,204 +1,13 @@
+import os
 from functools import partial
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
-import torch
 from lightning import LightningDataModule
-from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 
 from alphafold3_pytorch.data.mocks import MockAtomDataset
-from alphafold3_pytorch.models.components.attention import (
-    full_attn_bias_to_windowed,
-    full_pairwise_repr_to_windowed,
-)
-from alphafold3_pytorch.models.components.inputs import (
-    Alphafold3Input,
-    BatchedAtomInput,
-    PDBInput,
-    maybe_transform_to_atom_inputs,
-)
-from alphafold3_pytorch.utils.model_utils import pad_at_dim
-from alphafold3_pytorch.utils.tensor_typing import typecheck
+from alphafold3_pytorch.data.pdb_datamodule import AF3DataLoader
 from alphafold3_pytorch.utils.utils import exists
-
-# dataloader and collation fn
-
-
-@typecheck
-def collate_inputs_to_batched_atom_input(
-    inputs: List,
-    int_pad_value=-1,
-    atoms_per_window: int | None = None,
-    map_input_fn: Callable | None = None,
-) -> BatchedAtomInput:
-    """
-    Collate function for a list of AtomInput objects.
-
-    :param inputs: A list of AtomInput objects.
-    :param int_pad_value: The padding value for integer tensors.
-    :param atoms_per_window: The number of atoms per window.
-    :param map_input_fn: A function to apply to each input before collation.
-    :return: A collated BatchedAtomInput object.
-    """
-    if exists(map_input_fn):
-        inputs = [map_input_fn(i) for i in inputs]
-
-    # go through all the inputs
-    # and for any that is not AtomInput, try to transform it with the registered input type to corresponding registered function
-
-    atom_inputs = maybe_transform_to_atom_inputs(inputs)
-
-    # take care of windowing the atompair_inputs and atompair_ids if they are not windowed already
-
-    if exists(atoms_per_window):
-        for atom_input in atom_inputs:
-            atompair_inputs = atom_input.atompair_inputs
-            atompair_ids = atom_input.atompair_ids
-
-            atompair_inputs_is_windowed = atompair_inputs.ndim == 4
-
-            if not atompair_inputs_is_windowed:
-                atom_input.atompair_inputs = full_pairwise_repr_to_windowed(
-                    atompair_inputs, window_size=atoms_per_window
-                )
-
-            if exists(atompair_ids):
-                atompair_ids_is_windowed = atompair_ids.ndim == 3
-
-                if not atompair_ids_is_windowed:
-                    atom_input.atompair_ids = full_attn_bias_to_windowed(
-                        atompair_ids, window_size=atoms_per_window
-                    )
-
-    # separate input dictionary into keys and values
-
-    keys = atom_inputs[0].dict().keys()
-    atom_inputs = [i.dict().values() for i in atom_inputs]
-
-    outputs = []
-
-    for grouped in zip(*atom_inputs):
-        # if all None, just return None
-
-        not_none_grouped = [*filter(exists, grouped)]
-
-        if len(not_none_grouped) == 0:
-            outputs.append(None)
-            continue
-
-        # default to empty tensor for any Nones
-
-        one_tensor = not_none_grouped[0]
-
-        dtype = one_tensor.dtype
-        ndim = one_tensor.ndim
-
-        # use -1 for padding int values, for assuming int are labels - if not, handle within alphafold3
-
-        if dtype in (torch.int, torch.long):
-            pad_value = int_pad_value
-        elif dtype == torch.bool:
-            pad_value = False
-        else:
-            pad_value = 0.0
-
-        # get the max lengths across all dimensions
-
-        shapes_as_tensor = torch.stack(
-            [Tensor(tuple(g.shape) if exists(g) else ((0,) * ndim)).int() for g in grouped], dim=-1
-        )
-
-        max_lengths = shapes_as_tensor.amax(dim=-1)
-
-        default_tensor = torch.full(max_lengths.tolist(), pad_value, dtype=dtype)
-
-        # pad across all dimensions
-
-        padded_inputs = []
-
-        for inp in grouped:
-            if not exists(inp):
-                padded_inputs.append(default_tensor)
-                continue
-
-            for dim, max_length in enumerate(max_lengths.tolist()):
-                inp = pad_at_dim(inp, (0, max_length - inp.shape[dim]), value=pad_value, dim=dim)
-
-            padded_inputs.append(inp)
-
-        # stack
-
-        stacked = torch.stack(padded_inputs)
-
-        outputs.append(stacked)
-
-    # batched atom input dictionary
-
-    batched_atom_input_dict = dict(tuple(zip(keys, outputs)))
-
-    # reconstitute dictionary
-
-    batched_atom_inputs = BatchedAtomInput(**batched_atom_input_dict)
-    return batched_atom_inputs
-
-
-@typecheck
-def alphafold3_inputs_to_batched_atom_input(
-    inp: Alphafold3Input | List[Alphafold3Input], **collate_kwargs
-) -> BatchedAtomInput:
-    """
-    Convert a list of Alphafold3Input objects to a BatchedAtomInput object.
-
-    :param inp: A list of Alphafold3Input objects.
-    :param collate_kwargs: Additional keyword arguments for collation.
-    :return: A BatchedAtomInput object.
-    """
-    if isinstance(inp, Alphafold3Input):
-        inp = [inp]
-
-    atom_inputs = maybe_transform_to_atom_inputs(inp)
-    return collate_inputs_to_batched_atom_input(atom_inputs, **collate_kwargs)
-
-
-@typecheck
-def pdb_inputs_to_batched_atom_input(
-    inp: PDBInput | List[PDBInput], **collate_kwargs
-) -> BatchedAtomInput:
-    """
-    Convert a list of PDBInput objects to a BatchedAtomInput object.
-
-    :param inp: A list of PDBInput objects.
-    :param collate_kwargs: Additional keyword arguments for collation.
-    :return: A BatchedAtomInput object.
-    """
-    if isinstance(inp, PDBInput):
-        inp = [inp]
-
-    atom_inputs = maybe_transform_to_atom_inputs(inp)
-    return collate_inputs_to_batched_atom_input(atom_inputs, **collate_kwargs)
-
-
-@typecheck
-def AF3DataLoader(
-    *args, atoms_per_window: int | None = None, map_input_fn: Callable | None = None, **kwargs
-):
-    """
-    Create a `torch.utils.data.DataLoader` with the
-    `collate_inputs_to_batched_atom_input` or `map_input_fn` function
-    for data collation.
-
-    :param args: The arguments to pass to `torch.utils.data.DataLoader`.
-    :param atoms_per_window: The number of atoms per window.
-    :param map_input_fn: A function to apply to each input before collation.
-    :param kwargs: The keyword arguments to pass to `torch.utils.data.DataLoader`.
-    :return: A `torch.utils.data.DataLoader` with a custom AF3 collate function.
-    """
-    collate_fn = partial(collate_inputs_to_batched_atom_input, atoms_per_window=atoms_per_window)
-
-    if exists(map_input_fn):
-        collate_fn = partial(collate_fn, map_input_fn=map_input_fn)
-
-    return DataLoader(*args, collate_fn=collate_fn, **kwargs)
 
 
 class AtomDataModule(LightningDataModule):
@@ -241,13 +50,8 @@ class AtomDataModule(LightningDataModule):
 
     def __init__(
         self,
-        data_dir: str = "data/",
-        train_val_test_split: Tuple[int, int, int] = (2, 2, 2),
-        sequence_crop_size: int = 384,
-        sampling_weight_for_disorder_pdb_distillation: float = 0.02,
-        train_on_transcription_factor_distillation_sets: bool = False,
-        pdb_distillation: Optional[bool] = None,
-        max_number_of_chains: int = 20,
+        data_dir: str = "data" + os.sep,
+        train_val_test_split: Tuple[int, int, int] | None = (2, 2, 2),
         atoms_per_window: int | None = None,
         map_dataset_input_fn: Optional[Callable] = None,
         batch_size: int = 256,

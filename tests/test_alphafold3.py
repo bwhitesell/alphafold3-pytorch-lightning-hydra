@@ -32,10 +32,8 @@ from alphafold3_pytorch import (
     TemplateEmbedder,
     WeightedRigidAlign,
 )
-from alphafold3_pytorch.data.atom_datamodule import (
-    MockAtomDataset,
-    collate_inputs_to_batched_atom_input,
-)
+from alphafold3_pytorch.data.atom_datamodule import MockAtomDataset
+from alphafold3_pytorch.data.pdb_datamodule import collate_inputs_to_batched_atom_input
 from alphafold3_pytorch.models.components.alphafold3 import (
     full_pairwise_repr_to_windowed,
     mean_pool_with_lens,
@@ -982,7 +980,7 @@ def test_compute_ranking_score():
         pae_logits, pde_logits, plddt_logits, resolved_logits
     )
 
-    chain_length = [random.randint(seq_len // 4, seq_len // 2) for _ in range(batch_size)]
+    chain_length = [random.randint(seq_len // 4, seq_len // 2) for _ in range(batch_size)]  # nosec
 
     asym_id = torch.tensor(
         [
@@ -1052,7 +1050,7 @@ def test_model_selection_score():
     dist_logits = torch.randn(batch_size, 64, seq_len, seq_len)
     pde_logits = torch.randn(batch_size, 64, seq_len, seq_len)
 
-    chain_length = [random.randint(seq_len // 4, seq_len // 2) for _ in range(batch_size)]
+    chain_length = [random.randint(seq_len // 4, seq_len // 2) for _ in range(batch_size)]  # nosec
 
     asym_id = torch.tensor(
         [

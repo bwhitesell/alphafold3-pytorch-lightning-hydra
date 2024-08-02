@@ -311,6 +311,7 @@ class EMAOptimizer(torch.optim.Optimizer):
             )
             self.thread.start()
 
+    @torch.no_grad()
     def swap_tensors(self, tensor1, tensor2):
         """Swaps the tensors in-place."""
         tmp = torch.empty_like(tensor1)

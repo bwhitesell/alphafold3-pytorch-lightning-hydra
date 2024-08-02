@@ -3,7 +3,7 @@ from typing import Any
 
 from omegaconf import OmegaConf
 
-from alphafold3_pytorch.data.atom_datamodule import (
+from alphafold3_pytorch.data.pdb_datamodule import (
     alphafold3_inputs_to_batched_atom_input,
     collate_inputs_to_batched_atom_input,
     pdb_inputs_to_batched_atom_input,
@@ -143,8 +143,7 @@ def resolve_omegaconf_variable(variable_path: str) -> Any:
 
 
 def int_divide(x: int, y: int) -> int:
-    """
-    Perform integer division on `x` and `y`.
+    """Perform integer division on `x` and `y`.
 
     :param x: The dividend.
     :param y: The divisor.
@@ -159,8 +158,7 @@ def int_divide(x: int, y: int) -> int:
 
 
 def validate_gradient_accumulation_factor(batch_size: int, devices: int, num_nodes: int) -> int:
-    """
-    Validate the gradient accumulation factor. If the factor is valid, return `world_size`.
+    """Validate the gradient accumulation factor. If the factor is valid, return `world_size`.
 
     :param batch_size: The batch size.
     :param devices: The number of devices.
