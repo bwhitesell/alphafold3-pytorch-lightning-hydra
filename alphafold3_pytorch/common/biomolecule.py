@@ -434,13 +434,11 @@ class Biomolecule:
         contiguous_weight: float = 0.2,
         spatial_weight: float = 0.4,
         spatial_interface_weight: float = 0.4,
-        n_res: int | None = 384,
+        n_res: int = 384,
         chain_1: str | None = None,
         chain_2: str | None = None,
     ) -> "Biomolecule":
         """Crop a Biomolecule using a randomly-sampled cropping function."""
-        if not exists(n_res):
-            n_res = 384
         crop_fn_weights = [contiguous_weight, spatial_weight, spatial_interface_weight]
         crop_fns = [
             partial(self.contiguous_crop, n_res=n_res),
