@@ -122,6 +122,111 @@ def separate_monomer_and_multimer_chain_sequences(
     return monomer_chain_sequences, multimer_chain_sequences
 
 
+@typecheck
+def search_sequences_using_mmseqs2(
+    input_filepath: str,
+    reference_filepath: str,
+    output_dir: str,
+    molecule_type: CLUSTERING_MOLECULE_TYPE,
+    max_seq_id: float = 0.4,
+    interface_chain_ids: CHAIN_INTERFACES | None = None,
+    alignment_file_prefix: str = "alnRes_",
+    extra_parameters: Dict[str, int | float | str] | None = None,
+) -> Set[str] | pl.DataFrame:
+    """Run MMseqs2 on the input FASTA file and write the resulting search outputs to a local output directory."""
+    assert input_filepath.endswith(".fasta"), "The input file must be a FASTA file."
+    assert reference_filepath.endswith(".fasta"), "The reference file must be a FASTA file."
+
+    input_filepath = input_filepath.replace(".fasta", f"_{molecule_type}.fasta")
+    reference_filepath = reference_filepath.replace(".fasta", f"_{molecule_type}.fasta")
+    output_alignment_filepath = os.path.join(
+        output_dir, molecule_type, f"{alignment_file_prefix}{molecule_type}.m8"
+    )
+    tmp_output_dir = os.path.join(output_dir, molecule_type, "tmp")
+    os.makedirs(os.path.join(output_dir, molecule_type), exist_ok=True)
+
+    assert os.path.isfile(input_filepath), f"Input file '{input_filepath}' does not exist."
+    assert os.path.isfile(
+        reference_filepath
+    ), f"Reference file '{reference_filepath}' does not exist."
+
+    # Search sequences
+
+    mmseqs_command = [
+        "mmseqs",
+        "easy-search",
+        input_filepath,
+        reference_filepath,
+        output_alignment_filepath,
+        tmp_output_dir,
+    ]
+    if extra_parameters:
+        for key, value in extra_parameters.items():
+            mmseqs_command.extend([key, str(value)])
+
+    subprocess.run(mmseqs_command)
+    if not os.path.isfile(output_alignment_filepath):
+        logger.warning(
+            f"Output alignment file '{output_alignment_filepath}' does not exist. No input sequences were found."
+        )
+        return set()
+    try:
+        chain_search_mapping = pl.read_csv(
+            output_alignment_filepath,
+            separator="\t",
+            has_header=False,
+            new_columns=[
+                "query",
+                "target",
+                "fident",
+                "alnlen",
+                "mismatch",
+                "gapopen",
+                "qstart",
+                "qend",
+                "tstart",
+                "tend",
+                "evalue",
+                "bits",
+            ],
+        )
+    except Exception as e:
+        logger.warning(
+            f"Failed to read MMseqs2 alignment file '{output_alignment_filepath}' due to: {e}"
+        )
+        return set()
+
+    # For monomers, filter out sequences with reference sequence identity greater than the maximum threshold;
+    # For multimers, return the chain search results for all input-reference combinations
+
+    if exists(interface_chain_ids):
+        return chain_search_mapping
+    else:
+        input_queries = set()
+        with open(input_filepath, "r") as f:
+            for line in f:
+                if line.startswith(">"):
+                    input_queries.add(line.strip().lstrip(">"))
+
+        # Re-insert the names of input queries for which MMseqs2 could not find a match,
+        # as these are safely not homologous to any reference sequence (due to MMseqs2's
+        # high sensitivity, e.g., 8)
+
+        mappable_queries = set(chain_search_mapping.get_column("query").to_list())
+        unmappable_queries = input_queries - mappable_queries
+
+        return (
+            set(
+                chain_search_mapping.group_by("query")
+                .agg(pl.max("fident"))
+                .filter(pl.col("fident") <= max_seq_id)
+                .get_column("query")
+                .to_list()
+            )
+            | unmappable_queries
+        )
+
+
 @timeout_decorator.timeout(IS_NOVEL_LIGAND_MAX_SECONDS_PER_INPUT, use_signals=False)
 def is_novel_ligand(
     ligand_sequence: str,
@@ -386,111 +491,6 @@ def filter_chains_by_molecule_type(
                     ) or not exists(interface_chain_ids):
                         filtered_chain_sequences.add(sequence)
     return list(filtered_chain_sequences)
-
-
-@typecheck
-def search_sequences_using_mmseqs2(
-    input_filepath: str,
-    reference_filepath: str,
-    output_dir: str,
-    molecule_type: CLUSTERING_MOLECULE_TYPE,
-    max_seq_id: float = 0.4,
-    interface_chain_ids: CHAIN_INTERFACES | None = None,
-    alignment_file_prefix: str = "alnRes_",
-    extra_parameters: Dict[str, int | float | str] | None = None,
-) -> Set[str] | pl.DataFrame:
-    """Run MMseqs2 on the input FASTA file and write the resulting search outputs to a local output directory."""
-    assert input_filepath.endswith(".fasta"), "The input file must be a FASTA file."
-    assert reference_filepath.endswith(".fasta"), "The reference file must be a FASTA file."
-
-    input_filepath = input_filepath.replace(".fasta", f"_{molecule_type}.fasta")
-    reference_filepath = reference_filepath.replace(".fasta", f"_{molecule_type}.fasta")
-    output_alignment_filepath = os.path.join(
-        output_dir, molecule_type, f"{alignment_file_prefix}{molecule_type}.m8"
-    )
-    tmp_output_dir = os.path.join(output_dir, molecule_type, "tmp")
-    os.makedirs(os.path.join(output_dir, molecule_type), exist_ok=True)
-
-    assert os.path.isfile(input_filepath), f"Input file '{input_filepath}' does not exist."
-    assert os.path.isfile(
-        reference_filepath
-    ), f"Reference file '{reference_filepath}' does not exist."
-
-    # Search sequences
-
-    mmseqs_command = [
-        "mmseqs",
-        "easy-search",
-        input_filepath,
-        reference_filepath,
-        output_alignment_filepath,
-        tmp_output_dir,
-    ]
-    if extra_parameters:
-        for key, value in extra_parameters.items():
-            mmseqs_command.extend([key, str(value)])
-
-    subprocess.run(mmseqs_command)
-    if not os.path.isfile(output_alignment_filepath):
-        logger.warning(
-            f"Output alignment file '{output_alignment_filepath}' does not exist. No input sequences were found."
-        )
-        return set()
-    try:
-        chain_search_mapping = pl.read_csv(
-            output_alignment_filepath,
-            separator="\t",
-            has_header=False,
-            new_columns=[
-                "query",
-                "target",
-                "fident",
-                "alnlen",
-                "mismatch",
-                "gapopen",
-                "qstart",
-                "qend",
-                "tstart",
-                "tend",
-                "evalue",
-                "bits",
-            ],
-        )
-    except Exception as e:
-        logger.warning(
-            f"Failed to read MMseqs2 alignment file '{output_alignment_filepath}' due to: {e}"
-        )
-        return set()
-
-    # For monomers, filter out sequences with reference sequence identity greater than the maximum threshold;
-    # For multimers, return the chain search results for all input-reference combinations
-
-    if exists(interface_chain_ids):
-        return chain_search_mapping
-    else:
-        input_queries = set()
-        with open(input_filepath, "r") as f:
-            for line in f:
-                if line.startswith(">"):
-                    input_queries.add(line.strip().lstrip(">"))
-
-        # Re-insert the names of input queries for which MMseqs2 could not find a match,
-        # as these are safely not homologous to any reference sequence (due to MMseqs2's
-        # high sensitivity, e.g., 8)
-
-        mappable_queries = set(chain_search_mapping.get_column("query").to_list())
-        unmappable_queries = input_queries - mappable_queries
-
-        return (
-            set(
-                chain_search_mapping.group_by("query")
-                .agg(pl.max("fident"))
-                .filter(pl.col("fident") <= max_seq_id)
-                .get_column("query")
-                .to_list()
-            )
-            | unmappable_queries
-        )
 
 
 @typecheck
