@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass, field
 from functools import partial
 from itertools import groupby
 from pathlib import Path
-from typing import Any, Callable, List, Literal, Set, Tuple, Type
+from typing import Any, Callable, Dict, List, Literal, Set, Tuple, Type
 
 import einx
 import numpy as np
@@ -69,7 +69,13 @@ IS_BIOMOLECULE_INDICES = slice(0, 3)
 
 IS_PROTEIN, IS_DNA, IS_RNA, IS_LIGAND, IS_METAL_ION = tuple(
     (IS_MOLECULE_TYPES - i if i < 0 else i)
-    for i in [IS_PROTEIN_INDEX, IS_DNA_INDEX, IS_RNA_INDEX, IS_LIGAND_INDEX, IS_METAL_ION_INDEX]
+    for i in [
+        IS_PROTEIN_INDEX,
+        IS_DNA_INDEX,
+        IS_RNA_INDEX,
+        IS_LIGAND_INDEX,
+        IS_METAL_ION_INDEX,
+    ]
 )
 
 MOLECULE_GAP_ID = len(HUMAN_AMINO_ACIDS) + len(RNA_NUCLEOTIDES) + len(DNA_NUCLEOTIDES)
@@ -168,6 +174,7 @@ class AtomInput:
     pde_labels: Int["n n"] | None = None  # type: ignore
     plddt_labels: Int[" n"] | None = None  # type: ignore
     resolved_labels: Int[" n"] | None = None  # type: ignore
+    chains: Tuple[int | None, int | None] = (None, None)
 
     def dict(self):
         """Return the dataclass as a dictionary."""
@@ -204,6 +211,7 @@ class BatchedAtomInput:
     pde_labels: Int["b n n"] | None = None  # type: ignore
     plddt_labels: Int["b n"] | None = None  # type: ignore
     resolved_labels: Int["b n"] | None = None  # type: ignore
+    chains: Tuple[int | None, int | None] = (None, None)
 
     def dict(self):
         """Return the dataclass as a dictionary."""
@@ -426,6 +434,7 @@ class MoleculeInput:
     pae_labels: Int["n n"] | None = None  # type: ignore
     pde_labels: Int[" n"] | None = None  # type: ignore
     resolved_labels: Int[" n"] | None = None  # type: ignore
+    chains: Tuple[int | None, int | None] = (None, None)
     add_atom_ids: bool = False
     add_atompair_ids: bool = False
     directed_bonds: bool = False
@@ -588,7 +597,10 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
                 atom_end_index = bond.GetEndAtomIdx()
 
                 coordinates.extend(
-                    [[atom_start_index, atom_end_index], [atom_end_index, atom_start_index]]
+                    [
+                        [atom_start_index, atom_end_index],
+                        [atom_end_index, atom_start_index],
+                    ]
                 )
 
                 bond_type = bond.GetBondType()
@@ -706,6 +718,7 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
         atom_parent_ids=i.atom_parent_ids,
         atom_ids=atom_ids,
         atompair_ids=atompair_ids,
+        chains=i.chains,
     )
 
     return atom_input
@@ -741,6 +754,7 @@ class Alphafold3Input:
     pae_labels: Int["n n"] | None = None  # type: ignore
     pde_labels: Int[" n"] | None = None  # type: ignore
     resolved_labels: Int[" n"] | None = None  # type: ignore
+    chains: Tuple[int | None, int | None] = (None, None)
     add_atom_ids: bool = False
     add_atompair_ids: bool = False
     directed_bonds: bool = False
@@ -796,7 +810,9 @@ def maybe_string_to_int(
 
 
 @typecheck
-def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> MoleculeInput:
+def alphafold3_input_to_molecule_input(
+    alphafold3_input: Alphafold3Input,
+) -> MoleculeInput:
     """Convert an Alphafold3Input to a MoleculeInput."""
     i = alphafold3_input
 
@@ -1200,6 +1216,7 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
         template_mask=i.template_mask,
         msa_mask=i.msa_mask,
         atom_parent_ids=atom_parent_ids,
+        chains=i.chains,
         add_atom_ids=i.add_atom_ids,
         add_atompair_ids=i.add_atompair_ids,
         directed_bonds=i.directed_bonds,
@@ -1218,8 +1235,10 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
 class PDBInput:
     """Dataclass for PDB inputs."""
 
-    mmcif_filepath: Biomolecule | None = None
+    mmcif_filepath: str | None = None
     biomol: Biomolecule | None = None
+    chains: Tuple[str | None, str | None] = (None, None)
+    cropping_config: Dict[str, float | int] | None = None
     msa_dir: str | None = None
     templates_dir: str | None = None
     add_atom_ids: bool = False
@@ -1232,19 +1251,53 @@ class PDBInput:
     def __post_init__(self):
         """Run post-init checks."""
 
-        if self.mmcif_filepath is not None:
+        if exists(self.mmcif_filepath):
             if not os.path.exists(self.mmcif_filepath):
                 raise FileNotFoundError(f"mmCIF file not found: {self.mmcif_filepath}.")
             if not self.mmcif_filepath.endswith(".cif"):
                 raise ValueError(
                     f"mmCIF file `{self.mmcif_filepath}` must have a `.cif` file extension."
                 )
-        elif self.biomol is None:
+        elif not exists(self.biomol):
             raise ValueError("Either an mmCIF file or a `Biomolecule` object must be provided.")
 
-        if self.msa_dir is not None and not os.path.exists(self.msa_dir):
+        if exists(self.chains):
+            assert exists(self.chains[0]) or (
+                exists(self.chains[0]) and exists(self.chains[1])
+            ), "At least one (sampled) chain ID must be provided for training and evaluation."
+
+        if exists(self.cropping_config):
+            assert self.cropping_config.keys() == {
+                "contiguous_weight",
+                "spatial_weight",
+                "spatial_interface_weight",
+                "n_res",
+            }, (
+                f"Invalid cropping config keys: {self.cropping_config.keys()}. "
+                "Please ensure that the cropping config has the correct keys."
+            )
+            assert (
+                sum(
+                    [
+                        self.cropping_config["contiguous_weight"],
+                        self.cropping_config["spatial_weight"],
+                        self.cropping_config["spatial_interface_weight"],
+                    ]
+                )
+                == 1.0
+            ), (
+                f"Invalid cropping config weights: ({self.cropping_config['contiguous_weight']}, {self.cropping_config['spatial_weight']}, {self.cropping_config['spatial_interface_weight']}). "
+                "Please ensure that the cropping config weights sum to 1.0."
+            )
+            assert self.cropping_config["n_res"] > 0, (
+                f"Invalid number of residues for cropping: {self.cropping_config['n_res']}. "
+                "Please ensure that the number of residues for cropping is greater than 0."
+            )
+
+        if exists(self.msa_dir) and not os.path.exists(self.msa_dir):
             raise FileNotFoundError(f"Provided MSA directory not found: {self.msa_dir}.")
-        if self.templates_dir is not None and not os.path.exists(self.templates_dir):
+
+        if exists(self.templates_dir) and not os.path.exists(self.templates_dir):
             raise FileNotFoundError(
                 f"Provided templates directory not found: {self.templates_dir}."
             )
@@ -1552,7 +1605,8 @@ def extract_template_molecules_from_biomolecule_chains(
                 # start by finding all possible atoms that may be present in the residue
 
                 res_unique_atom_mapping_indices = np.unique(
-                    atom_mapping[res_type - res_constants.min_restype_num], return_index=True
+                    atom_mapping[res_type - res_constants.min_restype_num],
+                    return_index=True,
                 )[1]
                 res_unique_atom_mapping = np.array(
                     [
@@ -1640,7 +1694,10 @@ def get_token_index_from_composite_atom_id(
 
 @typecheck
 def find_mismatched_symmetry(
-    asym_ids: np.ndarray, entity_ids: np.ndarray, sym_ids: np.ndarray, chemid: np.ndarray
+    asym_ids: np.ndarray,
+    entity_ids: np.ndarray,
+    sym_ids: np.ndarray,
+    chemid: np.ndarray,
 ) -> bool:
     """Find mismatched symmetry in a biomolecule's asymmetry, entity, symmetry, and token chemical
     IDs.
@@ -1701,7 +1758,11 @@ def pdb_input_to_molecule_input(
     """Convert a PDBInput to a MoleculeInput."""
     i = pdb_input
 
-    if not exists(biomol):
+    # acquire a `Biomolecule` object for the given `PDBInput`
+
+    if not exists(biomol) and exists(i.biomol):
+        biomol = i.biomol
+    else:
         # construct a `Biomolecule` object from the input PDB mmCIF file
 
         filepath = pdb_input.mmcif_filepath
@@ -1717,10 +1778,21 @@ def pdb_input_to_molecule_input(
             if "assembly" in file_id
             else get_assembly(_from_mmcif_object(mmcif_object))
         )
-    else:
-        # retrieve `Biomolecule` object directly from the `PDBInput` object
 
-        biomol = i.biomol
+    # crop the `Biomolecule` object during training only
+
+    if i.training:
+        assert exists(
+            i.cropping_config
+        ), "A cropping configuration must be provided during training."
+        biomol = biomol.crop(
+            contiguous_weight=i.cropping_config["contiguous_weight"],
+            spatial_weight=i.cropping_config["spatial_weight"],
+            spatial_interface_weight=i.cropping_config["spatial_interface_weight"],
+            n_res=i.cropping_config["n_res"],
+            chain_1=i.chains[0],
+            chain_2=i.chains[1],
+        )
 
     # retrieve features directly available within the `Biomolecule` object
 
@@ -1911,7 +1983,10 @@ def pdb_input_to_molecule_input(
                 atom_end_index = bond.GetEndAtomIdx()
 
                 coordinates.extend(
-                    [[atom_start_index, atom_end_index], [atom_end_index, atom_start_index]]
+                    [
+                        [atom_start_index, atom_end_index],
+                        [atom_end_index, atom_start_index],
+                    ]
                 )
 
                 updates.extend([True, True])
@@ -2076,6 +2151,17 @@ def pdb_input_to_molecule_input(
         ]
     )
 
+    # map (sampled) chain IDs to indices
+
+    chain_id_1, chain_id_2 = i.chains
+    chain_id_to_idx = {
+        chain_id: chain_idx for (chain_id, chain_idx) in zip(biomol.chain_id, biomol.chain_index)
+    }
+    if exists(chain_id_1):
+        chain_id_1 = chain_id_to_idx[chain_id_1]
+    if exists(chain_id_2):
+        chain_id_2 = chain_id_to_idx[chain_id_2]
+
     # create molecule input
 
     molecule_input = MoleculeInput(
@@ -2097,6 +2183,7 @@ def pdb_input_to_molecule_input(
         template_mask=template_mask,
         msa_mask=msa_mask,
         atom_parent_ids=atom_parent_ids,
+        chains=(chain_id_1, chain_id_2),
         add_atom_ids=i.add_atom_ids,
         add_atompair_ids=i.add_atompair_ids,
         directed_bonds=i.directed_bonds,
@@ -2124,7 +2211,7 @@ class PDBDataset(Dataset):
         contiguous_weight: float = 0.2,
         spatial_weight: float = 0.4,
         spatial_interface_weight: float = 0.4,
-        crop_size: int | None = None,
+        crop_size: int = 384,
         training: bool | None = None,  # extra training flag placed by Alex on PDBInput
         **pdb_input_kwargs,
     ):
@@ -2140,12 +2227,15 @@ class PDBDataset(Dataset):
         }
         self.sampler = sampler
         self.sample_type = sample_type
-        self.contiguous_weight = contiguous_weight
-        self.spatial_weight = spatial_weight
-        self.spatial_interface_weight = spatial_interface_weight
-        self.crop_size = crop_size
         self.training = training
         self.pdb_input_kwargs = pdb_input_kwargs
+
+        self.cropping_config = {
+            "contiguous_weight": contiguous_weight,
+            "spatial_weight": spatial_weight,
+            "spatial_interface_weight": spatial_interface_weight,
+            "n_res": crop_size,
+        }
 
         assert len(self) > 0, f"No valid mmCIFs / PDBs found at {str(folder)}"
 
@@ -2155,10 +2245,6 @@ class PDBDataset(Dataset):
 
     def __getitem__(self, idx: int | str) -> PDBInput:
         """Return a PDBInput object for the specified index."""
-        kwargs = self.pdb_input_kwargs
-        if exists(self.training):
-            kwargs = {**kwargs, "training": self.training}
-
         sampled_id = None
 
         if exists(self.sampler):
@@ -2166,6 +2252,8 @@ class PDBDataset(Dataset):
                 (sampled_id,) = self.sampler.cluster_based_sample(1)
             else:
                 (sampled_id,) = self.sampler.sample(1)
+
+        pdb_id, chain_id_1, chain_id_2 = None, None, None
 
         if exists(sampled_id):
             pdb_id, chain_id_1, chain_id_2 = sampled_id
@@ -2182,27 +2270,21 @@ class PDBDataset(Dataset):
 
         if not exists(mmcif_filepath):
             raise FileNotFoundError(f"mmCIF file for PDB ID {pdb_id} not found.")
+        if not os.path.exists(mmcif_filepath):
+            raise FileNotFoundError(f"mmCIF file {mmcif_filepath} not found.")
 
-        if exists(self.training) and self.training:
-            mmcif_object = mmcif_parsing.parse_mmcif_object(
-                mmcif_filepath,
-                file_id=pdb_id,
-            )
-            biomol = _from_mmcif_object(mmcif_object)
+        cropping_config = None
 
-            if exists(sampled_id):
-                biomol = biomol.crop(
-                    contiguous_weight=self.contiguous_weight,
-                    spatial_weight=self.spatial_weight,
-                    spatial_interface_weight=self.spatial_interface_weight,
-                    n_res=self.crop_size,
-                    chain_1=chain_id_1,
-                    chain_2=chain_id_2,
-                )
+        if self.training:
+            cropping_config = self.cropping_config
 
-            pdb_input = PDBInput(biomol=biomol, **kwargs)
-        else:
-            pdb_input = PDBInput(mmcif_filepath=str(mmcif_filepath), **kwargs)
+        pdb_input = PDBInput(
+            mmcif_filepath=str(mmcif_filepath),
+            chains=(chain_id_1, chain_id_2),
+            cropping_config=cropping_config,
+            training=self.training,
+            **self.pdb_input_kwargs,
+        )
 
         return pdb_input
 
