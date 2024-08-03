@@ -9,6 +9,7 @@ from torch.utils.data import Sampler
 
 from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import typecheck
+from alphafold3_pytorch.utils.utils import exists
 
 log = RankedLogger(__name__, rank_zero_only=True)
 
@@ -164,6 +165,9 @@ class WeightedPDBSampler(Sampler[List[str]]):
         Allow extra data filtering to ensure we avoid training
         on anomalous complexes that passed through all filtering
         and clustering steps.
+    :param subset_to_ids: An optional list of mapping DataFrame indices
+        to which to subset the original combined mapping DataFrame. This
+        is primarily useful for debugging using a smaller set of clusters.
 
     Example:
     ```
@@ -184,6 +188,7 @@ class WeightedPDBSampler(Sampler[List[str]]):
         alpha_nuc: float = 3.0,
         alpha_ligand: float = 1.0,
         pdb_ids_to_skip: list[str] = [],
+        subset_to_ids: list[int] | None = None,
     ):
         # Load chain and interface mappings
         if not isinstance(chain_mapping_paths, list):
@@ -251,6 +256,13 @@ class WeightedPDBSampler(Sampler[List[str]]):
             ["pdb_id", "chain_id_1", "chain_id_2", "cluster_id", "weight"]
         )
         self.mappings = chain_mapping.extend(interface_mapping)
+
+        if exists(subset_to_ids):
+            self.mappings = (
+                self.mappings.with_row_index()
+                .filter(pl.col("index").is_in(subset_to_ids))
+                .select(["pdb_id", "chain_id_1", "chain_id_2", "cluster_id", "weight"])
+            )
 
         # Normalize weights
         self.weights = self.mappings.get_column("weight").to_numpy()
