@@ -39,8 +39,10 @@ from alphafold3_pytorch.models.components.alphafold3 import (
     mean_pool_with_lens,
     repeat_consecutive_with_lens,
 )
-from alphafold3_pytorch.models.components.inputs import IS_MOLECULE_TYPES
-from alphafold3_pytorch.utils.model_utils import atom_ref_pos_to_atompair_inputs
+from alphafold3_pytorch.models.components.inputs import (
+    IS_MOLECULE_TYPES,
+    atom_ref_pos_to_atompair_inputs,
+)
 from alphafold3_pytorch.utils.utils import exists
 
 os.environ["TYPECHECK"] = "True"

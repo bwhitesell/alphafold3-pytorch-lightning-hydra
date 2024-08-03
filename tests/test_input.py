@@ -97,7 +97,7 @@ def test_alphafold3_input(directed_bonds):
 
     alphafold3 = Alphafold3(
         dim_atom_inputs=3,
-        dim_atompair_inputs=1,
+        dim_atompair_inputs=5,
         num_atom_embeds=47,
         num_atompair_embeds=num_atom_bond_types + 1,  # 0 is for no bond
         atoms_per_window=27,
@@ -145,7 +145,7 @@ def test_alphafold3_atompos_input():
 
     alphafold3 = Alphafold3(
         dim_atom_inputs=3,
-        dim_atompair_inputs=1,
+        dim_atompair_inputs=5,
         atoms_per_window=27,
         dim_template_feats=44,
         num_dist_bins=38,
@@ -200,7 +200,7 @@ def test_pdbinput_input():
         dim_pairwise=8,
         dim_token=8,
         dim_atom_inputs=3,
-        dim_atompair_inputs=1,
+        dim_atompair_inputs=5,
         atoms_per_window=27,
         dim_template_feats=44,
         num_dist_bins=38,
