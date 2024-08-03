@@ -410,6 +410,7 @@ class MoleculeInput:
     is_molecule_types: Bool[f"n {IS_MOLECULE_TYPES}"]  # type: ignore
     src_tgt_atom_indices: Int["n 2"]  # type: ignore
     token_bonds: Bool["n n"]  # type: ignore
+    molecule_token_pool_lens: List[int] | None = None  # type: ignore
     is_molecule_mod: Bool["n num_mods"] | None = None  # type: ignore
     molecule_atom_indices: List[int | None] | None = None  # type: ignore
     distogram_atom_indices: List[int | None] | None = None  # type: ignore
@@ -455,6 +456,11 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
                 atom_lens.extend([1] * num_atoms)
             else:
                 atom_lens.append(num_atoms)
+    else:
+        mol_total_atoms = sum([mol.GetNumAtoms() for mol in molecules])
+        assert mol_total_atoms == sum(
+            atom_lens
+        ), f"Total atoms summed up from molecules passed in on `molecules` ({mol_total_atoms}) does not equal the number of atoms summed up in the field `molecule_token_pool_lens` {sum(atom_lens)}."
 
     atom_lens = tensor(atom_lens)
     total_atoms = atom_lens.sum().item()
