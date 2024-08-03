@@ -289,7 +289,8 @@ def test_sequence_local_attn():
     assert out.shape == atoms.shape
 
 
-def test_diffusion_module():
+@pytest.mark.parametrize("karras_formulation", (True, False))
+def test_diffusion_module(karras_formulation):
     """Test the diffusion module."""
     seq_len = 16
     molecule_atom_lens = torch.randint(1, 3, (2, seq_len))
@@ -337,7 +338,9 @@ def test_diffusion_module():
 
     assert noised_atom_pos.shape == atom_pos_update.shape
 
-    edm = ElucidatedAtomDiffusion(diffusion_module, num_sample_steps=2)
+    edm = ElucidatedAtomDiffusion(
+        diffusion_module, karras_formulation=karras_formulation, num_sample_steps=2
+    )
 
     edm_return = edm(
         noised_atom_pos,

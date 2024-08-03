@@ -2410,8 +2410,12 @@ class ElucidatedAtomDiffusion(Module):
         S_tmin=0.05,
         S_tmax=50,
         S_noise=1.003,
+        step_scale=1.5,
+        augment_during_sampling=True,
         smooth_lddt_loss_kwargs: dict = dict(),
         weighted_rigid_align_kwargs: dict = dict(),
+        centre_random_augmentation_kwargs: dict = dict(),
+        karras_formulation=False,  # use the original EDM formulation from Karras et al. Table 1 in https://arxiv.org/abs/2206.00364 - differences are that the noise and sampling schedules are scaled by sigma data, as well as loss weight adds the sigma data instead of multiply in denominator
     ):
         super().__init__()
         self.net = net
@@ -2428,11 +2432,19 @@ class ElucidatedAtomDiffusion(Module):
         self.P_std = P_std
 
         self.num_sample_steps = num_sample_steps  # otherwise known as N in the paper
+        self.step_scale = step_scale
 
         self.S_churn = S_churn
         self.S_tmin = S_tmin
         self.S_tmax = S_tmax
         self.S_noise = S_noise
+
+        # centre random augmenter
+
+        self.augment_during_sampling = augment_during_sampling
+        self.centre_random_augmenter = CentreRandomAugmentation(
+            **centre_random_augmentation_kwargs
+        )
 
         # weighted rigid align
 
@@ -2443,6 +2455,10 @@ class ElucidatedAtomDiffusion(Module):
         self.smooth_lddt_loss = SmoothLDDTLoss(**smooth_lddt_loss_kwargs)
 
         self.register_buffer("zero", torch.tensor(0.0), persistent=False)
+
+        # whether to use original karras formulation or not
+
+        self.karras_formulation = karras_formulation
 
     @property
     def device(self):
@@ -2511,9 +2527,11 @@ class ElucidatedAtomDiffusion(Module):
 
         padded_sigma = rearrange(sigma, "b -> b 1 1")
 
+        maybe_c_noise = self.c_noise if self.karras_formulation else identity
+
         net_out = self.net(
             self.c_in(padded_sigma) * noised_atom_pos,
-            times=self.c_noise(sigma),
+            times=maybe_c_noise(sigma),
             **network_condition_kwargs,
         )
 
@@ -2548,7 +2566,9 @@ class ElucidatedAtomDiffusion(Module):
         ) ** self.rho
 
         sigmas = F.pad(sigmas, (0, 1), value=0.0)  # last step is sigma value of 0.
-        return sigmas
+
+        scale = 1.0 if self.karras_formulation else self.sigma_data
+        return sigmas * scale
 
     @torch.no_grad()
     def sample(self, atom_mask: Bool["b m"] | None = None, num_sample_steps=None, clamp=False, use_tqdm_pbar=True, tqdm_pbar_title="Sampling time step", **network_condition_kwargs):  # type: ignore
@@ -2562,7 +2582,9 @@ class ElucidatedAtomDiffusion(Module):
         :param tqdm_pbar_title: The tqdm progress bar title.
         :return: The atom positions.
         """
-        num_sample_steps = default(num_sample_steps, self.num_sample_steps)
+        step_scale, num_sample_steps = self.step_scale, default(
+            num_sample_steps, self.num_sample_steps
+        )
 
         shape = (*atom_mask.shape, 3)
 
@@ -2590,10 +2612,16 @@ class ElucidatedAtomDiffusion(Module):
 
         maybe_tqdm_wrapper = tqdm if use_tqdm_pbar else identity
 
+        maybe_augment_fn = (
+            self.centre_random_augmenter if self.augment_during_sampling else identity
+        )
+
         for sigma, sigma_next, gamma in maybe_tqdm_wrapper(
             sigmas_and_gammas, desc=tqdm_pbar_title
         ):
-            sigma, sigma_next, gamma = map(lambda t: t.item(), (sigma, sigma_next, gamma))
+            sigma, sigma_next, gamma = tuple(t.item() for t in (sigma, sigma_next, gamma))
+
+            atom_pos = maybe_augment_fn(atom_pos)
 
             eps = self.S_noise * torch.randn(shape, device=self.device)  # stochastic sampling
 
@@ -2608,7 +2636,9 @@ class ElucidatedAtomDiffusion(Module):
             )
             denoised_over_sigma = (atom_pos_hat - model_output) / sigma_hat
 
-            atom_pos_next = atom_pos_hat + (sigma_next - sigma_hat) * denoised_over_sigma
+            atom_pos_next = (
+                atom_pos_hat + (sigma_next - sigma_hat) * denoised_over_sigma * step_scale
+            )
 
             # second order correction, if not the last timestep
 
@@ -2620,8 +2650,12 @@ class ElucidatedAtomDiffusion(Module):
                     network_condition_kwargs=network_condition_kwargs,
                 )
                 denoised_prime_over_sigma = (atom_pos_next - model_output_next) / sigma_next
-                atom_pos_next = atom_pos_hat + 0.5 * (sigma_next - sigma_hat) * (
-                    denoised_over_sigma + denoised_prime_over_sigma
+                atom_pos_next = (
+                    atom_pos_hat
+                    + 0.5
+                    * (sigma_next - sigma_hat)
+                    * (denoised_over_sigma + denoised_prime_over_sigma)
+                    * step_scale
                 )
 
             atom_pos = atom_pos_next
@@ -2633,7 +2667,7 @@ class ElucidatedAtomDiffusion(Module):
 
     # training
 
-    def loss_weight(self, sigma):
+    def karras_loss_weight(self, sigma):
         """Return the loss weight for training.
 
         :param sigma: The sigma value.
@@ -2641,13 +2675,26 @@ class ElucidatedAtomDiffusion(Module):
         """
         return (sigma**2 + self.sigma_data**2) * (sigma * self.sigma_data) ** -2
 
+    def loss_weight(self, sigma):
+        """Return the loss weight for training. For some reason, in paper they add instead of
+        multiply as in original paper.
+
+        :param sigma: The sigma value.
+        :return: The loss weight for training.
+        """
+        return (sigma**2 + self.sigma_data**2) * (sigma + self.sigma_data) ** -2
+
     def noise_distribution(self, batch_size):
         """Sample Gaussian-distributed noise.
 
         :param batch_size: The batch size.
         :return: Sampled Gaussian noise.
         """
-        return (self.P_mean + self.P_std * torch.randn((batch_size,), device=self.device)).exp()
+        scale = 1.0 if self.karras_formulation else self.sigma_data
+
+        return (
+            self.P_mean + self.P_std * torch.randn((batch_size,), device=self.device)
+        ).exp() * scale
 
     def forward(
         self,
@@ -2782,7 +2829,9 @@ class ElucidatedAtomDiffusion(Module):
 
         # regular loss weight as defined in EDM paper
 
-        loss_weights = self.loss_weight(padded_sigmas)
+        loss_weight_fn = self.karras_loss_weight if self.karras_formulation else self.loss_weight
+
+        loss_weights = loss_weight_fn(padded_sigmas)
 
         losses = losses * loss_weights
 
