@@ -729,7 +729,6 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
 @dataclass
 class MoleculeLengthMoleculeInput:
     molecules: List[Mol]
-    one_token_per_atom: List[bool]
     molecule_ids: Int[" n"]  # type: ignore
     additional_molecule_feats: Int[f"n {ADDITIONAL_MOLECULE_FEATS-1}"]  # type: ignore
     is_molecule_types: Bool[f"n {IS_MOLECULE_TYPES}"]  # type: ignore
