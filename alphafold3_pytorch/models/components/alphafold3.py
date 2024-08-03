@@ -3738,7 +3738,7 @@ class ComputeConfidenceScore(Module):
         residue_weights: Float["b n"] | None = None,  # type: ignore
         interface: bool = False,
         compute_chain_wise_iptm: bool = False,
-    ) -> Float[" b"] | Float["b n"] | Tuple[Float["b n n"], Float["b n n"], List[List[int]]]:  # type: ignore
+    ):
         """Compute pTM from logits.
 
         :param logits: [b c n n] logits
