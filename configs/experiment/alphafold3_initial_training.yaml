@@ -43,7 +43,11 @@ model:
   polymer_ligand_bond_loss_weight: 0.0
 
 data:
-  sequence_crop_size: 384
+  sample_type: default
+  contiguous_weight: 0.2
+  spatial_weight: 0.4
+  spatial_interface_weight: 0.4
+  crop_size: 384
   sampling_weight_for_disorder_pdb_distillation: 0.02
   train_on_transcription_factor_distillation_sets: false
   pdb_distillation: null

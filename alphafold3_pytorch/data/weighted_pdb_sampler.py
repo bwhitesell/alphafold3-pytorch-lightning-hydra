@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import os
-from typing import Dict, Iterator, List, Literal, Tuple
+from typing import Iterator, List, Literal
 
 import numpy as np
 import polars as pl
 from torch.utils.data import Sampler
 
+from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import typecheck
+
+log = RankedLogger(__name__, rank_zero_only=True)
 
 # constants
 
@@ -209,6 +212,10 @@ class WeightedPDBSampler(Sampler[List[str]]):
         self.betas = {"chain": beta_chain, "interface": beta_interface}
         self.batch_size = batch_size
 
+        log.info(
+            "Precomputing chain and interface weights. This may take several minutes to complete."
+        )
+
         chain_mapping.insert_column(
             len(chain_mapping.columns),
             compute_chain_weights(chain_mapping, self.alphas, self.betas["chain"]),
@@ -217,6 +224,8 @@ class WeightedPDBSampler(Sampler[List[str]]):
             len(interface_mapping.columns),
             compute_interface_weights(interface_mapping, self.alphas, self.betas["interface"]),
         )
+
+        log.info("Finished precomputing chain and interface weights.")
 
         # Concatenate chain and interface mappings
         chain_mapping = chain_mapping.with_columns(
