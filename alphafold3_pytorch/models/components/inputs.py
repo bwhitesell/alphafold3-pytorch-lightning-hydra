@@ -404,7 +404,6 @@ class MoleculeInput:
     """Dataclass for molecule-level inputs."""
 
     molecules: List[Mol]
-    molecule_token_pool_lens: List[int]
     molecule_ids: Int[" n"]  # type: ignore
     additional_molecule_feats: Int[f"n {ADDITIONAL_MOLECULE_FEATS}"]  # type: ignore
     is_molecule_types: Bool[f"n {IS_MOLECULE_TYPES}"]  # type: ignore
