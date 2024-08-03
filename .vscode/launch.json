@@ -106,7 +106,7 @@
             "program": "alphafold3_pytorch/train.py",
             "console": "integratedTerminal",
             "args": [
-                "data=atom",
+                "data=pdb",
                 "data.batch_size=2",
                 "experiment=alphafold3_initial_training",
                 "logger=csv",
