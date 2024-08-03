@@ -221,6 +221,30 @@ class WeightedPDBSampler(Sampler[List[str]]):
             "Precomputing chain and interface weights. This may take several minutes to complete."
         )
 
+        # Subset to specific indices if provided
+        if exists(subset_to_ids):
+            chain_mapping = (
+                chain_mapping.with_row_index()
+                .filter(pl.col("index").is_in(subset_to_ids))
+                .select(["pdb_id", "chain_id", "molecule_id", "cluster_id"])
+            )
+            interface_mapping = (
+                interface_mapping.with_row_index()
+                .filter(pl.col("index").is_in(subset_to_ids))
+                .select(
+                    [
+                        "pdb_id",
+                        "interface_chain_id_1",
+                        "interface_chain_id_2",
+                        "interface_molecule_id_1",
+                        "interface_molecule_id_2",
+                        "interface_chain_cluster_id_1",
+                        "interface_chain_cluster_id_2",
+                        "interface_cluster_id",
+                    ]
+                )
+            )
+
         chain_mapping.insert_column(
             len(chain_mapping.columns),
             compute_chain_weights(chain_mapping, self.alphas, self.betas["chain"]),
@@ -256,13 +280,6 @@ class WeightedPDBSampler(Sampler[List[str]]):
             ["pdb_id", "chain_id_1", "chain_id_2", "cluster_id", "weight"]
         )
         self.mappings = chain_mapping.extend(interface_mapping)
-
-        if exists(subset_to_ids):
-            self.mappings = (
-                self.mappings.with_row_index()
-                .filter(pl.col("index").is_in(subset_to_ids))
-                .select(["pdb_id", "chain_id_1", "chain_id_2", "cluster_id", "weight"])
-            )
 
         # Normalize weights
         self.weights = self.mappings.get_column("weight").to_numpy()

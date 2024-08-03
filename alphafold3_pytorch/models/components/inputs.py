@@ -2569,7 +2569,10 @@ class PDBDataset(Dataset):
         assert folder.exists() and folder.is_dir(), f"{str(folder)} does not exist for PDBDataset"
         self.folder = folder
 
-        self.files = list(folder.glob(os.path.join("**", "*.cif")))
+        self.files = {
+            os.path.splitext(os.path.basename(file.name))[0]: file
+            for file in folder.glob(os.path.join("**", "*.cif"))
+        }
         self.sampler = sampler
         self.sample_type = sample_type
         self.training = training
@@ -2585,12 +2588,12 @@ class PDBDataset(Dataset):
         # subsample mmCIF files to those that have a valid (post-filtering) association with a chain/interface cluster
 
         if exists(self.sampler):
-            sampler_pdb_ids = set(self.mappings.get_column("pdb_id").to_list())
-            self.files = [
-                file
-                for file in self.files
-                if os.path.splitext(os.path.basename(file.name))[0] in sampler_pdb_ids
-            ]
+            sampler_pdb_ids = set(self.sampler.mappings.get_column("pdb_id").to_list())
+            self.files = {
+                file: filepath
+                for (file, filepath) in self.files.items()
+                if file in sampler_pdb_ids
+            }
 
         assert len(self) > 0, f"No valid mmCIFs / PDBs found at {str(folder)}"
 
@@ -2598,7 +2601,7 @@ class PDBDataset(Dataset):
         """Return the number of PDB mmCIF files in the dataset."""
         return len(self.files)
 
-    def __getitem__(self, idx: int) -> PDBInput:
+    def __getitem__(self, idx: int | str) -> PDBInput:
         """Return a PDBInput object for the specified index."""
         sampled_id = None
 
@@ -2608,17 +2611,25 @@ class PDBDataset(Dataset):
             else:
                 (sampled_id,) = self.sampler.sample(1)
 
-        # get the mmCIF file corresponding to the sampled structure
-
-        mmcif_filepath = self.files[idx]
-
-        if not os.path.exists(mmcif_filepath):
-            raise FileNotFoundError(f"mmCIF file {mmcif_filepath} not found.")
-
-        chain_id_1, chain_id_2 = None, None
+        pdb_id, chain_id_1, chain_id_2 = None, None, None
 
         if exists(sampled_id):
-            _, chain_id_1, chain_id_2 = sampled_id
+            pdb_id, chain_id_1, chain_id_2 = sampled_id
+            mmcif_filepath = self.files.get(pdb_id, None)
+
+        elif isinstance(idx, int):
+            pdb_id, mmcif_filepath = [*self.files.items()][idx]
+
+        elif isinstance(idx, str):
+            pdb_id = idx
+            mmcif_filepath = self.files.get(pdb_id, None)
+
+        # get the mmCIF file corresponding to the sampled structure
+
+        if not exists(mmcif_filepath):
+            raise FileNotFoundError(f"mmCIF file for PDB ID {pdb_id} not found.")
+        if not os.path.exists(mmcif_filepath):
+            raise FileNotFoundError(f"mmCIF file {mmcif_filepath} not found.")
 
         cropping_config = None
 

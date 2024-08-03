@@ -312,6 +312,15 @@ class PDBDataModule(LightningDataModule):
 
         # load dataset splits only if not loaded already
         if not self.data_train and not self.data_val and not self.data_test:
+            # subsample clusters as requested
+
+            if exists(self.hparams.train_val_test_split):
+                train_count, val_count, test_count = self.hparams.train_val_test_split
+
+                train_subset_to_ids = list(range(train_count))
+                val_subset_to_ids = list(range(val_count))
+                test_subset_to_ids = list(range(test_count))
+
             # training set
 
             self.data_train = PDBDataset(
@@ -350,6 +359,7 @@ class PDBDataModule(LightningDataModule):
                         "interface_cluster_mapping.csv",
                     ),
                     batch_size=1,
+                    subset_to_ids=train_subset_to_ids,
                 ),
                 sample_type=self.hparams.sample_type,
                 contiguous_weight=self.hparams.contiguous_weight,
@@ -397,6 +407,7 @@ class PDBDataModule(LightningDataModule):
                         "interface_cluster_mapping.csv",
                     ),
                     batch_size=1,
+                    subset_to_ids=val_subset_to_ids,
                 ),
                 sample_type=self.hparams.sample_type,
                 contiguous_weight=self.hparams.contiguous_weight,
@@ -444,6 +455,7 @@ class PDBDataModule(LightningDataModule):
                         "interface_cluster_mapping.csv",
                     ),
                     batch_size=1,
+                    subset_to_ids=test_subset_to_ids,
                 ),
                 sample_type=self.hparams.sample_type,
                 contiguous_weight=self.hparams.contiguous_weight,
@@ -456,8 +468,6 @@ class PDBDataModule(LightningDataModule):
             # subsample datasets as requested
 
             if exists(self.hparams.train_val_test_split):
-                train_count, val_count, test_count = self.hparams.train_val_test_split
-
                 train_indices = list(range(len(self.data_train)))
                 val_indices = list(range(len(self.data_val)))
                 test_indices = list(range(len(self.data_test)))
