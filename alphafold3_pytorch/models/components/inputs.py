@@ -174,7 +174,7 @@ class AtomInput:
     pde_labels: Int["n n"] | None = None  # type: ignore
     plddt_labels: Int[" n"] | None = None  # type: ignore
     resolved_labels: Int[" n"] | None = None  # type: ignore
-    chains: Int[" 2"]  # type: ignore
+    chains: Int[" 2"] | None = None  # type: ignore
 
     def dict(self):
         """Return the dataclass as a dictionary."""
@@ -211,7 +211,7 @@ class BatchedAtomInput:
     pde_labels: Int["b n n"] | None = None  # type: ignore
     plddt_labels: Int["b n"] | None = None  # type: ignore
     resolved_labels: Int["b n"] | None = None  # type: ignore
-    chains: Int["b 2"]  # type: ignore
+    chains: Int["b 2"] | None = None  # type: ignore
 
     def dict(self):
         """Return the dataclass as a dictionary."""
