@@ -11,7 +11,7 @@ pdb_distillation: null # NOTE: does not appear to be used in Table 6 of the pape
 max_number_of_chains: 20 # NOTE: must be one of (initial_training: 20, fine_tuning_1: 20, fine_tuning_2: 20, fine_tuning_3: 50), proceeding from left to right following Table 6 in the paper
 atoms_per_window: null # if specified, the number of atoms to include in each window
 map_dataset_input_fn: null # if specified, a function that should be applied to dataset examples for batching - NOTE: to specify, use resolver syntax such as `${resolve_variable:alphafold3_pytorch.utils.model_utils.default_map_dataset_input_fn}`
-train_val_test_split: [2, 2, 2] # NOTE: if specified, the number of examples to use for training, validation, and testing, respectively
+train_val_test_split: null # NOTE: if specified, the number of examples to use for training, validation, and testing, respectively
 shuffle_train_val_test_subsets: True # NOTE: this is only referenced if `train_val_test_split` is specified
 batch_size: 256 # needs to be divisible by the number of devices (e.g., if in a distributed setup)
 num_workers: 0
