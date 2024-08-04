@@ -5182,7 +5182,7 @@ class Alphafold3(Module):
 
         assert not (
             exists(is_molecule_mod) ^ self.has_molecule_mod_embeds
-        ), "you either set `num_molecule_mods` and did not pass in `is_molecule_mod` or vice versa"
+        ), "You either set `num_molecule_mods` and did not pass in `is_molecule_mod` or vice versa"
 
         if self.has_molecule_mod_embeds:
             single_init, seq_unpack_one = pack_one(single_init, "* ds")
