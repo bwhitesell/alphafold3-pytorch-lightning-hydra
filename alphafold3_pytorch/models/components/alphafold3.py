@@ -991,10 +991,17 @@ class MSAModule(Module):
 
             indices = rand.topk(self.max_num_msa, dim=-1).indices
 
-            msa = einx.get_at("b [s] n dm, b sampled -> b sampled n dm", msa, indices)
+            # msa = einx.get_at('b [s] n dm, b sampled -> b sampled n dm', msa, indices)
+
+            msa, unpack_one = pack_one(msa, "b s *")
+            indices = repeat(indices, "b sampled -> b sampled d", d=msa.shape[-1])
+            msa = msa.gather(1, indices)
+            msa = unpack_one(msa)
 
             if exists(msa_mask):
-                msa_mask = einx.get_at("b [s], b sampled -> b sampled", msa_mask, indices)
+                # msa_mask = einx.get_at('b [s], b sampled -> b sampled', msa_mask, indices)
+
+                msa_mask = msa_mask.gather(1, indices)
 
         # account for no msa
 
@@ -2262,12 +2269,19 @@ class DiffusionModule(Module):
         col_indices = concat_previous_window(col_indices, dim_seq=1, dim_window=-1)
         row_indices, col_indices = torch.broadcast_tensors(row_indices, col_indices)
 
-        pairwise_repr_cond = einx.get_at(
-            "b [i j] dap, b nw w1 w2, b nw w1 w2 -> b nw w1 w2 dap",
-            pairwise_repr_cond,
-            row_indices,
-            col_indices,
+        # pairwise_repr_cond = einx.get_at('b [i j] dap, b nw w1 w2, b nw w1 w2 -> b nw w1 w2 dap', pairwise_repr_cond, row_indices, col_indices)
+
+        row_indices, unpack_one = pack_one(row_indices, "b *")
+        col_indices, _ = pack_one(col_indices, "b *")
+
+        rowcol_indices = col_indices + row_indices * pairwise_repr_cond.shape[2]
+        rowcol_indices = repeat(
+            rowcol_indices, "b rc -> b rc dap", dap=pairwise_repr_cond.shape[-1]
         )
+        pairwise_repr_cond, _ = pack_one(pairwise_repr_cond, "b * dap")
+
+        pairwise_repr_cond = pairwise_repr_cond.gather(1, rowcol_indices)
+        pairwise_repr_cond = unpack_one(pairwise_repr_cond, "b * dap")
 
         atompair_feats = pairwise_repr_cond + atompair_feats
 
@@ -3609,9 +3623,12 @@ class ConfidenceHead(Module):
             assert exists(
                 molecule_atom_indices
             ), "molecule_atom_indices must be passed into ConfidenceHead if pred_atom_pos is atomic length"
-            pred_molecule_pos = einx.get_at(
-                "b [m] c, b n -> b n c", pred_atom_pos, molecule_atom_indices
+            # pred_molecule_pos = einx.get_at('b [m] c, b n -> b n c', pred_atom_pos, molecule_atom_indices)
+
+            molecule_atom_indices = repeat(
+                molecule_atom_indices, "b n -> b n c", c=pred_atom_pos.shape[-1]
             )
+            pred_molecule_pos = pred_atom_pos.gather(1, molecule_atom_indices)
         else:
             pred_molecule_pos = pred_atom_pos
 
@@ -4091,10 +4108,11 @@ class ComputeRankingScore(Module):
         valid_indices = repeat_consecutive_with_lens(valid_indices, molecule_atom_lens)
 
         # broadcast is_molecule_types to atom
-        atom_is_molecule_types = (
-            einx.get_at("b [n] is_type, b m -> b m is_type", is_molecule_types, indices)
-            * valid_indices[..., None]
-        )
+
+        # einx.get_at('b [n] is_type, b m -> b m is_type', is_molecule_types, indices)
+
+        indices = repeat(indices, "b m -> b m is_type", is_type=is_molecule_types.shape[-1])
+        atom_is_molecule_types = is_molecule_types.gather(1, indices) * valid_indices[..., None]
 
         confidence_score = self.compute_confidence_score(
             confidence_head_logits, asym_id, has_frame, multimer_mode=True
@@ -5380,7 +5398,12 @@ class Alphafold3(Module):
         # distogram head
 
         if not exists(distance_labels) and atom_pos_given and exists(distogram_atom_indices):
-            molecule_pos = einx.get_at("b [m] c, b n -> b n c", atom_pos, distogram_atom_indices)
+            # molecule_pos = einx.get_at('b [m] c, b n -> b n c', atom_pos, distogram_atom_indices)
+
+            distogram_atom_indices = repeat(
+                distogram_atom_indices, "b n -> b n c", c=atom_pos.shape[-1]
+            )
+            molecule_pos = atom_pos.gather(1, distogram_atom_indices)
 
             molecule_dist = torch.cdist(molecule_pos, molecule_pos, p=2)
             dist_from_dist_bins = einx.subtract(

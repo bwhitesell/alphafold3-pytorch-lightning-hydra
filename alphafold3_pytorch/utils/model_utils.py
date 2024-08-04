@@ -302,7 +302,10 @@ def mean_pool_with_lens(
     cumsum_indices = lens.cumsum(dim=1)
     cumsum_indices = F.pad(cumsum_indices, (1, 0), value=0)
 
-    sel_cumsum = einx.get_at("b [m] d, b n -> b n d", cumsum_feats, cumsum_indices)
+    # sel_cumsum = einx.get_at('b [m] d, b n -> b n d', cumsum_feats, cumsum_indices)
+
+    cumsum_indices = repeat(cumsum_indices, "b n -> b n d", d=cumsum_feats.shape[-1])
+    sel_cumsum = cumsum_feats.gather(-2, cumsum_indices)
 
     # subtract cumsum at one index from the previous one
     summed = sel_cumsum[:, 1:] - sel_cumsum[:, :-1]
@@ -356,9 +359,11 @@ def repeat_consecutive_with_lens(
     # scatter
 
     seq_arange = torch.arange(seq, device=device)
-    seq_arange = repeat(seq_arange, "n -> (n w)", w=window_size)
+    seq_arange = repeat(seq_arange, "n -> b (n w)", b=batch, w=window_size)
 
-    output_indices = einx.set_at("b [m],  b nw, nw -> b [m]", output_indices, indices, seq_arange)
+    # output_indices = einx.set_at('b [m], b nw, b nw -> b [m]', output_indices, indices, seq_arange)
+
+    output_indices = output_indices.scatter(1, indices, seq_arange)
 
     # remove sink
 
@@ -366,7 +371,12 @@ def repeat_consecutive_with_lens(
 
     # gather
 
-    output = einx.get_at("b [n] ..., b m -> b m ...", feats, output_indices)
+    # output = einx.get_at('b [n] ..., b m -> b m ...', feats, output_indices)
+
+    feats, unpack_one = pack_one(feats, "b n *")
+    output_indices = repeat(output_indices, "b m -> b m d", d=feats.shape[-1])
+    output = feats.gather(1, output_indices)
+    output = unpack_one(output)
 
     # final mask
 
