@@ -93,6 +93,7 @@ class Alphafold3LitModule(LightningModule):
         """
         if not self.net.has_molecule_mod_embeds:
             batch_dict["is_molecule_mod"] = None
+        return batch_dict
 
     @typecheck
     def forward(self, batch: BatchedAtomInput) -> Tuple[Float[""], LossBreakdown]:  # type: ignore
