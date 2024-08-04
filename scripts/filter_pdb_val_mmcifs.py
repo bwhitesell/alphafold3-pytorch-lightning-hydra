@@ -29,7 +29,6 @@ import argparse
 import glob
 import os
 from datetime import datetime
-from typing import Tuple
 
 import rootutils
 import timeout_decorator
@@ -66,9 +65,9 @@ def filter_num_tokens(
 ) -> bool:
     """Filter based on number of tokens."""
     biomol = (
-        _from_mmcif_object(mmcif_object, atomize_modified_polymer_residues=True)
+        _from_mmcif_object(mmcif_object)
         if "assembly" in mmcif_object.file_id
-        else get_assembly(_from_mmcif_object(mmcif_object, atomize_modified_polymer_residues=True))
+        else get_assembly(_from_mmcif_object(mmcif_object))
     )
     return (
         len(biomol.atom_mask) < max_tokens
