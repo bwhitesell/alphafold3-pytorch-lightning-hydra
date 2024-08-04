@@ -27,7 +27,7 @@ You can chat with other researchers about this work <a href="https://discord.gg/
 
 <a href="https://www.youtube.com/watch?v=AE35XCN5NuU">Talk by Max Jaderberg</a>
 
-The original version of this repository with Lightning Fabric + OmegaConf support is being maintained by <a href="https://github.com/lucidrains">Phil</a> at <a href="https://github.com/lucidrains/alphafold3-pytorch">this repository</a>
+The original version of this repository with <a href="https://lightning.ai/docs/fabric/stable/">Fabric</a> support is being maintained by <a href="https://github.com/lucidrains">Phil</a> at <a href="https://github.com/lucidrains/alphafold3-pytorch">this repository</a>
 
 ## Appreciation
 
