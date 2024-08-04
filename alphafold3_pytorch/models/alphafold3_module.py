@@ -85,13 +85,24 @@ class Alphafold3LitModule(LightningModule):
         return self.trainer.global_rank == 0
 
     @typecheck
+    def prepare_batch_dict(self, batch_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """Prepare the input batch dictionary for the model.
+
+        :param batch_dict: The input batch dictionary.
+        :return: The prepared batch dictionary.
+        """
+        if not self.net.has_molecule_mod_embeds:
+            batch_dict["is_molecule_mod"] = None
+
+    @typecheck
     def forward(self, batch: BatchedAtomInput) -> Tuple[Float[""], LossBreakdown]:  # type: ignore
         """Perform a forward pass through the model `self.net`.
 
         :param x: A batch of `BatchedAtomInput` data.
         :return: A tensor of losses as well as a breakdown of the component losses.
         """
-        return self.net(**batch.dict(), return_loss_breakdown=True)
+        batch_dict = self.prepare_batch_dict(batch.dict())
+        return self.net(**batch_dict, return_loss_breakdown=True)
 
     def on_train_start(self) -> None:
         """Lightning hook that is called when training begins."""
