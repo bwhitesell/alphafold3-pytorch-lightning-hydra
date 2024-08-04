@@ -57,7 +57,7 @@ The original version of this repository with <a href="https://lightning.ai/docs/
 
 - <a href="https://github.com/sj900">sj900</a> for integrating and testing the `WeightedPDBSampler` within the `PDBDataset`!
 
-- <a href="https://github.com/xluo233">@xluo233</a> again for contributing the logic for computing the model selection score!
+- <a href="https://github.com/xluo233">@xluo233</a> again for contributing the logic for computing the model selection score as well as the unresolved RASA!
 
 - <a href="https://github.com/wufandi">Fandi</a> for discovering a few inconsistencies in the elucidated atom diffusion module with the supplementary
 
@@ -170,6 +170,7 @@ atompair_inputs = torch.randn(2, atom_seq_len, atom_seq_len, 5)
 additional_molecule_feats = torch.randint(0, 2, (2, seq_len, 5))
 additional_token_feats = torch.randn(2, seq_len, 2)
 is_molecule_types = torch.randint(0, 2, (2, seq_len, 5)).bool()
+is_molecule_mod = torch.randint(0, 2, (2, seq_len, 4)).bool()
 molecule_ids = torch.randint(0, 32, (2, seq_len))
 
 template_feats = torch.randn(2, 2, seq_len, seq_len, 44)
@@ -200,6 +201,7 @@ loss = alphafold3(
     additional_molecule_feats = additional_molecule_feats,
     additional_token_feats = additional_token_feats,
     is_molecule_types = is_molecule_types,
+    is_molecule_mod = is_molecule_mod,
     msa = msa,
     msa_mask = msa_mask,
     templates = template_feats,
@@ -227,6 +229,7 @@ sampled_atom_pos = alphafold3(
     additional_molecule_feats = additional_molecule_feats,
     additional_token_feats = additional_token_feats,
     is_molecule_types = is_molecule_types,
+    is_molecule_mod = is_molecule_mod,
     msa = msa,
     msa_mask = msa_mask,
     templates = template_feats,
@@ -278,6 +281,7 @@ alphafold3 = Alphafold3(
     atoms_per_window = 27,
     dim_template_feats = 44,
     num_dist_bins = 38,
+    num_molecule_mods = 0,
     confidence_head_kwargs = dict(
         pairformer_depth = 1
     ),

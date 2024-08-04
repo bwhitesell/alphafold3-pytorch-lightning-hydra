@@ -15,7 +15,7 @@ import einx
 import numpy as np
 import torch
 import torch.nn.functional as F
-from einops import pack
+from einops import pack, rearrange
 from joblib import Parallel, delayed
 from pdbeccdutils.core import ccd_reader
 from rdkit import Chem, RDLogger
@@ -428,7 +428,7 @@ class MoleculeInput:
     is_molecule_types: Bool[f"n {IS_MOLECULE_TYPES}"]  # type: ignore
     src_tgt_atom_indices: Int["n 2"]  # type: ignore
     token_bonds: Bool["n n"]  # type: ignore
-    is_molecule_mod: Bool["n num_mods"] | None = None  # type: ignore
+    is_molecule_mod: Bool["n num_mods"] | Bool[" n"] | None = None  # type: ignore
     molecule_atom_indices: List[int | None] | None = None  # type: ignore
     distogram_atom_indices: List[int | None] | None = None  # type: ignore
     missing_atom_indices: List[Int[" _"] | None] | None = None  # type: ignore
@@ -701,6 +701,13 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
 
     chains = tensor([default(chain, -1) for chain in i.chains]).long()
 
+    # handle is_molecule_mod being one dimensional
+
+    is_molecule_mod = i.is_molecule_mod
+
+    if is_molecule_mod.ndim == 1:
+        is_molecule_mod = rearrange(is_molecule_mod, "n -> n 1")
+
     # atom input
 
     atom_input = AtomInput(
@@ -710,10 +717,14 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
         molecule_ids=i.molecule_ids,
         molecule_atom_indices=i.molecule_atom_indices,
         distogram_atom_indices=i.distogram_atom_indices,
+        is_molecule_mod=is_molecule_mod,
+        msa=i.msa,
+        templates=i.templates,
+        msa_mask=i.msa_mask,
+        templates_mask=i.template_mask,
         missing_atom_mask=missing_atom_mask,
         additional_token_feats=i.additional_token_feats,
         additional_molecule_feats=i.additional_molecule_feats,
-        is_molecule_mod=i.is_molecule_mod,
         is_molecule_types=i.is_molecule_types,
         atom_pos=atom_pos,
         token_bonds=i.token_bonds,

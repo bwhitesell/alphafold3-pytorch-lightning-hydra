@@ -3,6 +3,7 @@
 import itertools
 import os
 import random
+import subprocess  # nosec
 
 import pytest
 import rootutils
@@ -36,12 +37,17 @@ from alphafold3_pytorch.data.atom_datamodule import MockAtomDataset
 from alphafold3_pytorch.data.pdb_datamodule import collate_inputs_to_batched_atom_input
 from alphafold3_pytorch.models.components.alphafold3 import (
     full_pairwise_repr_to_windowed,
+    get_cid_molecule_type,
     mean_pool_with_lens,
     repeat_consecutive_with_lens,
 )
 from alphafold3_pytorch.models.components.inputs import (
     IS_MOLECULE_TYPES,
+    IS_PROTEIN,
+    PDBInput,
     atom_ref_pos_to_atompair_inputs,
+    molecule_to_atom_input,
+    pdb_input_to_molecule_input,
 )
 from alphafold3_pytorch.utils.utils import exists
 
@@ -676,6 +682,7 @@ def test_alphafold3_without_msa_and_templates():
         dim_atom_inputs=77,
         dim_template_feats=44,
         num_dist_bins=38,
+        num_molecule_mods=0,
         checkpoint_trunk_pairformer=True,
         checkpoint_diffusion_token_transformer=True,
         confidence_head_kwargs=dict(pairformer_depth=1),
@@ -748,6 +755,7 @@ def test_alphafold3_force_return_loss():
         dim_atom_inputs=77,
         dim_template_feats=44,
         num_dist_bins=38,
+        num_molecule_mods=0,
         confidence_head_kwargs=dict(pairformer_depth=1),
         template_embedder_kwargs=dict(pairformer_stack_depth=1),
         msa_module_kwargs=dict(depth=1),
@@ -826,6 +834,7 @@ def test_alphafold3_force_return_loss_with_confidence_logits():
         dim_atom_inputs=77,
         dim_template_feats=44,
         num_dist_bins=38,
+        num_molecule_mods=0,
         confidence_head_kwargs=dict(pairformer_depth=1),
         template_embedder_kwargs=dict(pairformer_stack_depth=1),
         msa_module_kwargs=dict(depth=1),
@@ -865,7 +874,11 @@ def test_alphafold3_force_return_loss_with_confidence_logits():
 def test_alphafold3_with_atom_and_bond_embeddings():
     """Test the AlphaFold 3 model with atom and bond embeddings."""
     alphafold3 = Alphafold3(
-        num_atom_embeds=7, num_atompair_embeds=3, dim_atom_inputs=77, dim_template_feats=44
+        num_atom_embeds=7,
+        num_atompair_embeds=3,
+        num_molecule_mods=0,
+        dim_atom_inputs=77,
+        dim_template_feats=44,
     )
 
     # mock inputs
@@ -1092,3 +1105,51 @@ def test_model_selection_score():
     )
 
     assert exists(gpde) and exists(weighted_lddt)
+
+
+def test_unresolved_protein_rasa():
+    """Test the unresolved protein relative accessible surface area (RASA) calculation."""
+
+    # skip the test if dssp not installed
+
+    try:
+        subprocess.check_output(["which", "mkdssp"])  # nosec
+    except Exception as e:
+        pytest.skip(
+            f"The `mkdssp` executable could not be run due to: {e}. Skipping `test_unresolved_protein_rasa()`."
+        )
+
+    # rest of the test
+
+    mmcif_filepath = os.path.join("data", "test", "7a4d-assembly1.cif")
+    pdb_input = PDBInput(mmcif_filepath)
+
+    mol_input = pdb_input_to_molecule_input(pdb_input)
+    atom_input = molecule_to_atom_input(mol_input)
+    batched_atom_input = collate_inputs_to_batched_atom_input([atom_input], atoms_per_window=27)
+    batched_atom_input_dict = batched_atom_input.dict()
+
+    _, _, asym_id, _, _ = batched_atom_input_dict["additional_molecule_feats"].unbind(dim=-1)
+
+    cid = 1
+    res_chem_index = get_cid_molecule_type(
+        cid, asym_id[0], batched_atom_input_dict["is_molecule_types"][0]
+    )
+
+    # NOTE: we currently only support unresolved protein calculations
+    assert res_chem_index == IS_PROTEIN
+
+    unresolved_residue_mask = torch.randint(0, 2, asym_id.shape).bool()
+
+    compute_model_selection_score = ComputeModelSelectionScore()
+    unresolved_rasa = compute_model_selection_score.compute_unresolved_rasa(
+        unresolved_cid=[1],
+        unresolved_residue_mask=unresolved_residue_mask,
+        asym_id=asym_id,
+        molecule_ids=batched_atom_input_dict["molecule_ids"],
+        molecule_atom_lens=batched_atom_input_dict["molecule_atom_lens"],
+        atom_pos=batched_atom_input_dict["atom_pos"],
+        atom_mask=~batched_atom_input_dict["missing_atom_mask"],
+    )
+
+    assert exists(unresolved_rasa)

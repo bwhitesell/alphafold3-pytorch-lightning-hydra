@@ -103,6 +103,7 @@ def test_alphafold3_input(directed_bonds):
         atoms_per_window=27,
         dim_template_feats=44,
         num_dist_bins=38,
+        num_molecule_mods=0,
         confidence_head_kwargs=dict(pairformer_depth=1),
         template_embedder_kwargs=dict(pairformer_stack_depth=1),
         msa_module_kwargs=dict(depth=1),
@@ -117,7 +118,7 @@ def test_alphafold3_input(directed_bonds):
     alphafold3(**batched_atom_input.dict(), num_sample_steps=1)
 
 
-def test_alphafold3_atompos_input():
+def test_atompos_input():
     """Test the Alphafold3Input class, particularly its input transformations with atom
     positions."""
     contrived_protein = "AG"
@@ -149,6 +150,7 @@ def test_alphafold3_atompos_input():
         atoms_per_window=27,
         dim_template_feats=44,
         num_dist_bins=38,
+        num_molecule_mods=0,
         confidence_head_kwargs=dict(pairformer_depth=1),
         template_embedder_kwargs=dict(pairformer_stack_depth=1),
         msa_module_kwargs=dict(depth=1),
