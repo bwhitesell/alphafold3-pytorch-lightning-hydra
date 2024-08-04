@@ -340,7 +340,7 @@ class AtomDataset(Dataset):
 @typecheck
 def atom_ref_pos_to_atompair_inputs(
     atom_ref_pos: Float["m 3"],  # type: ignore
-    atom_ref_space_uid: Int["m"] | None = None,  # type: ignore
+    atom_ref_space_uid: Int[" m"] | None = None,  # type: ignore
 ) -> Float["m m 5"]:  # type: ignore
     """Compute atompair inputs from atom reference positions.
 
@@ -737,7 +737,7 @@ class MoleculeLengthMoleculeInput:
     src_tgt_atom_indices: Int["n 2"]  # type: ignore
     token_bonds: Bool["n n"] | None = None  # type: ignore
     one_token_per_atom: List[bool] | None = None
-    is_molecule_mod: Bool["n num_mods"] | Bool["n"] | None = None  # type: ignore
+    is_molecule_mod: Bool["n num_mods"] | Bool[" n"] | None = None  # type: ignore
     molecule_atom_indices: List[int | None] | None = None
     distogram_atom_indices: List[int | None] | None = None
     missing_atom_indices: List[Int[" _"] | None] | None = None  # type: ignore
