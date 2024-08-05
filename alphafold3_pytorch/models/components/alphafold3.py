@@ -1002,8 +1002,8 @@ class MSAModule(Module):
             # msa = einx.get_at('b [s] n dm, b sampled -> b sampled n dm', msa, indices)
 
             msa, unpack_one = pack_one(msa, "b s *")
-            indices = repeat(indices, "b sampled -> b sampled d", d=msa.shape[-1])
-            msa = msa.gather(1, indices)
+            msa_indices = repeat(indices, "b sampled -> b sampled d", d=msa.shape[-1])
+            msa = msa.gather(1, msa_indices)
             msa = unpack_one(msa)
 
             if exists(msa_mask):
