@@ -18,7 +18,7 @@ import torch.nn.functional as F
 from einops import pack, rearrange
 from joblib import Parallel, delayed
 from pdbeccdutils.core import ccd_reader
-from rdkit import Chem, rdBase
+from rdkit import Chem, RDLogger, rdBase
 from rdkit.Chem import AllChem, rdDetermineBonds
 from rdkit.Chem.rdchem import Atom, Mol
 from rdkit.Geometry import Point3D
@@ -58,6 +58,10 @@ from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
 from alphafold3_pytorch.utils.utils import default, exists, first, identity
 
 logger = RankedLogger(__name__, rank_zero_only=False)
+
+# silence RDKit's warnings
+
+RDLogger.DisableLog("rdApp.*")
 
 # constants
 
