@@ -51,7 +51,6 @@ from alphafold3_pytorch.utils.data_utils import (
     get_pdb_input_residue_molecule_type,
     is_atomized_residue,
     is_polymer,
-    remove_last_digit_character,
 )
 from alphafold3_pytorch.utils.model_utils import exclusive_cumsum, maybe
 from alphafold3_pytorch.utils.pylogger import RankedLogger
@@ -2503,14 +2502,12 @@ def pdb_input_to_molecule_input(
             ptnr2_atom_id = (
                 f"{bond.ptnr2_auth_asym_id}:{bond.ptnr2_auth_seq_id}:{bond.ptnr2_label_atom_id}"
             )
-            ptnr1_label_atom_id = remove_last_digit_character(bond.ptnr1_label_atom_id)
-            ptnr2_label_atom_id = remove_last_digit_character(bond.ptnr2_label_atom_id)
             try:
                 row_idx = get_token_index_from_composite_atom_id(
                     biomol,
                     bond.ptnr1_auth_asym_id,
                     int(bond.ptnr1_auth_seq_id),
-                    ptnr1_label_atom_id,
+                    bond.ptnr1_label_atom_id,
                     bond_atom_indices[ptnr1_atom_id],
                     ptnr1_is_polymer,
                 )
@@ -2526,7 +2523,7 @@ def pdb_input_to_molecule_input(
                     biomol,
                     bond.ptnr2_auth_asym_id,
                     int(bond.ptnr2_auth_seq_id),
-                    ptnr2_label_atom_id,
+                    bond.ptnr2_label_atom_id,
                     bond_atom_indices[ptnr2_atom_id],
                     ptnr2_is_polymer,
                 )

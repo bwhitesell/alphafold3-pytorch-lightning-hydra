@@ -15,7 +15,7 @@ scheduler:
 
 net:
   _target_: alphafold3_pytorch.models.components.alphafold3.Alphafold3
-  dim_atom_inputs: 77
+  dim_atom_inputs: 3
   dim_template_feats: 44
   num_dist_bins: 38
 
