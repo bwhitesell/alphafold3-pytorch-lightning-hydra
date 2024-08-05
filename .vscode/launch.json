@@ -108,7 +108,7 @@
             "args": [
                 "data=pdb",
                 "data.batch_size=2",
-                "data.train_val_test_split=[200, 200, 200]",
+                "data.train_val_test_split=[20, 20, 20]",
                 "data.shuffle_train_val_test_subsets=True",
                 "experiment=alphafold3_initial_training",
                 "logger=csv",
