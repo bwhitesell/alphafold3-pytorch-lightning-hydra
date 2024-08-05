@@ -269,7 +269,7 @@ class Alphafold3LitModule(LightningModule):
 
         output_filepath = os.path.join(
             samples_output_dir,
-            input_filepath.replace(
+            os.path.basename(input_filepath).replace(
                 ".cif",
                 f"-sampled-epoch-{self.current_epoch}-step-{self.global_step}-batch-{batch_idx}.cif",
             ),
