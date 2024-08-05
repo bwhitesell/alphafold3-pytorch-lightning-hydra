@@ -201,7 +201,7 @@ class Attend(Module):
         window_size=None,
         scale: float | None = None,
         enable_attn_softclamp=False,
-        attn_softclamp_value=30.0,
+        attn_softclamp_value=50.0,
     ):
         super().__init__()
         """
