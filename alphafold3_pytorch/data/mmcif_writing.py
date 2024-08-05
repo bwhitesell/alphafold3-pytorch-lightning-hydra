@@ -13,7 +13,8 @@ from alphafold3_pytorch.utils.utils import exists
 def write_mmcif_from_filepath_and_id(
     input_filepath: str, output_filepath: str, file_id: str, **kwargs
 ):
-    """Write an mmCIF file to disk with a suffix appended to the filename."""
+    """Write an input mmCIF file to an output mmCIF filepath using the provided keyword arguments
+    (e.g., sampled coordinates)."""
     mmcif_object = parse_mmcif_object(filepath=input_filepath, file_id=file_id)
     return write_mmcif(mmcif_object, output_filepath=output_filepath, **kwargs)
 
