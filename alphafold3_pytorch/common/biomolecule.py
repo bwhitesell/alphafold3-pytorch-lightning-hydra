@@ -401,6 +401,8 @@ class Biomolecule:
             token_center_atom_mask[self.chain_id == chain_1] = True
         elif exists(chain_2):
             token_center_atom_mask[self.chain_id == chain_2] = True
+        else:
+            raise ValueError("At least one chain ID must be specified for spatial cropping.")
 
         # potentially filter candidate token center atoms by interface proximity
 

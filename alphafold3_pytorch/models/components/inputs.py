@@ -2215,16 +2215,16 @@ def pdb_input_to_molecule_input(
             i.cropping_config
         ), "A cropping configuration must be provided during training."
         try:
-            chain_1 = None if chains is None else chains[0]
-            chain_2 = None if chains is None else chains[1]
+            assert exists(i.chains), "Chain IDs must be provided for cropping during training."
+            chain_id_1, chain_id_2 = i.chains
 
             biomol = biomol.crop(
                 contiguous_weight=i.cropping_config["contiguous_weight"],
                 spatial_weight=i.cropping_config["spatial_weight"],
                 spatial_interface_weight=i.cropping_config["spatial_interface_weight"],
                 n_res=i.cropping_config["n_res"],
-                chain_1=chain_1,
-                chain_2=chain_2,
+                chain_1=chain_id_1 if chain_id_1 else None,
+                chain_2=chain_id_2 if chain_id_2 else None,
             )
         except Exception as e:
             raise ValueError(f"Failed to crop the biomolecule for input {file_id} due to: {e}")
