@@ -1875,8 +1875,8 @@ def create_mol_from_atom_positions_and_types(
 
     # clean up the molecule
 
-    mol = Chem.RemoveHs(mol)
-    Chem.SanitizeMol(mol)
+    mol = Chem.RemoveHs(mol, sanitize=False)
+    Chem.SanitizeMol(mol, catchErrors=True)
 
     # set a property to indicate the atom positions that are missing
 
