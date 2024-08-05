@@ -123,7 +123,7 @@
             "console": "integratedTerminal",
             "args": [
                 "data=pdb",
-                "data.batch_size=2",
+                "data.batch_size=1",
                 "data.train_val_test_split=[5, 5, 5]",
                 "data.shuffle_train_val_test_subsets=False",
                 // NOTE: This overfitting experiment configuration targets `209d-assembly1` and `721p-assembly1` only.

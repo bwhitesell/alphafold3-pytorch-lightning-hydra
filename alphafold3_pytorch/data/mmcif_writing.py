@@ -11,11 +11,10 @@ from alphafold3_pytorch.utils.utils import exists
 
 
 def write_mmcif_from_filepath_and_id(
-    filepath: str, file_id: str, suffix: str = "sampled", **kwargs
+    input_filepath: str, output_filepath: str, file_id: str, **kwargs
 ):
     """Write an mmCIF file to disk with a suffix appended to the filename."""
-    mmcif_object = parse_mmcif_object(filepath=filepath, file_id=file_id)
-    output_filepath = filepath.replace(".cif", f"-{suffix}.cif")
+    mmcif_object = parse_mmcif_object(filepath=input_filepath, file_id=file_id)
     return write_mmcif(mmcif_object, output_filepath=output_filepath, **kwargs)
 
 

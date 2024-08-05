@@ -5257,6 +5257,7 @@ class Alphafold3(Module):
         plddt_labels: Int["b n"] | Int["b m"] | None = None,  # type: ignore
         resolved_labels: Int["b n"] | Int["b m"] | None = None,  # type: ignore
         chains: Int["b 2"] | None = None,  # type: ignore
+        filepath: List[str] | None = None,
         return_loss_breakdown=False,
         return_loss: bool = None,
         return_present_sampled_atoms: bool = False,
@@ -5297,6 +5298,7 @@ class Alphafold3(Module):
         :param plddt_labels: The predicted lDDT labels tensor.
         :param resolved_labels: The resolved labels tensor.
         :param chains: The (sampled) chains/interfaces for which to report metrics.
+        :param filepath: The input filepath(s) for the batch.
         :param return_loss_breakdown: Whether to return the loss breakdown.
         :param return_loss: Whether to return the loss.
         :param return_present_sampled_atoms: Whether to return only non-missing sampled atoms.

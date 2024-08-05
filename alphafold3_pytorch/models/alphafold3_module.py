@@ -1,4 +1,5 @@
-from typing import Any, Dict, Tuple
+import os
+from typing import Any, Dict, Literal, Tuple
 
 import rootutils
 import torch
@@ -6,6 +7,7 @@ from lightning import LightningModule
 from torch import Tensor
 from torchmetrics import MeanMetric, MinMetric
 
+from alphafold3_pytorch.data import mmcif_writing
 from alphafold3_pytorch.models.components.alphafold3 import LossBreakdown
 from alphafold3_pytorch.models.components.inputs import BatchedAtomInput
 from alphafold3_pytorch.utils import RankedLogger
@@ -15,6 +17,7 @@ from alphafold3_pytorch.utils.tensor_typing import Float, typecheck
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
 
+PHASES = Literal["train", "val", "test", "predict"]
 AVAILABLE_LR_SCHEDULERS = ["wcd", "plateau"]
 
 log = RankedLogger(__name__, rank_zero_only=False)
@@ -153,7 +156,7 @@ class Alphafold3LitModule(LightningModule):
         # visualize samples
         if self.hparams.visualize_train_samples_every_n_steps > 0:
             if batch_idx % self.hparams.visualize_train_samples_every_n_steps == 0:
-                self.sample_and_visualize(batch, batch_idx)
+                self.sample_and_visualize(batch, batch_idx, phase="train")
 
         # return loss or backpropagation will fail
         return loss
@@ -192,7 +195,7 @@ class Alphafold3LitModule(LightningModule):
         # visualize samples
         if self.hparams.visualize_val_samples_every_n_steps > 0:
             if batch_idx % self.hparams.visualize_val_samples_every_n_steps == 0:
-                self.sample_and_visualize(batch, batch_idx)
+                self.sample_and_visualize(batch, batch_idx, phase="val")
 
     def on_validation_epoch_end(self) -> None:
         "Lightning hook that is called when a validation epoch ends."
@@ -237,20 +240,50 @@ class Alphafold3LitModule(LightningModule):
         # visualize samples
         if self.hparams.visualize_test_samples_every_n_steps > 0:
             if batch_idx % self.hparams.visualize_test_samples_every_n_steps == 0:
-                self.sample_and_visualize(batch, batch_idx)
+                self.sample_and_visualize(batch, batch_idx, phase="test")
 
     def on_test_epoch_end(self) -> None:
         """Lightning hook that is called when a test epoch ends."""
         pass
 
     @typecheck
-    def sample_and_visualize(self, batch: BatchedAtomInput, batch_idx: int) -> None:
+    @torch.no_grad()
+    def sample_and_visualize(self, batch: BatchedAtomInput, batch_idx: int, phase: PHASES) -> None:
         """Visualize samples generated for the examples in the input batch.
 
         :param batch: A batch of `BatchedAtomInput` data.
         :param batch_idx: The index of the current batch.
         """
-        pass
+        prepare_batch_dict = self.prepare_batch_dict(batch.dict())
+
+        batch_sampled_atom_pos = self.net(
+            **prepare_batch_dict, return_loss=False, return_present_sampled_atoms=True
+        )
+
+        # NOTE: this function currently only supports a `batch_size` of 1 due to masking complexities
+        input_filepath = prepare_batch_dict["filepath"][0]
+        file_id = os.path.splitext(os.path.basename(input_filepath))[0]
+
+        samples_output_dir = os.path.join(self.hparams.output_dir, f"{phase}_samples")
+        os.makedirs(samples_output_dir, exist_ok=True)
+
+        output_filepath = os.path.join(
+            samples_output_dir,
+            input_filepath.replace(
+                ".cif",
+                f"-sampled-epoch-{self.current_epoch}-step-{self.global_step}-batch-{batch_idx}.cif",
+            ),
+        )
+
+        mmcif_writing.write_mmcif_from_filepath_and_id(
+            input_filepath=input_filepath,
+            output_filepath=output_filepath,
+            file_id=file_id,
+            gapless_poly_seq=True,
+            insert_orig_atom_names=True,
+            insert_alphafold_mmcif_metadata=True,
+            sampled_atom_positions=batch_sampled_atom_pos.cpu().numpy(),
+        )
 
     def on_after_backward(self):
         """Skip updates in case of unstable gradients.
