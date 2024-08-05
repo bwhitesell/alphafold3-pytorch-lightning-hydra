@@ -150,6 +150,11 @@ class Alphafold3LitModule(LightningModule):
             batch_size=len(batch.atom_inputs),
         )
 
+        # visualize samples
+        if self.hparams.visualize_train_samples_every_n_steps > 0:
+            if batch_idx % self.hparams.visualize_train_samples_every_n_steps == 0:
+                self.sample_and_visualize(batch, batch_idx)
+
         # return loss or backpropagation will fail
         return loss
 
@@ -183,6 +188,11 @@ class Alphafold3LitModule(LightningModule):
             prog_bar=False,
             batch_size=len(batch.atom_inputs),
         )
+
+        # visualize samples
+        if self.hparams.visualize_val_samples_every_n_steps > 0:
+            if batch_idx % self.hparams.visualize_val_samples_every_n_steps == 0:
+                self.sample_and_visualize(batch, batch_idx)
 
     def on_validation_epoch_end(self) -> None:
         "Lightning hook that is called when a validation epoch ends."
@@ -224,8 +234,22 @@ class Alphafold3LitModule(LightningModule):
             batch_size=len(batch.atom_inputs),
         )
 
+        # visualize samples
+        if self.hparams.visualize_test_samples_every_n_steps > 0:
+            if batch_idx % self.hparams.visualize_test_samples_every_n_steps == 0:
+                self.sample_and_visualize(batch, batch_idx)
+
     def on_test_epoch_end(self) -> None:
         """Lightning hook that is called when a test epoch ends."""
+        pass
+
+    @typecheck
+    def sample_and_visualize(self, batch: BatchedAtomInput, batch_idx: int) -> None:
+        """Visualize samples generated for the examples in the input batch.
+
+        :param batch: A batch of `BatchedAtomInput` data.
+        :param batch_idx: The index of the current batch.
+        """
         pass
 
     def on_after_backward(self):
