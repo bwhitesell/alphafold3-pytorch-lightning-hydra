@@ -5,7 +5,7 @@ default_root_dir: ${paths.output_dir}
 min_steps: 1 # prevents early stopping
 max_steps: ${divide:${multiply:1e6, 20}, 256} # NOTE: references values for "Initial training" in Table 6 of the paper
 
-accelerator: cpu
+accelerator: gpu
 devices: 1
 num_nodes: 1
 
