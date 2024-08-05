@@ -264,7 +264,7 @@ class Alphafold3LitModule(LightningModule):
         input_filepath = prepare_batch_dict["filepath"][0]
         file_id = os.path.splitext(os.path.basename(input_filepath))[0]
 
-        samples_output_dir = os.path.join(self.hparams.output_dir, f"{phase}_samples")
+        samples_output_dir = os.path.join(self.trainer.default_root_dir, f"{phase}_samples")
         os.makedirs(samples_output_dir, exist_ok=True)
 
         output_filepath = os.path.join(
