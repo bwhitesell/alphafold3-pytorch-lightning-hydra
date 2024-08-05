@@ -20,7 +20,7 @@ seed: 12345
 
 trainer:
   min_steps: null
-  max_steps: null
+  max_steps: -1
   min_epochs: 1 # prevents early stopping
   max_epochs: 10000 # NOTE: references values for "Initial training" in Table 6 of the paper
   gradient_clip_algorithm: norm
