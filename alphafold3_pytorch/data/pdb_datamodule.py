@@ -253,6 +253,7 @@ class PDBDataModule(LightningDataModule):
         map_dataset_input_fn: Callable | None = None,
         train_val_test_split: Tuple[int, int, int] | None = None,
         shuffle_train_val_test_subsets: bool = True,
+        overfit_examples: int = 0,
         batch_size: int = 256,
         num_workers: int = 0,
         pin_memory: bool = False,
@@ -472,7 +473,10 @@ class PDBDataModule(LightningDataModule):
                 val_indices = list(range(len(self.data_val)))
                 test_indices = list(range(len(self.data_test)))
 
-                if self.hparams.shuffle_train_val_test_subsets:
+                if (
+                    self.hparams.shuffle_train_val_test_subsets
+                    and not self.hparams.overfit_examples > 0
+                ):
                     random.shuffle(train_indices)  # nosec
                     random.shuffle(val_indices)  # nosec
                     random.shuffle(test_indices)  # nosec
@@ -482,6 +486,22 @@ class PDBDataModule(LightningDataModule):
                 )
                 self.data_val = torch.utils.data.Subset(self.data_val, val_indices[:val_count])
                 self.data_test = torch.utils.data.Subset(self.data_test, test_indices[:test_count])
+
+            # overfit batches as requested using the training dataset
+
+            if self.hparams.overfit_examples > 0:
+                assert self.hparams.overfit_examples <= len(
+                    self.data_train
+                ), f"Number of training examples to overfit ({self.hparams.overfit_examples}) must be less than or equal to the total number of training examples ({len(self.data_train)})."
+                self.data_train = torch.utils.data.Subset(
+                    self.data_train, list(range(self.hparams.overfit_examples))
+                )
+                self.data_val = torch.utils.data.Subset(
+                    self.data_train, list(range(self.hparams.overfit_examples))
+                )
+                self.data_test = torch.utils.data.Subset(
+                    self.data_train, list(range(self.hparams.overfit_examples))
+                )
 
     def train_dataloader(self) -> DataLoader[Any]:
         """Create and return the train dataloader.
