@@ -2164,6 +2164,9 @@ def pdb_input_to_molecule_input(
     """Convert a PDBInput to a MoleculeInput."""
     i = pdb_input
 
+    filepath = i.mmcif_filepath
+    file_id = os.path.splitext(os.path.basename(filepath))[0] if exists(filepath) else None
+
     # acquire a `Biomolecule` object for the given `PDBInput`
 
     if not exists(biomol) and exists(i.biomol):
@@ -2171,8 +2174,6 @@ def pdb_input_to_molecule_input(
     else:
         # construct a `Biomolecule` object from the input PDB mmCIF file
 
-        filepath = pdb_input.mmcif_filepath
-        file_id = os.path.splitext(os.path.basename(filepath))[0]
         assert os.path.exists(filepath), f"PDB input file `{filepath}` does not exist."
 
         mmcif_object = mmcif_parsing.parse_mmcif_object(
@@ -2213,14 +2214,20 @@ def pdb_input_to_molecule_input(
         assert exists(
             i.cropping_config
         ), "A cropping configuration must be provided during training."
-        biomol = biomol.crop(
-            contiguous_weight=i.cropping_config["contiguous_weight"],
-            spatial_weight=i.cropping_config["spatial_weight"],
-            spatial_interface_weight=i.cropping_config["spatial_interface_weight"],
-            n_res=i.cropping_config["n_res"],
-            chain_1=i.chains[0],
-            chain_2=i.chains[1],
-        )
+        try:
+            chain_1 = None if chains is None else chains[0]
+            chain_2 = None if chains is None else chains[1]
+
+            biomol = biomol.crop(
+                contiguous_weight=i.cropping_config["contiguous_weight"],
+                spatial_weight=i.cropping_config["spatial_weight"],
+                spatial_interface_weight=i.cropping_config["spatial_interface_weight"],
+                n_res=i.cropping_config["n_res"],
+                chain_1=chain_1,
+                chain_2=chain_2,
+            )
+        except Exception as e:
+            raise ValueError(f"Failed to crop the biomolecule for input {file_id} due to: {e}")
 
     # retrieve features directly available within the `Biomolecule` object
 
