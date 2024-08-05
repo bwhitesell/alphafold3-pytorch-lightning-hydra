@@ -52,7 +52,9 @@ from math import pi, sqrt
 from pathlib import Path
 from typing import Dict, List, Literal, NamedTuple, Tuple
 
+import Bio
 import einx
+import sh
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -93,6 +95,7 @@ from alphafold3_pytorch.models.components.inputs import (
 )
 from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.model_utils import (
+    batch_repeat_interleave,
     compact,
     concat_previous_window,
     exclusive_cumsum,
@@ -105,7 +108,6 @@ from alphafold3_pytorch.utils.model_utils import (
     pack_one,
     pad_and_window,
     pad_or_slice_to,
-    repeat_consecutive_with_lens,
     should_checkpoint,
     to_pairwise_mask,
 )
@@ -2241,7 +2243,7 @@ class DiffusionModule(Module):
 
         single_repr_cond = self.single_repr_to_atom_feat_cond(conditioned_single_repr)
 
-        single_repr_cond = repeat_consecutive_with_lens(single_repr_cond, molecule_atom_lens)
+        single_repr_cond = batch_repeat_interleave(single_repr_cond, molecule_atom_lens)
         single_repr_cond = pad_or_slice_to(
             single_repr_cond, length=atom_feats_cond.shape[1], dim=1
         )
@@ -2264,7 +2266,7 @@ class DiffusionModule(Module):
         indices = torch.arange(seq_len, device=device)
         indices = repeat(indices, "n -> b n", b=batch_size)
 
-        indices = repeat_consecutive_with_lens(indices, molecule_atom_lens)
+        indices = batch_repeat_interleave(indices, molecule_atom_lens)
         indices = pad_or_slice_to(indices, atom_seq_len, dim=-1)
         indices = pad_and_window(indices, w)
 
@@ -2369,7 +2371,7 @@ class DiffusionModule(Module):
 
         atom_decoder_input = self.tokens_to_atom_decoder_input_cond(tokens)
 
-        atom_decoder_input = repeat_consecutive_with_lens(atom_decoder_input, molecule_atom_lens)
+        atom_decoder_input = batch_repeat_interleave(atom_decoder_input, molecule_atom_lens)
         atom_decoder_input = pad_or_slice_to(
             atom_decoder_input, length=atom_feats_skip.shape[1], dim=1
         )
@@ -2547,11 +2549,9 @@ class ElucidatedAtomDiffusion(Module):
 
         padded_sigma = rearrange(sigma, "b -> b 1 1")
 
-        maybe_c_noise = self.c_noise if self.karras_formulation else identity
-
         net_out = self.net(
             self.c_in(padded_sigma) * noised_atom_pos,
-            times=maybe_c_noise(sigma),
+            times=sigma,
             **network_condition_kwargs,
         )
 
@@ -2662,7 +2662,7 @@ class ElucidatedAtomDiffusion(Module):
 
             # second order correction, if not the last timestep
 
-            if sigma_next != 0:
+            if self.karras_formulation and sigma_next != 0:
                 model_output_next = self.preconditioned_network_forward(
                     atom_pos_next,
                     sigma_next,
@@ -2773,8 +2773,12 @@ class ElucidatedAtomDiffusion(Module):
 
         noise = torch.randn_like(atom_pos_ground_truth)
 
-        noised_atom_pos = (
-            atom_pos_ground_truth + padded_sigmas * noise
+        maybe_c_noise = (
+            self.c_noise if not self.karras_formulation else identity
+        )  # @wufandi claims the paper has a bug here https://github.com/lucidrains/alphafold3-pytorch/issues/124#issuecomment-2268374756
+
+        noised_atom_pos = atom_pos_ground_truth + padded_sigmas * maybe_c_noise(
+            noise
         )  # alphas are 1. in the paper
 
         denoised_atom_pos = self.preconditioned_network_forward(
@@ -2806,7 +2810,7 @@ class ElucidatedAtomDiffusion(Module):
             is_nucleotide_or_ligand_fields = is_molecule_types.unbind(dim=-1)
 
             is_nucleotide_or_ligand_fields = tuple(
-                repeat_consecutive_with_lens(t, molecule_atom_lens)
+                batch_repeat_interleave(t, molecule_atom_lens)
                 for t in is_nucleotide_or_ligand_fields
             )
             is_nucleotide_or_ligand_fields = tuple(
@@ -3659,15 +3663,15 @@ class ConfidenceHead(Module):
         # handle maybe atom level resolution
 
         if self.atom_resolution:
-            single_repr = repeat_consecutive_with_lens(single_repr, molecule_atom_lens)
+            single_repr = batch_repeat_interleave(single_repr, molecule_atom_lens)
 
-            pairwise_repr = repeat_consecutive_with_lens(pairwise_repr, molecule_atom_lens)
+            pairwise_repr = batch_repeat_interleave(pairwise_repr, molecule_atom_lens)
 
             molecule_atom_lens = repeat(
                 molecule_atom_lens, "b ... -> (b r) ...", r=pairwise_repr.shape[1]
             )
             pairwise_repr, unpack_one = pack_one(pairwise_repr, "* n d")  # noqa: F811
-            pairwise_repr = repeat_consecutive_with_lens(pairwise_repr, molecule_atom_lens)
+            pairwise_repr = batch_repeat_interleave(pairwise_repr, molecule_atom_lens)
             pairwise_repr = unpack_one(pairwise_repr)
 
             interatomic_dist = torch.cdist(pred_atom_pos, pred_atom_pos, p=2)
@@ -4020,8 +4024,8 @@ class ComputeClash(Module):
         valid_indices = torch.ones_like(indices).bool()
 
         # valid_indices at padding position has value False
-        indices = repeat_consecutive_with_lens(indices, molecule_atom_lens)
-        valid_indices = repeat_consecutive_with_lens(valid_indices, molecule_atom_lens)
+        indices = batch_repeat_interleave(indices, molecule_atom_lens)
+        valid_indices = batch_repeat_interleave(valid_indices, molecule_atom_lens)
 
         if atom_mask is not None:
             valid_indices = valid_indices * atom_mask
@@ -4110,8 +4114,8 @@ class ComputeRankingScore(Module):
         valid_indices = torch.ones_like(indices).bool()
 
         # valid_indices at padding position has value False
-        indices = repeat_consecutive_with_lens(indices, molecule_atom_lens)
-        valid_indices = repeat_consecutive_with_lens(valid_indices, molecule_atom_lens)
+        indices = batch_repeat_interleave(indices, molecule_atom_lens)
+        valid_indices = batch_repeat_interleave(valid_indices, molecule_atom_lens)
 
         # broadcast is_molecule_types to atom
 
@@ -4277,17 +4281,18 @@ def get_cid_molecule_type(
     return molecule_type
 
 
+@typecheck
 def _protein_structure_from_feature(
     asym_id: Int[" n"],  # type: ignore
     molecule_ids: Int[" n"],  # type: ignore
     molecule_atom_lens: Int[" n"],  # type: ignore
     atom_pos: Float[" m 3"],  # type: ignore
     atom_mask: Bool[" m"],  # type: ignore
-):
+) -> Bio.PDB.Structure.Structure:
     """Create structure for unresolved proteins.
 
     :param atom_mask: True for valid atoms, False for missing/padding atoms
-    return: Bio.PDB.Structure.Structure
+    return: A Biopython Structure object
     """
 
     num_atom = atom_pos.shape[0]
@@ -4419,6 +4424,18 @@ class ComputeModelSelectionScore(Module):
         self.register_buffer("dist_breaks", dist_breaks)
 
         self.dssp_path = dssp_path
+
+    @property
+    def can_calculate_unresolved_protein_rasa(self):
+        """Check if `mkdssp` is available.
+
+        :return: True if `mkdssp` is available
+        """
+        try:
+            sh.which(self.dssp_path)
+            return True
+        except:
+            return False
 
     @typecheck
     def compute_gpde(
@@ -4639,10 +4656,8 @@ class ComputeModelSelectionScore(Module):
         batch_size = pred_coords.shape[0]
 
         # broadcast asym_id and is_molecule_types to atom level
-        atom_asym_id = repeat_consecutive_with_lens(asym_id, molecule_atom_lens, mask_value=-1)
-        atom_is_molecule_types = repeat_consecutive_with_lens(
-            is_molecule_types, molecule_atom_lens
-        )
+        atom_asym_id = batch_repeat_interleave(asym_id, molecule_atom_lens, mask_value=-1)
+        atom_is_molecule_types = batch_repeat_interleave(is_molecule_types, molecule_atom_lens)
 
         weighted_lddt = torch.zeros(batch_size, device=device)
 
@@ -4708,6 +4723,8 @@ class ComputeModelSelectionScore(Module):
         :return: unresolved RASA
         """
 
+        assert self.can_calculate_unresolved_protein_rasa, "`mkdssp` needs to be installed"
+
         residue_constants = get_residue_constants(res_chem_index=IS_PROTEIN)
 
         device = atom_pos.device
@@ -4720,9 +4737,7 @@ class ComputeModelSelectionScore(Module):
         chain_molecule_ids = molecule_ids[chain_mask]
         chain_molecule_atom_lens = molecule_atom_lens[chain_mask]
 
-        chain_mask_to_atom = repeat_consecutive_with_lens(
-            chain_mask.unsqueeze(0), molecule_atom_lens.unsqueeze(0)
-        ).squeeze(0)
+        chain_mask_to_atom = torch.repeat_interleave(chain_mask, molecule_atom_lens)
 
         # if there's padding in num atom
         num_pad = num_atom - molecule_atom_lens.sum()

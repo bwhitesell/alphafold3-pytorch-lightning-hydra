@@ -36,10 +36,10 @@ from alphafold3_pytorch import (
 from alphafold3_pytorch.data.atom_datamodule import MockAtomDataset
 from alphafold3_pytorch.data.pdb_datamodule import collate_inputs_to_batched_atom_input
 from alphafold3_pytorch.models.components.alphafold3 import (
+    batch_repeat_interleave,
     full_pairwise_repr_to_windowed,
     get_cid_molecule_type,
     mean_pool_with_lens,
-    repeat_consecutive_with_lens,
 )
 from alphafold3_pytorch.models.components.inputs import (
     IS_MOLECULE_TYPES,
@@ -73,11 +73,11 @@ def test_mean_pool_with_lens():
     assert torch.allclose(pooled, torch.tensor([[[1.0], [2.0], [1.0]]]))
 
 
-def test_repeat_consecutive_with_lens():
+def test_batch_repeat_interleave():
     """Test repeating consecutive elements with lengths."""
     seq = torch.tensor([[[1.0], [2.0], [4.0]], [[1.0], [2.0], [4.0]]])
     lens = torch.tensor([[3, 4, 2], [2, 5, 1]]).long()
-    repeated = repeat_consecutive_with_lens(seq, lens)
+    repeated = batch_repeat_interleave(seq, lens)
     assert torch.allclose(
         repeated,
         torch.tensor(
@@ -1109,18 +1109,6 @@ def test_model_selection_score():
 
 def test_unresolved_protein_rasa():
     """Test the unresolved protein relative accessible surface area (RASA) calculation."""
-
-    # skip the test if dssp not installed
-
-    try:
-        subprocess.check_output(["which", "mkdssp"])  # nosec
-    except Exception as e:
-        pytest.skip(
-            f"The `mkdssp` executable could not be run due to: {e}. Skipping `test_unresolved_protein_rasa()`."
-        )
-
-    # rest of the test
-
     mmcif_filepath = os.path.join("data", "test", "7a4d-assembly1.cif")
     pdb_input = PDBInput(mmcif_filepath)
 
@@ -1142,6 +1130,10 @@ def test_unresolved_protein_rasa():
     unresolved_residue_mask = torch.randint(0, 2, asym_id.shape).bool()
 
     compute_model_selection_score = ComputeModelSelectionScore()
+
+    if not compute_model_selection_score.can_calculate_unresolved_protein_rasa:
+        pytest.skip("`mkdssp` is not available for calculating unresolved protein RASA.")
+
     unresolved_rasa = compute_model_selection_score.compute_unresolved_rasa(
         unresolved_cid=[1],
         unresolved_residue_mask=unresolved_residue_mask,
