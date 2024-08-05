@@ -88,18 +88,6 @@
             ]
         },
         {
-            "name": "remove_unparseable_mmcifs.py",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "scripts/remove_unparseable_mmcifs.py",
-            "console": "integratedTerminal",
-            "justMyCode": true,
-            "args": [
-                "data/pdb_data/filtering_dev_mmcifs",
-                "--dry_run",
-            ]
-        },
-        {
             "name": "train.py",
             "type": "debugpy",
             "request": "launch",
