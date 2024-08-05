@@ -1,12 +1,12 @@
 # @package _global_
 
-# lists the experiment parameters corresponding to "Initial training" in Table 6 of the paper
+# lists the experiment parameters corresponding to an "Overfitting Experiment" with a small number of training examples
 
 # to execute this experiment run:
-# python train.py experiment=alphafold3_initial_training
+# python train.py experiment=alphafold3_overfitting_experiment
 
 defaults:
-  - override /data: atom
+  - override /data: pdb
   - override /model: alphafold3
   - override /callbacks: default
   - override /trainer: default
@@ -14,13 +14,15 @@ defaults:
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 
-tags: ["atom", "alphafold3", "initial_training"]
+tags: ["pdb", "alphafold3", "overfitting_experiment"]
 
 seed: 12345
 
 trainer:
-  min_steps: 1 # prevents early stopping
-  max_steps: ${divide:${multiply:1e6, 20}, 256} # NOTE: references values for "Initial training" in Table 6 of the paper
+  min_steps: null
+  max_steps: null
+  min_epochs: 1 # prevents early stopping
+  max_epochs: 10000 # NOTE: references values for "Initial training" in Table 6 of the paper
   gradient_clip_algorithm: norm
   gradient_clip_val: 10.0
   # NOTE: here, we have to accumulate gradients independently for each rank, per https://lightning.ai/docs/pytorch/stable/advanced/training_tricks.html#accumulate-gradients
