@@ -456,7 +456,16 @@ class Biomolecule:
     ) -> "Biomolecule":
         """Crop a Biomolecule using a randomly-sampled cropping function."""
         n_res = min(n_res, len(self.atom_mask))
-        crop_fn_weights = [contiguous_weight, spatial_weight, spatial_interface_weight]
+        if exists(chain_1) and exists(chain_2):
+            crop_fn_weights = [contiguous_weight, spatial_weight, spatial_interface_weight]
+        elif exists(chain_1) or exists(chain_2):
+            crop_fn_weights = [contiguous_weight, spatial_weight + spatial_interface_weight, 0.0]
+        else:
+            crop_fn_weights = [
+                contiguous_weight + spatial_weight + spatial_interface_weight,
+                0.0,
+                0.0,
+            ]
         crop_fns = [
             partial(self.contiguous_crop, n_res=n_res),
             partial(
