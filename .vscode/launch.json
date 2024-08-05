@@ -131,7 +131,7 @@
                 "experiment=alphafold3_overfitting_experiment",
                 "logger=csv",
                 "model=alphafold3",
-                "model.visualize_train_samples_every_n_steps=1",
+                "model.visualize_train_samples_every_n_steps=50",
                 "+model.net.dim_pairwise=8",
                 "+model.net.dim_single=8",
                 "+model.net.dim_token=8",
