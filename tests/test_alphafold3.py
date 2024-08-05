@@ -3,7 +3,6 @@
 import itertools
 import os
 import random
-import subprocess  # nosec
 
 import pytest
 import rootutils
