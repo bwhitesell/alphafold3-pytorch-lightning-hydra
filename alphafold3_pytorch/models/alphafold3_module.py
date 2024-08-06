@@ -260,33 +260,35 @@ class Alphafold3LitModule(LightningModule):
         batch_sampled_atom_pos = self.net(
             **prepared_model_forward_batch_dict,
             return_loss=False,
-            return_present_sampled_atoms=True,
         )
-
-        # NOTE: this function currently only supports a `batch_size` of 1 due to masking complexities
-        input_filepath = prepared_batch_dict["filepath"][0]
-        file_id = os.path.splitext(os.path.basename(input_filepath))[0]
 
         samples_output_dir = os.path.join(self.trainer.default_root_dir, f"{phase}_samples")
         os.makedirs(samples_output_dir, exist_ok=True)
 
-        output_filepath = os.path.join(
-            samples_output_dir,
-            os.path.basename(input_filepath).replace(
-                ".cif",
-                f"-sampled-epoch-{self.current_epoch}-step-{self.global_step}-batch-{batch_idx}.cif",
-            ),
-        )
+        for batch_index, sampled_atom_pos in enumerate(batch_sampled_atom_pos):
+            input_filepath = prepared_batch_dict["filepath"][batch_index]
+            file_id = os.path.splitext(os.path.basename(input_filepath))[0]
 
-        mmcif_writing.write_mmcif_from_filepath_and_id(
-            input_filepath=input_filepath,
-            output_filepath=output_filepath,
-            file_id=file_id,
-            gapless_poly_seq=True,
-            insert_orig_atom_names=True,
-            insert_alphafold_mmcif_metadata=True,
-            sampled_atom_positions=batch_sampled_atom_pos.cpu().numpy(),
-        )
+            output_filepath = os.path.join(
+                samples_output_dir,
+                os.path.basename(input_filepath).replace(
+                    ".cif",
+                    f"-sampled-epoch-{self.current_epoch}-step-{self.global_step}-batch-{batch_idx}.cif",
+                ),
+            )
+
+            atom_mask = prepared_batch_dict["atom_mask"][batch_index]
+            sampled_atom_positions = sampled_atom_pos[atom_mask].cpu().numpy()
+
+            mmcif_writing.write_mmcif_from_filepath_and_id(
+                input_filepath=input_filepath,
+                output_filepath=output_filepath,
+                file_id=file_id,
+                gapless_poly_seq=True,
+                insert_orig_atom_names=True,
+                insert_alphafold_mmcif_metadata=True,
+                sampled_atom_positions=sampled_atom_positions,
+            )
 
     def on_after_backward(self):
         """Skip updates in case of unstable gradients.
