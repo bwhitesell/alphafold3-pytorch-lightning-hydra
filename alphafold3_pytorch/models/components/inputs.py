@@ -5,8 +5,10 @@ import json
 import os
 from collections import defaultdict
 from collections.abc import Iterable
+from contextlib import redirect_stderr
 from dataclasses import asdict, dataclass, field
 from functools import partial
+from io import StringIO
 from itertools import groupby
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Literal, Set, Tuple, Type
@@ -1901,7 +1903,10 @@ def create_mol_from_atom_positions_and_types(
     for i in range(num_bond_attempts):
         try:
             charge = Chem.GetFormalCharge(mol)
-            rdDetermineBonds.DetermineBonds(mol, charge=charge)
+            with StringIO() as buf:
+                with redirect_stderr(buf):
+                    # redirect RDKit's stderr to a buffer to suppress warnings
+                    rdDetermineBonds.DetermineBonds(mol, charge=charge)
             determined_bonds = True
         except Exception as e:
             if verbose:
