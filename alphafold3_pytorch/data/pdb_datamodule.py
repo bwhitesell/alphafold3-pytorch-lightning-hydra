@@ -427,38 +427,38 @@ class PDBDataModule(LightningDataModule):
             # evaluation set
 
             self.data_test = PDBDataset(
-                folder=os.path.join(self.hparams.data_dir, "deprecated_test_mmcifs"),
+                folder=os.path.join(self.hparams.data_dir, "test_mmcifs"),
                 sampler=WeightedPDBSampler(
                     chain_mapping_paths=[
                         os.path.join(
                             self.hparams.data_dir,
                             "data_caches",
-                            "deprecated_test_clusterings",
+                            "test_clusterings",
                             "ligand_chain_cluster_mapping.csv",
                         ),
                         os.path.join(
                             self.hparams.data_dir,
                             "data_caches",
-                            "deprecated_test_clusterings",
+                            "test_clusterings",
                             "nucleic_acid_chain_cluster_mapping.csv",
                         ),
                         os.path.join(
                             self.hparams.data_dir,
                             "data_caches",
-                            "deprecated_test_clusterings",
+                            "test_clusterings",
                             "peptide_chain_cluster_mapping.csv",
                         ),
                         os.path.join(
                             self.hparams.data_dir,
                             "data_caches",
-                            "deprecated_test_clusterings",
+                            "test_clusterings",
                             "protein_chain_cluster_mapping.csv",
                         ),
                     ],
                     interface_mapping_path=os.path.join(
                         self.hparams.data_dir,
                         "data_caches",
-                        "deprecated_test_clusterings",
+                        "test_clusterings",
                         "interface_cluster_mapping.csv",
                     ),
                     batch_size=1,
