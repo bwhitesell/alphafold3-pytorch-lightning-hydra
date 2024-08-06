@@ -245,14 +245,14 @@ def test_pdbinput_input():
 
     alphafold3.eval()
 
-    batch_model_forward_dict = batched_eval_atom_input.model_forward_dict()
+    batch_dict = batched_eval_atom_input.model_forward_dict()
     sampled_atom_pos = alphafold3(
-        **batch_model_forward_dict,
+        **batch_dict,
         return_loss=False,
     )
 
-    atom_mask = batch_model_forward_dict["atom_mask"]
-    sampled_atom_positions = sampled_atom_pos[atom_mask].cpu().numpy()
+    batched_atom_mask = ~batch_dict["missing_atom_mask"]
+    sampled_atom_positions = sampled_atom_pos[batched_atom_mask].cpu().numpy()
 
     assert sampled_atom_positions.shape == (4155, 3)
 

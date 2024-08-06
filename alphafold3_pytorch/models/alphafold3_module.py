@@ -254,30 +254,30 @@ class Alphafold3LitModule(LightningModule):
         :param batch: A batch of `BatchedAtomInput` data.
         :param batch_idx: The index of the current batch.
         """
-        prepared_batch_dict = self.prepare_batch_dict(batch.dict())
-        prepared_model_forward_batch_dict = self.prepare_batch_dict(batch.model_forward_dict())
+        batch_dict = batch.dict()
+        prepared_model_batch_dict = self.prepare_batch_dict(batch.model_forward_dict())
 
         batch_sampled_atom_pos = self.net(
-            **prepared_model_forward_batch_dict,
+            **prepared_model_batch_dict,
             return_loss=False,
         )
 
         samples_output_dir = os.path.join(self.trainer.default_root_dir, f"{phase}_samples")
         os.makedirs(samples_output_dir, exist_ok=True)
 
-        for batch_index, sampled_atom_pos in enumerate(batch_sampled_atom_pos):
-            input_filepath = prepared_batch_dict["filepath"][batch_index]
+        for example_idx, sampled_atom_pos in enumerate(batch_sampled_atom_pos):
+            input_filepath = batch_dict["filepath"][example_idx]
             file_id = os.path.splitext(os.path.basename(input_filepath))[0]
 
             output_filepath = os.path.join(
                 samples_output_dir,
                 os.path.basename(input_filepath).replace(
                     ".cif",
-                    f"-sampled-epoch-{self.current_epoch}-step-{self.global_step}-batch-{batch_idx}.cif",
+                    f"-sampled-epoch-{self.current_epoch}-step-{self.global_step}-batch-{batch_idx}-example-{example_idx}.cif",
                 ),
             )
 
-            atom_mask = prepared_batch_dict["atom_mask"][batch_index]
+            atom_mask = ~batch_dict["missing_atom_mask"][example_idx]
             sampled_atom_positions = sampled_atom_pos[atom_mask].cpu().numpy()
 
             mmcif_writing.write_mmcif_from_filepath_and_id(
