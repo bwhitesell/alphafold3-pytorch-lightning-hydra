@@ -29,6 +29,8 @@ You can chat with other researchers about this work <a href="https://discord.gg/
 
 The original version of this repository with <a href="https://lightning.ai/docs/fabric/stable/">Fabric</a> support is being maintained by <a href="https://github.com/lucidrains">Phil</a> at <a href="https://github.com/lucidrains/alphafold3-pytorch">this repository</a>
 
+A visualization of the molecules of life used in the repository can be seen and interacted with <a href="https://colab.research.google.com/drive/1S9TD8WmS1Gjgwjo9xyEYTbdxgMVVZcQe?usp=sharing">here</a>
+
 ## Appreciation
 
 - <a href="https://github.com/joseph-c-kim">Joseph</a> for contributing the Relative Positional Encoding and the Smooth LDDT Loss!
