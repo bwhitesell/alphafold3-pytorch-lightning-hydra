@@ -128,6 +128,11 @@ def flatten(arr):
     return [el for sub_arr in arr for el in sub_arr]
 
 
+def without_keys(d: dict, exclude: set):
+    """Remove keys from a dictionary."""
+    return {k: v for k, v in d.items() if k not in exclude}
+
+
 def pad_to_len(t, length, value=0, dim=-1):
     """Pad a tensor to a certain length."""
     assert dim < 0
@@ -148,6 +153,9 @@ def compose(*fns: Callable):
 
 
 # atom level, what Alphafold3 accepts
+
+UNCOLLATABLE_ATOM_INPUT_FIELDS = {"filepath"}
+ATOM_INPUT_EXCLUDE_MODEL_FIELDS = {"filepath", "chains"}
 
 
 @typecheck
@@ -187,6 +195,10 @@ class AtomInput:
         """Return the dataclass as a dictionary."""
         return asdict(self)
 
+    def model_forward_dict(self):
+        """Return the dataclass as a dictionary without certain model fields."""
+        return without_keys(self.dict(), ATOM_INPUT_EXCLUDE_MODEL_FIELDS)
+
 
 @typecheck
 @dataclass
@@ -224,6 +236,10 @@ class BatchedAtomInput:
     def dict(self):
         """Return the dataclass as a dictionary."""
         return asdict(self)
+
+    def model_forward_dict(self):
+        """Return the dataclass as a dictionary without certain model fields."""
+        return without_keys(self.dict(), ATOM_INPUT_EXCLUDE_MODEL_FIELDS)
 
 
 # functions for saving an AtomInput to disk or loading from disk to AtomInput

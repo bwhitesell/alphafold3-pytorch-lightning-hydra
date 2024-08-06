@@ -105,7 +105,7 @@ class Alphafold3LitModule(LightningModule):
         :param x: A batch of `BatchedAtomInput` data.
         :return: A tensor of losses as well as a breakdown of the component losses.
         """
-        batch_dict = self.prepare_batch_dict(batch.dict())
+        batch_dict = self.prepare_batch_dict(batch.model_forward_dict())
         return self.net(**batch_dict, return_loss_breakdown=True)
 
     def on_train_start(self) -> None:
@@ -254,14 +254,17 @@ class Alphafold3LitModule(LightningModule):
         :param batch: A batch of `BatchedAtomInput` data.
         :param batch_idx: The index of the current batch.
         """
-        prepare_batch_dict = self.prepare_batch_dict(batch.dict())
+        prepared_batch_dict = self.prepare_batch_dict(batch.dict())
+        prepared_model_forward_batch_dict = self.prepare_batch_dict(batch.model_forward_dict())
 
         batch_sampled_atom_pos = self.net(
-            **prepare_batch_dict, return_loss=False, return_present_sampled_atoms=True
+            **prepared_model_forward_batch_dict,
+            return_loss=False,
+            return_present_sampled_atoms=True,
         )
 
         # NOTE: this function currently only supports a `batch_size` of 1 due to masking complexities
-        input_filepath = prepare_batch_dict["filepath"][0]
+        input_filepath = prepared_batch_dict["filepath"][0]
         file_id = os.path.splitext(os.path.basename(input_filepath))[0]
 
         samples_output_dir = os.path.join(self.trainer.default_root_dir, f"{phase}_samples")

@@ -14,6 +14,7 @@ from alphafold3_pytorch.models.components.attention import (
     full_pairwise_repr_to_windowed,
 )
 from alphafold3_pytorch.models.components.inputs import (
+    UNCOLLATABLE_ATOM_INPUT_FIELDS,
     Alphafold3Input,
     BatchedAtomInput,
     PDBDataset,
@@ -79,7 +80,7 @@ def collate_inputs_to_batched_atom_input(
 
     outputs = []
 
-    for group_index, grouped in enumerate(zip(*atom_inputs)):
+    for key, grouped in zip(keys, zip(*atom_inputs)):
         # if all None, just return None
 
         not_none_grouped = [*filter(exists, grouped)]
@@ -88,10 +89,10 @@ def collate_inputs_to_batched_atom_input(
             outputs.append(None)
             continue
 
-        # collate list of input filepath strings
+        # collate lists for uncollatable fields
 
-        if keys[group_index] == "filepath":
-            outputs.append(not_none_grouped)
+        if key in UNCOLLATABLE_ATOM_INPUT_FIELDS:
+            outputs.append(grouped)
             continue
 
         # default to empty tensor for any Nones
