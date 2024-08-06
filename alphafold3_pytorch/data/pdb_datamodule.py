@@ -261,6 +261,7 @@ class PDBDataModule(LightningDataModule):
         train_val_test_split: Tuple[int, int, int] | None = None,
         shuffle_train_val_test_subsets: bool = True,
         overfit_examples: int = 0,
+        sample_only_pdb_ids: List[str] | None = None,
         batch_size: int = 256,
         num_workers: int = 0,
         pin_memory: bool = False,
@@ -375,6 +376,7 @@ class PDBDataModule(LightningDataModule):
                 spatial_interface_weight=self.hparams.spatial_interface_weight,
                 crop_size=self.hparams.crop_size,
                 training=True,
+                sample_only_pdb_ids=set(self.hparams.sample_only_pdb_ids),
             )
 
             # validation set

@@ -128,6 +128,7 @@
                 "data.shuffle_train_val_test_subsets=False",
                 // NOTE: This overfitting experiment configuration targets `209d-assembly1` and `721p-assembly1` only.
                 "data.overfit_examples=2",
+                "data.sample_only_pdb_ids=[721p-assembly1]",
                 "experiment=alphafold3_overfitting_experiment",
                 "logger=csv",
                 "model=alphafold3",
