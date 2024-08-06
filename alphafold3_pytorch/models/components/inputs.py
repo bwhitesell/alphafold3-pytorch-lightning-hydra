@@ -2630,6 +2630,15 @@ def pdb_input_to_molecule_input(
     assert len(molecules) == len(missing_atom_indices)
     assert len(missing_token_indices) == num_tokens
 
+    # TODO: handle extra oxygen (i.e., `OXT`) atoms that are sometimes present e.g., for `HIS` residues
+
+    mol_total_atoms = sum([mol.GetNumAtoms() for mol in molecules])
+    num_missing_atom_indices = sum(
+        len(mol_miss_atom_indices) for mol_miss_atom_indices in missing_atom_indices
+    )
+    num_present_atoms = mol_total_atoms - num_missing_atom_indices
+    assert num_present_atoms == int(biomol.atom_mask.sum())
+
     # TODO: install additional token features once MSAs are available
     # 0: f_profile
     # 1: f_deletion_mean
