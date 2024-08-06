@@ -7,7 +7,6 @@ h - heads
 n - molecule sequence length
 i - molecule sequence length (source)
 j - molecule sequence length (target)
-l - present (i.e., non-missing) atom sequence length
 m - atom sequence length
 nw - windowed sequence length
 d - feature dimension
