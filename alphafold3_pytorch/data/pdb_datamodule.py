@@ -332,6 +332,12 @@ class PDBDataModule(LightningDataModule):
 
             # training set
 
+            sample_only_pdb_ids = (
+                set(self.hparams.sample_only_pdb_ids)
+                if exists(self.hparams.sample_only_pdb_ids)
+                else None
+            )
+
             self.data_train = PDBDataset(
                 folder=os.path.join(self.hparams.data_dir, "train_mmcifs"),
                 sampler=WeightedPDBSampler(
@@ -376,7 +382,7 @@ class PDBDataModule(LightningDataModule):
                 spatial_interface_weight=self.hparams.spatial_interface_weight,
                 crop_size=self.hparams.crop_size,
                 training=True,
-                sample_only_pdb_ids=set(self.hparams.sample_only_pdb_ids),
+                sample_only_pdb_ids=sample_only_pdb_ids,
             )
 
             # validation set
