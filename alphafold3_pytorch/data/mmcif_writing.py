@@ -1,7 +1,5 @@
 """An mmCIF file format writer."""
 
-from typing import Optional
-
 import numpy as np
 
 from alphafold3_pytorch.common.biomolecule import _from_mmcif_object, to_mmcif
@@ -25,7 +23,7 @@ def write_mmcif(
     gapless_poly_seq: bool = True,
     insert_orig_atom_names: bool = True,
     insert_alphafold_mmcif_metadata: bool = True,
-    sampled_atom_positions: Optional[np.ndarray] = None,
+    sampled_atom_positions: np.ndarray | None = None,
 ):
     """Write a BioPython `Structure` object to an mmCIF file using an intermediate `Biomolecule`
     object."""
