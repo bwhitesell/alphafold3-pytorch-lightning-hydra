@@ -114,7 +114,8 @@ def collate_inputs_to_batched_atom_input(
         # get the max lengths across all dimensions
 
         shapes_as_tensor = torch.stack(
-            [Tensor(tuple(g.shape) if exists(g) else ((0,) * ndim)).int() for g in grouped], dim=-1
+            [Tensor(tuple(g.shape) if exists(g) else ((0,) * ndim)).int() for g in grouped],
+            dim=-1,
         )
 
         max_lengths = shapes_as_tensor.amax(dim=-1)
@@ -187,7 +188,10 @@ def pdb_inputs_to_batched_atom_input(
 
 @typecheck
 def AF3DataLoader(
-    *args, atoms_per_window: int | None = None, map_input_fn: Callable | None = None, **kwargs
+    *args,
+    atoms_per_window: int | None = None,
+    map_input_fn: Callable | None = None,
+    **kwargs,
 ):
     """Create a `torch.utils.data.DataLoader` with the `collate_inputs_to_batched_atom_input` or
     `map_input_fn` function for data collation.
@@ -330,7 +334,7 @@ class PDBDataModule(LightningDataModule):
                 val_subset_to_ids = list(range(val_count))
                 test_subset_to_ids = list(range(test_count))
 
-            # training set
+            # sample only specific PDB IDs as requested
 
             sample_only_pdb_ids = (
                 set(self.hparams.sample_only_pdb_ids)
@@ -338,41 +342,66 @@ class PDBDataModule(LightningDataModule):
                 else None
             )
 
-            self.data_train = PDBDataset(
-                folder=os.path.join(self.hparams.data_dir, "train_mmcifs"),
-                sampler=WeightedPDBSampler(
-                    chain_mapping_paths=[
+            # data paths for each split
+
+            overfitting_examples = self.hparams.overfit_examples > 0
+
+            for split in {"train", "val", "test"}:
+                if overfitting_examples:
+                    # NOTE: when overfitting to a subset of examples,
+                    # we want to load the training set multiple times
+                    # to ensure that the model sees the same examples
+                    # across training, validation, and testing
+                    split = "train"
+
+                setattr(
+                    self,
+                    f"{split}_mmcifs_dir",
+                    os.path.join(self.hparams.data_dir, f"{split}_mmcifs"),
+                )
+                setattr(
+                    self,
+                    f"{split}_clusterings_dir",
+                    os.path.join(self.hparams.data_dir, "data_caches", f"{split}_clusterings"),
+                )
+                setattr(
+                    self,
+                    f"{split}_chain_mapping_paths",
+                    [
                         os.path.join(
-                            self.hparams.data_dir,
-                            "data_caches",
-                            "train_clusterings",
+                            getattr(self, f"{split}_clusterings_dir"),
                             "ligand_chain_cluster_mapping.csv",
                         ),
                         os.path.join(
-                            self.hparams.data_dir,
-                            "data_caches",
-                            "train_clusterings",
+                            getattr(self, f"{split}_clusterings_dir"),
                             "nucleic_acid_chain_cluster_mapping.csv",
                         ),
                         os.path.join(
-                            self.hparams.data_dir,
-                            "data_caches",
-                            "train_clusterings",
+                            getattr(self, f"{split}_clusterings_dir"),
                             "peptide_chain_cluster_mapping.csv",
                         ),
                         os.path.join(
-                            self.hparams.data_dir,
-                            "data_caches",
-                            "train_clusterings",
+                            getattr(self, f"{split}_clusterings_dir"),
                             "protein_chain_cluster_mapping.csv",
                         ),
                     ],
-                    interface_mapping_path=os.path.join(
-                        self.hparams.data_dir,
-                        "data_caches",
-                        "train_clusterings",
+                )
+                setattr(
+                    self,
+                    f"{split}_interface_mapping_path",
+                    os.path.join(
+                        getattr(self, f"{split}_clusterings_dir"),
                         "interface_cluster_mapping.csv",
                     ),
+                )
+
+            # training set
+
+            self.data_train = PDBDataset(
+                folder=self.train_mmcifs_dir,
+                sampler=WeightedPDBSampler(
+                    chain_mapping_paths=self.train_chain_mapping_paths,
+                    interface_mapping_path=self.train_interface_mapping_path,
                     batch_size=1,
                     subset_to_ids=train_subset_to_ids,
                 ),
@@ -388,40 +417,10 @@ class PDBDataModule(LightningDataModule):
             # validation set
 
             self.data_val = PDBDataset(
-                folder=os.path.join(self.hparams.data_dir, "val_mmcifs"),
+                folder=self.val_mmcifs_dir,
                 sampler=WeightedPDBSampler(
-                    chain_mapping_paths=[
-                        os.path.join(
-                            self.hparams.data_dir,
-                            "data_caches",
-                            "val_clusterings",
-                            "ligand_chain_cluster_mapping.csv",
-                        ),
-                        os.path.join(
-                            self.hparams.data_dir,
-                            "data_caches",
-                            "val_clusterings",
-                            "nucleic_acid_chain_cluster_mapping.csv",
-                        ),
-                        os.path.join(
-                            self.hparams.data_dir,
-                            "data_caches",
-                            "val_clusterings",
-                            "peptide_chain_cluster_mapping.csv",
-                        ),
-                        os.path.join(
-                            self.hparams.data_dir,
-                            "data_caches",
-                            "val_clusterings",
-                            "protein_chain_cluster_mapping.csv",
-                        ),
-                    ],
-                    interface_mapping_path=os.path.join(
-                        self.hparams.data_dir,
-                        "data_caches",
-                        "val_clusterings",
-                        "interface_cluster_mapping.csv",
-                    ),
+                    chain_mapping_paths=self.val_chain_mapping_paths,
+                    interface_mapping_path=self.val_interface_mapping_path,
                     batch_size=1,
                     subset_to_ids=val_subset_to_ids,
                 ),
@@ -431,45 +430,16 @@ class PDBDataModule(LightningDataModule):
                 spatial_interface_weight=self.hparams.spatial_interface_weight,
                 crop_size=self.hparams.crop_size,
                 training=False,
+                sample_only_pdb_ids=sample_only_pdb_ids,
             )
 
             # evaluation set
 
             self.data_test = PDBDataset(
-                folder=os.path.join(self.hparams.data_dir, "test_mmcifs"),
+                folder=self.test_mmcifs_dir,
                 sampler=WeightedPDBSampler(
-                    chain_mapping_paths=[
-                        os.path.join(
-                            self.hparams.data_dir,
-                            "data_caches",
-                            "test_clusterings",
-                            "ligand_chain_cluster_mapping.csv",
-                        ),
-                        os.path.join(
-                            self.hparams.data_dir,
-                            "data_caches",
-                            "test_clusterings",
-                            "nucleic_acid_chain_cluster_mapping.csv",
-                        ),
-                        os.path.join(
-                            self.hparams.data_dir,
-                            "data_caches",
-                            "test_clusterings",
-                            "peptide_chain_cluster_mapping.csv",
-                        ),
-                        os.path.join(
-                            self.hparams.data_dir,
-                            "data_caches",
-                            "test_clusterings",
-                            "protein_chain_cluster_mapping.csv",
-                        ),
-                    ],
-                    interface_mapping_path=os.path.join(
-                        self.hparams.data_dir,
-                        "data_caches",
-                        "test_clusterings",
-                        "interface_cluster_mapping.csv",
-                    ),
+                    chain_mapping_paths=self.test_chain_mapping_paths,
+                    interface_mapping_path=self.test_interface_mapping_path,
                     batch_size=1,
                     subset_to_ids=test_subset_to_ids,
                 ),
@@ -479,6 +449,7 @@ class PDBDataModule(LightningDataModule):
                 spatial_interface_weight=self.hparams.spatial_interface_weight,
                 crop_size=self.hparams.crop_size,
                 training=False,
+                sample_only_pdb_ids=sample_only_pdb_ids,
             )
 
             # subsample datasets as requested
@@ -488,10 +459,7 @@ class PDBDataModule(LightningDataModule):
                 val_indices = list(range(len(self.data_val)))
                 test_indices = list(range(len(self.data_test)))
 
-                if (
-                    self.hparams.shuffle_train_val_test_subsets
-                    and not self.hparams.overfit_examples > 0
-                ):
+                if self.hparams.shuffle_train_val_test_subsets and not overfitting_examples:
                     random.shuffle(train_indices)  # nosec
                     random.shuffle(val_indices)  # nosec
                     random.shuffle(test_indices)  # nosec
@@ -504,7 +472,7 @@ class PDBDataModule(LightningDataModule):
 
             # overfit batches as requested using the training dataset
 
-            if self.hparams.overfit_examples > 0:
+            if overfitting_examples:
                 assert self.hparams.overfit_examples <= len(
                     self.data_train
                 ), f"Number of training examples to overfit ({self.hparams.overfit_examples}) must be less than or equal to the total number of training examples ({len(self.data_train)})."
@@ -512,10 +480,10 @@ class PDBDataModule(LightningDataModule):
                     self.data_train, list(range(self.hparams.overfit_examples))
                 )
                 self.data_val = torch.utils.data.Subset(
-                    self.data_train, list(range(self.hparams.overfit_examples))
+                    self.data_val, list(range(self.hparams.overfit_examples))
                 )
                 self.data_test = torch.utils.data.Subset(
-                    self.data_train, list(range(self.hparams.overfit_examples))
+                    self.data_test, list(range(self.hparams.overfit_examples))
                 )
 
     def train_dataloader(self) -> DataLoader[Any]:
