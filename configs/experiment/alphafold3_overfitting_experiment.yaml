@@ -59,6 +59,6 @@ data:
 logger:
   wandb:
     tags: ${tags}
-    group: "alphafold3"
+    group: "alphafold3-overfitting-experiment"
   aim:
     experiment: "alphafold3"

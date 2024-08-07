@@ -57,6 +57,6 @@ data:
 logger:
   wandb:
     tags: ${tags}
-    group: "alphafold3"
+    group: "alphafold3-initial-training"
   aim:
     experiment: "alphafold3"
