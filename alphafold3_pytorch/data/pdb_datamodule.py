@@ -346,7 +346,8 @@ class PDBDataModule(LightningDataModule):
 
             overfitting_examples = self.hparams.overfit_examples > 0
 
-            for split in {"train", "val", "test"}:
+            for split in ("train", "val", "test"):
+                path_split = split
                 if overfitting_examples:
                     # NOTE: when overfitting to a subset of examples,
                     # we want to load the training set multiple times
@@ -371,19 +372,19 @@ class PDBDataModule(LightningDataModule):
                     f"{split}_chain_mapping_paths",
                     [
                         os.path.join(
-                            getattr(self, f"{path_split}_clusterings_dir"),
+                            getattr(self, f"{split}_clusterings_dir"),
                             "ligand_chain_cluster_mapping.csv",
                         ),
                         os.path.join(
-                            getattr(self, f"{path_split}_clusterings_dir"),
+                            getattr(self, f"{split}_clusterings_dir"),
                             "nucleic_acid_chain_cluster_mapping.csv",
                         ),
                         os.path.join(
-                            getattr(self, f"{path_split}_clusterings_dir"),
+                            getattr(self, f"{split}_clusterings_dir"),
                             "peptide_chain_cluster_mapping.csv",
                         ),
                         os.path.join(
-                            getattr(self, f"{path_split}_clusterings_dir"),
+                            getattr(self, f"{split}_clusterings_dir"),
                             "protein_chain_cluster_mapping.csv",
                         ),
                     ],
