@@ -352,36 +352,38 @@ class PDBDataModule(LightningDataModule):
                     # we want to load the training set multiple times
                     # to ensure that the model sees the same examples
                     # across training, validation, and testing
-                    split = "train"
+                    path_split = "train"
 
                 setattr(
                     self,
                     f"{split}_mmcifs_dir",
-                    os.path.join(self.hparams.data_dir, f"{split}_mmcifs"),
+                    os.path.join(self.hparams.data_dir, f"{path_split}_mmcifs"),
                 )
                 setattr(
                     self,
                     f"{split}_clusterings_dir",
-                    os.path.join(self.hparams.data_dir, "data_caches", f"{split}_clusterings"),
+                    os.path.join(
+                        self.hparams.data_dir, "data_caches", f"{path_split}_clusterings"
+                    ),
                 )
                 setattr(
                     self,
                     f"{split}_chain_mapping_paths",
                     [
                         os.path.join(
-                            getattr(self, f"{split}_clusterings_dir"),
+                            getattr(self, f"{path_split}_clusterings_dir"),
                             "ligand_chain_cluster_mapping.csv",
                         ),
                         os.path.join(
-                            getattr(self, f"{split}_clusterings_dir"),
+                            getattr(self, f"{path_split}_clusterings_dir"),
                             "nucleic_acid_chain_cluster_mapping.csv",
                         ),
                         os.path.join(
-                            getattr(self, f"{split}_clusterings_dir"),
+                            getattr(self, f"{path_split}_clusterings_dir"),
                             "peptide_chain_cluster_mapping.csv",
                         ),
                         os.path.join(
-                            getattr(self, f"{split}_clusterings_dir"),
+                            getattr(self, f"{path_split}_clusterings_dir"),
                             "protein_chain_cluster_mapping.csv",
                         ),
                     ],
@@ -390,7 +392,7 @@ class PDBDataModule(LightningDataModule):
                     self,
                     f"{split}_interface_mapping_path",
                     os.path.join(
-                        getattr(self, f"{split}_clusterings_dir"),
+                        getattr(self, f"{path_split}_clusterings_dir"),
                         "interface_cluster_mapping.csv",
                     ),
                 )
