@@ -4,6 +4,7 @@ channels:
   - bioconda
   - nvidia
   - conda-forge
+  - sbl
 dependencies:
   - _libgcc_mutex=0.1=conda_forge
   - _openmp_mutex=4.5=2_kmp_llvm
@@ -50,6 +51,7 @@ dependencies:
   - dav1d=1.2.1=hd590300_0
   - distro=1.8.0=pyhd8ed1ab_0
   - docutils=0.19=py310hff52083_1
+  - dssp=4.2.2.1=h3fd9d12_0
   - expat=2.6.2=h59595ed_0
   - ffmpeg=7.0.1=gpl_hb399a10_100
   - font-ttf-dejavu-sans-mono=2.37=hab24e00_0
