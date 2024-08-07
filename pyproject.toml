@@ -45,7 +45,7 @@ dependencies = [
     # "comet-ml",
     # "mlflow",
     # "neptune-client",
-    # "wandb",
+    # "wandb>=0.12.10",
 
     # --------- others --------- #
     "adam-atan2-pytorch>=0.0.8", # optimization
