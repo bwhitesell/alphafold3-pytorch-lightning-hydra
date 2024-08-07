@@ -2630,8 +2630,6 @@ def pdb_input_to_molecule_input(
     assert len(molecules) == len(missing_atom_indices)
     assert len(missing_token_indices) == num_tokens
 
-    # TODO: handle extra oxygen (i.e., `OXT`) atoms that are sometimes present e.g., for `HIS` residues
-
     mol_total_atoms = sum([mol.GetNumAtoms() for mol in molecules])
     num_missing_atom_indices = sum(
         len(mol_miss_atom_indices) for mol_miss_atom_indices in missing_atom_indices
