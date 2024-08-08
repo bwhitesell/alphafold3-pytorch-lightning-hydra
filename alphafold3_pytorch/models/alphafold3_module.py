@@ -189,7 +189,7 @@ class Alphafold3LitModule(LightningModule):
 
         # generate multiple samples per example in each batch
 
-        samples: List[Float["b m 3"], Float["b n n d"], Float["b n n d"]] = []  # type: ignore
+        samples: List[Tuple[Float["b m 3"], Float["b pde n n"], Float["b dist n n"]]] = []  # type: ignore
 
         for _ in range(self.hparams.num_samples_per_example):
             batch_sampled_atom_pos, ch_logits, dist_logits = self.net(
@@ -198,7 +198,7 @@ class Alphafold3LitModule(LightningModule):
                 return_confidence_head_logits=True,
                 return_distogram_head_logits=True,
             )
-            samples.append(batch_sampled_atom_pos, ch_logits.pde, dist_logits)
+            samples.append((batch_sampled_atom_pos, ch_logits.pde, dist_logits))
 
         (
             model_selection_score,
@@ -277,7 +277,7 @@ class Alphafold3LitModule(LightningModule):
 
         # generate multiple samples per example in each batch
 
-        samples: List[Float["b m 3"], Float["b n n d"], Float["b n n d"]] = []  # type: ignore
+        samples: List[Tuple[Float["b m 3"], Float["b pde n n"], Float["b dist n n"]]] = []  # type: ignore
 
         for _ in range(self.hparams.num_samples_per_example):
             batch_sampled_atom_pos, ch_logits, dist_logits = self.net(
@@ -286,7 +286,7 @@ class Alphafold3LitModule(LightningModule):
                 return_confidence_head_logits=True,
                 return_distogram_head_logits=True,
             )
-            samples.append(batch_sampled_atom_pos, ch_logits.pde, dist_logits)
+            samples.append((batch_sampled_atom_pos, ch_logits.pde, dist_logits))
 
         (
             _,

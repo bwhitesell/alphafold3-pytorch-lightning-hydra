@@ -7,6 +7,7 @@ h - heads
 n - molecule sequence length
 i - molecule sequence length (source)
 j - molecule sequence length (target)
+l - number of distogram bins
 m - atom sequence length
 nw - windowed sequence length
 d - feature dimension
@@ -3803,7 +3804,7 @@ class ComputeConfidenceScore(Module):
     @typecheck
     def compute_ptm(
         self,
-        logits: Float["b pae n n "],  # type: ignore
+        logits: Float["b pae n n"],  # type: ignore
         asym_id: Int["b n"],  # type: ignore
         has_frame: Bool["b n"],  # type: ignore
         residue_weights: Float["b n"] | None = None,  # type: ignore
@@ -3914,8 +3915,8 @@ class ComputeConfidenceScore(Module):
     def compute_pde(
         self,
         logits: Float["b pde n n"],  # type: ignore
-        tok_repr_atm_mask: Bool[" b n"],  # type: ignore
-    ) -> Float[" b n n"]:  # type: ignore
+        tok_repr_atm_mask: Bool["b n"],  # type: ignore
+    ) -> Float["b n n"]:  # type: ignore
         """Compute PDE from logits."""
         logits = rearrange(logits, "b pde i j -> b i j pde")
         bin_centers = self._calculate_bin_centers(self.pde_breaks)
@@ -4281,7 +4282,7 @@ def _protein_structure_from_feature(
     asym_id: Int[" n"],  # type: ignore
     molecule_ids: Int[" n"],  # type: ignore
     molecule_atom_lens: Int[" n"],  # type: ignore
-    atom_pos: Float[" m 3"],  # type: ignore
+    atom_pos: Float["m 3"],  # type: ignore
     atom_mask: Bool[" m"],  # type: ignore
 ) -> Bio.PDB.Structure.Structure:
     """Create structure for unresolved proteins.
@@ -4436,9 +4437,9 @@ class ComputeModelSelectionScore(Module):
     def compute_gpde(
         self,
         pde_logits: Float["b pde n n"],  # type: ignore
-        dist_logits: Float["b dist n n "],  # type: ignore
+        dist_logits: Float["b dist n n"],  # type: ignore
         dist_breaks: Float[" dist_break"],  # type: ignore
-        tok_repr_atm_mask: Bool[" b n"],  # type: ignore
+        tok_repr_atm_mask: Bool["b n"],  # type: ignore
     ) -> Float[" b"]:  # type: ignore
         """Compute global PDE following Section 5.7 of the AF3 supplement.
 
@@ -4731,7 +4732,7 @@ class ComputeModelSelectionScore(Module):
         asym_id: Int[" n"],  # type: ignore
         molecule_ids: Int[" n"],  # type: ignore
         molecule_atom_lens: Int[" n"],  # type: ignore
-        atom_pos: Float[" m 3"],  # type: ignore
+        atom_pos: Float["m 3"],  # type: ignore
         atom_mask: Bool[" m"],  # type: ignore
     ) -> Float[""]:  # type: ignore
         """Compute the unresolved relative solvent accessible surface area (RASA) for proteins.
@@ -4861,7 +4862,7 @@ class ComputeModelSelectionScore(Module):
     def compute_model_selection_score(
         self,
         batch: BatchedAtomInput,
-        samples: List[Tuple[Float["b m 3"], Float["b n n d"], Float["b n n d"]]],  # type: ignore
+        samples: List[Tuple[Float["b m 3"], Float["b pde n n"], Float["b dist n n"]]],  # type: ignore
         is_fine_tuning: bool = None,
         return_top_model: bool = False,
         return_unweighted_scores: bool = False,
@@ -5392,7 +5393,7 @@ class Alphafold3(Module):
     ) -> (
         Float["b m 3"]  # type: ignore
         | Tuple[Float["b m 3"], ConfidenceHeadLogits]  # type: ignore
-        | Tuple[Float["b m 3"], ConfidenceHeadLogits, Float["b n n 3"]]  # type: ignore
+        | Tuple[Float["b m 3"], ConfidenceHeadLogits, Float["b l n n"]]  # type: ignore
         | Float[""]  # type: ignore
         | Tuple[Float[""], LossBreakdown]  # type: ignore
     ):
@@ -5728,10 +5729,11 @@ class Alphafold3(Module):
                 return_pae_logits=True,
             )
             if return_distogram_head_logits:
+                distogram_head_logits = self.distogram_head(pairwise.clone().detach())
                 return (
                     sampled_atom_pos,
                     confidence_head_logits,
-                    self.distogram_head(pairwise.clone().detach()),
+                    distogram_head_logits,
                 )
             return sampled_atom_pos, confidence_head_logits
 
