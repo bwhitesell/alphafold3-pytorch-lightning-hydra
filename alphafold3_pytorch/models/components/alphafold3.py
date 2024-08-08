@@ -4897,7 +4897,7 @@ class ComputeModelSelectionScore(Module):
         atom_pos_true = batch_dict["atom_pos"]
         atom_mask = ~batch_dict["missing_atom_mask"]
 
-        asym_id = batch_dict["asym_id"]
+        asym_id = batch_dict["additional_molecule_feats"].unbind(dim=-1)[2]
         is_molecule_types = batch_dict["is_molecule_types"]
 
         chains = batch_dict["chains"]

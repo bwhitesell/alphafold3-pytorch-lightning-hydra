@@ -19,9 +19,9 @@ from alphafold3_pytorch.utils.tensor_typing import Bool, Float, typecheck
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
-
-PHASES = Literal["train", "val", "test", "predict"]
 AVAILABLE_LR_SCHEDULERS = ["wcd", "plateau"]
+PHASES = Literal["train", "val", "test", "predict"]
+SAMPLE = Tuple[Float["b m 3"], Float["b pde n n"], Float["b dist n n"]]  # type: ignore
 
 log = RankedLogger(__name__, rank_zero_only=False)
 
@@ -189,7 +189,7 @@ class Alphafold3LitModule(LightningModule):
 
         # generate multiple samples per example in each batch
 
-        samples: List[Tuple[Float["b m 3"], Float["b pde n n"], Float["b dist n n"]]] = []  # type: ignore
+        samples: List[SAMPLE] = []
 
         for _ in range(self.hparams.num_samples_per_example):
             batch_sampled_atom_pos, ch_logits, dist_logits = self.net(
@@ -277,7 +277,7 @@ class Alphafold3LitModule(LightningModule):
 
         # generate multiple samples per example in each batch
 
-        samples: List[Tuple[Float["b m 3"], Float["b pde n n"], Float["b dist n n"]]] = []  # type: ignore
+        samples: List[SAMPLE] = []
 
         for _ in range(self.hparams.num_samples_per_example):
             batch_sampled_atom_pos, ch_logits, dist_logits = self.net(
