@@ -4890,9 +4890,11 @@ class ComputeModelSelectionScore(Module):
         is_fine_tuning = default(is_fine_tuning, self.is_fine_tuning)
 
         if compute_rasa:
-            assert exists(unresolved_cid) and exists(
-                unresolved_residue_mask
-            ), "RASA computation requires `unresolved_cid` and `unresolved_residue_mask` to be provided."
+            if not (exists(unresolved_cid) and exists(unresolved_residue_mask)):
+                logger.warning(
+                    "RASA computation requires `unresolved_cid` and `unresolved_residue_mask` to be provided. Skipping RASA computation."
+                )
+                compute_rasa = False
 
         # collect required features
 
