@@ -1,4 +1,4 @@
-from random import random, randrange
+import random
 
 import torch
 from torch.utils.data import Dataset
@@ -35,7 +35,7 @@ class MockAtomDataset(Dataset):
 
     def __getitem__(self, idx: int) -> AtomInput:
         """Return a random item from the dataset."""
-        seq_len = randrange(1, self.max_seq_len)  # nosec
+        seq_len = random.randrange(1, self.max_seq_len)  # nosec
         atom_seq_len = self.atoms_per_window * seq_len
 
         atom_inputs = torch.randn(atom_seq_len, self.dim_atom_inputs)
@@ -45,6 +45,20 @@ class MockAtomDataset(Dataset):
         additional_molecule_feats = torch.randint(0, 2, (seq_len, 5))
         additional_token_feats = torch.randn(seq_len, 2)
         is_molecule_types = torch.randint(0, 2, (seq_len, IS_MOLECULE_TYPES)).bool()
+
+        # ensure the molecule-atom length mappings match the randomly-sampled atom sequence length
+
+        if molecule_atom_lens.sum() != atom_seq_len:
+            molecule_atom_lens[-1] = atom_seq_len - molecule_atom_lens[:-1].sum()
+
+        # ensure each unique asymmetric ID has at least one molecule type associated with it
+
+        asym_id = additional_molecule_feats[:, 2]
+        unique_asym_id = asym_id.unique()
+        for asym in unique_asym_id:
+            if not is_molecule_types[asym_id == asym].any():
+                rand_molecule_idx = random.randint(0, IS_MOLECULE_TYPES - 1)  # nosec
+                is_molecule_types[asym_id == asym, rand_molecule_idx] = True
 
         is_molecule_mod = None
         if self.has_molecule_mods:
@@ -59,7 +73,7 @@ class MockAtomDataset(Dataset):
         msa = torch.randn(7, seq_len, 64)
 
         msa_mask = None
-        if random() > 0.5:  # nosec
+        if random.random() > 0.5:  # nosec
             msa_mask = torch.ones((7,)).bool()
 
         # required for training, but omitted on inference
@@ -74,7 +88,6 @@ class MockAtomDataset(Dataset):
         plddt_labels = torch.randint(0, 50, (seq_len,))
         resolved_labels = torch.randint(0, 2, (seq_len,))
 
-        asym_id = additional_molecule_feats[:, 2]
         majority_asym_id = asym_id.mode().values.item()
         chains = torch.tensor([majority_asym_id, -1]).long()
 
