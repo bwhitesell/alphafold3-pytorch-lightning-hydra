@@ -7,6 +7,7 @@ h - heads
 n - molecule sequence length
 i - molecule sequence length (source)
 j - molecule sequence length (target)
+l - present (i.e., non-missing) atom sequence length
 m - atom sequence length
 nw - windowed sequence length
 d - feature dimension
@@ -5393,6 +5394,7 @@ class Alphafold3(Module):
         detach_when_recycling: bool = None,
     ) -> (
         Float["b m 3"]  # type: ignore
+        | Float["l 3"]  # type: ignore
         | Tuple[Float["b m 3"], ConfidenceHeadLogits]  # type: ignore
         | Tuple[Float["b m 3"], ConfidenceHeadLogits, Float["b m m 3"]]  # type: ignore
         | Float[""]  # type: ignore

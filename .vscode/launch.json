@@ -138,6 +138,8 @@
                 // "~logger",
                 // "~logger.wandb",
                 "model=alphafold3",
+                // "model.is_fine_tuning=false",
+                "model.num_samples_per_example=3",
                 "model.visualize_val_samples_every_n_steps=1",
                 "+model.net.dim_pairwise=8",
                 "+model.net.dim_single=8",
