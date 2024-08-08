@@ -93,10 +93,6 @@ class Alphafold3LitModule(LightningModule):
 
         self.test_top_ranked_lddt = MeanMetric()
 
-        assert (
-            self.compute_model_selection_score.can_calculate_unresolved_protein_rasa
-        ), "The `compute_model_selection_score` metric requires calculation of `unresolved_protein_rasa` using DSSP."
-
     @property
     def is_main(self) -> bool:
         """Check if the current process is the main process."""
@@ -195,7 +191,7 @@ class Alphafold3LitModule(LightningModule):
 
         samples: List[Float["b m 3"], Float["b n n d"], Float["b n n d"]] = []  # type: ignore
 
-        for sample_idx in range(self.hparams.num_samples_per_example):
+        for _ in range(self.hparams.num_samples_per_example):
             batch_sampled_atom_pos, ch_logits, dist_logits = self.net(
                 **prepared_model_batch_dict,
                 return_loss=False,
@@ -283,7 +279,7 @@ class Alphafold3LitModule(LightningModule):
 
         samples: List[Float["b m 3"], Float["b n n d"], Float["b n n d"]] = []  # type: ignore
 
-        for sample_idx in range(self.hparams.num_samples_per_example):
+        for _ in range(self.hparams.num_samples_per_example):
             batch_sampled_atom_pos, ch_logits, dist_logits = self.net(
                 **prepared_model_batch_dict,
                 return_loss=False,
@@ -302,8 +298,8 @@ class Alphafold3LitModule(LightningModule):
             return_top_model=True,
             return_unweighted_scores=False,
             # NOTE: The AF3 supplement (Section 5.7) suggests that DM computed RASA only for the test set's unresolved regions
-            # TODO: Find where to get the unresolved chain IDs and residue masks from to set `compute_rasa=True` to match the AF3 supplement
-            compute_rasa=False,
+            # TODO: Find where to get the unresolved chain IDs and residue masks from to statically set `compute_rasa=True` to match the AF3 supplement
+            compute_rasa=self.compute_model_selection_score.can_calculate_unresolved_protein_rasa,
             unresolved_cid=None,
             unresolved_residue_mask=None,
         )
