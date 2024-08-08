@@ -4862,7 +4862,7 @@ class ComputeModelSelectionScore(Module):
     def compute_model_selection_score(
         self,
         batch: BatchedAtomInput,
-        samples: List[Float["b m 3"], Float["b m m d"], Float["b m m d"]],  # type: ignore
+        samples: List[Tuple[Float["b m 3"], Float["b m m d"], Float["b m m d"]]],  # type: ignore
         is_fine_tuning: bool = None,
         return_top_model: bool = False,
         return_unweighted_scores: bool = False,
