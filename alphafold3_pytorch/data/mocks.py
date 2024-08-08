@@ -57,8 +57,8 @@ class MockAtomDataset(Dataset):
         unique_asym_id = asym_id.unique()
         for asym in unique_asym_id:
             if not is_molecule_types[asym_id == asym].any():
-                rand_molecule_idx = random.randint(0, IS_MOLECULE_TYPES - 1)  # nosec
-                is_molecule_types[asym_id == asym, rand_molecule_idx] = True
+                rand_molecule_type_idx = random.randint(0, IS_MOLECULE_TYPES - 1)  # nosec
+                is_molecule_types[asym_id == asym, rand_molecule_type_idx] = True
 
         is_molecule_mod = None
         if self.has_molecule_mods:
