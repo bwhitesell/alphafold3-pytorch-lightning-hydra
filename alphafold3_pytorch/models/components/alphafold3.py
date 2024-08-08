@@ -4636,8 +4636,8 @@ class ComputeModelSelectionScore(Module):
         # RASA input
         compute_rasa: bool = False,
         unresolved_cid: List[int] | None = None,
-        unresolved_residue_mask: Bool["b n"] | None = None,
-        molecule_ids: Int["b n"] | None = None,
+        unresolved_residue_mask: Bool["b n"] | None = None,  # type: ignore
+        molecule_ids: Int["b n"] | None = None,  # type: ignore
     ) -> Float[" b"]:  # type: ignore
         """Compute the weighted lDDT.
 
@@ -4860,6 +4860,7 @@ class ComputeModelSelectionScore(Module):
 
     @typecheck
     def compute_model_selection_score(
+        self,
         batch: BatchedAtomInput,
         samples: List[Float["b m 3"], Float["b m m d"], Float["b m m d"]],  # type: ignore
         is_fine_tuning: bool = None,
@@ -4867,7 +4868,7 @@ class ComputeModelSelectionScore(Module):
         return_unweighted_scores: bool = False,
         compute_rasa: bool = False,
         unresolved_cid: List[int] | None = None,
-        unresolved_residue_mask: Bool["b n"] | None = None,
+        unresolved_residue_mask: Bool["b n"] | None = None,  # type: ignore
     ) -> Float[" b"] | Tuple[Float[" b"], SCORED_SAMPLE]:  # type: ignore
         """Compute the model selection score for an input batch and corresponding (sampled) atom
         positions.
@@ -4940,10 +4941,10 @@ class ComputeModelSelectionScore(Module):
         top_ranked_sample = max(scored_samples, key=lambda x: x[-1])
         best_of_5_sample = max(scored_samples, key=lambda x: x[-2])
 
-        model_selection_score = (top_1_sample[-1] + best_of_top_5_sample[-1]) / 2
+        model_selection_score = (top_ranked_sample[-1] + best_of_5_sample[-1]) / 2
 
         if return_top_model:
-            return model_selection_score, top_1_sample
+            return model_selection_score, top_ranked_sample
 
         return model_selection_score
 

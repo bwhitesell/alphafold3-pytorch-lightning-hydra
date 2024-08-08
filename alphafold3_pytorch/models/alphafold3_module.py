@@ -5,7 +5,7 @@ import rootutils
 import torch
 from lightning import LightningModule
 from torch import Tensor
-from torchmetrics import MeanMetric, MinMetric
+from torchmetrics import MaxMetric, MeanMetric
 
 from alphafold3_pytorch.data import mmcif_writing
 from alphafold3_pytorch.models.components.alphafold3 import (
@@ -82,15 +82,16 @@ class Alphafold3LitModule(LightningModule):
 
         self.train_loss = MeanMetric()
 
-        # for tracking best so far validation loss and metrics
+        # for tracking best so far validation model selection score as well as the top-ranked test lDDT
 
         self.compute_model_selection_score = ComputeModelSelectionScore(
             is_fine_tuning=self.hparams.is_fine_tuning
         )
-        self.val_model_selection_score = MeanMetric()
-        self.test_top_ranked_lddt = MeanMetric()
 
+        self.val_model_selection_score = MeanMetric()
         self.val_model_selection_score_best = MaxMetric()
+
+        self.test_top_ranked_lddt = MeanMetric()
 
         assert (
             self.compute_model_selection_score.can_calculate_unresolved_protein_rasa
@@ -360,8 +361,8 @@ class Alphafold3LitModule(LightningModule):
     @torch.no_grad()
     def visualize(
         self,
-        sampled_atom_pos: Float["b m"],
-        atom_mask: Bool["b m"],
+        sampled_atom_pos: Float["b m"],  # type: ignore
+        atom_mask: Bool["b m"],  # type: ignore
         filepaths: List[str],
         batch_idx: int,
         phase: PHASES,
