@@ -124,3 +124,7 @@ def test_train_resume(tmp_path: Path, cfg_train: DictConfig) -> None:
 
     # NOTE: when sanity-checking the model with a random dataset, the validation metric may not increase
     # assert train_metric_dict_1["val/model_selection_score"] < train_metric_dict_2["val/model_selection_score"]
+
+
+if __name__ == "__main__":
+    pytest.main(["-s", "-v", __file__])
