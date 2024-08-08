@@ -105,6 +105,7 @@ from alphafold3_pytorch.utils.model_utils import (
     masked_average,
     max_neg_value,
     maybe,
+    mean_pool_fixed_windows_with_mask,
     mean_pool_with_lens,
     pack_one,
     pad_and_window,
@@ -4023,7 +4024,7 @@ class ComputeClash(Module):
         indices = batch_repeat_interleave(indices, molecule_atom_lens)
         valid_indices = batch_repeat_interleave(valid_indices, molecule_atom_lens)
 
-        if atom_mask is not None:
+        if exists(atom_mask):
             valid_indices = valid_indices * atom_mask
 
         has_clash = []

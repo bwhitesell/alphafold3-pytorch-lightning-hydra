@@ -262,8 +262,8 @@ class Alphafold3LitModule(LightningModule):
 
         if self.hparams.visualize_val_samples_every_n_steps > 0:
             if batch_idx % self.hparams.visualize_val_samples_every_n_steps == 0:
-                assert (
-                    top_batch_sampled_atom_pos is not None
+                assert exists(
+                    top_batch_sampled_atom_pos
                 ), "The top sampled atom positions must be provided to visualize them."
                 filename_suffixes = [
                     f"-score-{score:.4f}" for score in top_model_selection_score.tolist()
@@ -382,8 +382,8 @@ class Alphafold3LitModule(LightningModule):
 
         if self.hparams.visualize_test_samples_every_n_steps > 0:
             if batch_idx % self.hparams.visualize_test_samples_every_n_steps == 0:
-                assert (
-                    top_batch_sampled_atom_pos is not None
+                assert exists(
+                    top_batch_sampled_atom_pos
                 ), "The top sampled atom positions must be provided to visualize them."
                 filename_suffixes = [
                     f"-score-{score:.4f}" for score in top_model_selection_score.tolist()
