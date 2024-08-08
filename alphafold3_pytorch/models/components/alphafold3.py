@@ -91,6 +91,7 @@ from alphafold3_pytorch.models.components.inputs import (
     IS_RNA,
     IS_RNA_INDEX,
     NUM_MOLECULE_IDS,
+    BatchedAtomInput,
 )
 from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.model_utils import (
@@ -114,6 +115,8 @@ from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
 from alphafold3_pytorch.utils.utils import default, exists, identity
 
 # constants
+
+SCORED_SAMPLE = Tuple[int, Float["b m 3"], Float[" b"], Float[" b"]]  # type: ignore
 
 LinearNoBias = partial(Linear, bias=False)
 
@@ -4629,6 +4632,12 @@ class ComputeModelSelectionScore(Module):
         # additional input
         chains_list: List[Tuple[int, int] | Tuple[int]],
         is_fine_tuning: bool = None,
+        unweighted: bool = False,
+        # RASA input
+        compute_rasa: bool = False,
+        unresolved_cid: List[int] | None = None,
+        unresolved_residue_mask: Bool["b n"] | None = None,
+        molecule_ids: Int["b n"] | None = None,
     ) -> Float[" b"]:  # type: ignore
         """Compute the weighted lDDT.
 
@@ -4640,6 +4649,10 @@ class ComputeModelSelectionScore(Module):
         :param molecule_atom_lens: [b n] molecule atom lens
         :param chains_list: List of chains
         :param is_fine_tuning: is fine tuning
+        :param unweighted: unweighted lddt
+        :param compute_rasa: compute RASA
+        :param unresolved_cid: unresolved chain ids
+        :param unresolved_residue_mask: unresolved residue mask
         :return: [b] weighted lddt
         """
         is_fine_tuning = default(is_fine_tuning, self.is_fine_tuning)
@@ -4657,7 +4670,7 @@ class ComputeModelSelectionScore(Module):
             chains = chains_list[b]
             if len(chains) == 2:
                 asym_id_a = chains[0]
-                asym_id_b = chains[0]
+                asym_id_b = chains[1]
                 lddt_type = "interface"
             elif len(chains) == 1:
                 asym_id_a = asym_id_b = chains[0]
@@ -4686,9 +4699,28 @@ class ComputeModelSelectionScore(Module):
                 true_coords[b],
                 atom_is_molecule_types[b],
                 atom_mask[b],
+                compute_rasa=compute_rasa,
             )
 
-            weighted_lddt[b] = lddt_weight * lddt
+            weighted_lddt[b] = (1.0 if unweighted else lddt_weight) * lddt
+
+        # Average the lDDT with the relative solvent accessible surface area (RASA) for unresolved proteins
+        # NOTE: This differs from the AF3 Section 5.7 slightly, as here we compute the algebraic mean of the (batched) lDDT and RASA
+        if compute_rasa:
+            assert (
+                exists(unresolved_cid) and exists(unresolved_residue_mask) and exists(molecule_ids)
+            ), "RASA computation requires `unresolved_cid`, `unresolved_residue_mask`, and `molecule_ids` to be provided."
+            weighted_rasa = self.compute_unresolved_rasa(
+                unresolved_cid,
+                unresolved_residue_mask,
+                asym_id,
+                molecule_ids,
+                molecule_atom_lens,
+                true_coords,
+                atom_mask,
+                is_fine_tuning=is_fine_tuning,
+            )
+            weighted_lddt = (weighted_lddt + weighted_rasa) / 2
 
         return weighted_lddt
 
@@ -4703,7 +4735,7 @@ class ComputeModelSelectionScore(Module):
         atom_pos: Float[" m 3"],  # type: ignore
         atom_mask: Bool[" m"],  # type: ignore
     ) -> Float[""]:  # type: ignore
-        """Compute the unresolved relative accessible surface area (RASA) for proteins.
+        """Compute the unresolved relative solvent accessible surface area (RASA) for proteins.
 
         unresolved_cid: asym_id for protein chains with unresolved residues
         unresolved_residue_mask: True for unresolved residues, False for resolved residues
@@ -4788,8 +4820,10 @@ class ComputeModelSelectionScore(Module):
         molecule_atom_lens: Int["b n"],  # type: ignore
         atom_pos: Float["b m 3"],  # type: ignore
         atom_mask: Bool["b m"],  # type: ignore
+        is_fine_tuning: bool = None,
     ) -> Float[" b"]:  # type: ignore
-        """Compute the unresolved relative accessible surface area (RASA) for (batched) proteins.
+        """Compute the unresolved relative solvent accessible surface area (RASA) for (batched)
+        proteins.
 
         unresolved_cid: asym_id for protein chains with unresolved residues
         unresolved_residue_mask: True for unresolved residues, False for resolved residues
@@ -4800,6 +4834,16 @@ class ComputeModelSelectionScore(Module):
         atom_mask: [b m] atom mask
         :return: [b] unresolved RASA
         """
+        is_fine_tuning = default(is_fine_tuning, self.is_fine_tuning)
+
+        weight_dict = default(
+            self.weight_dict_config,
+            self.FINETUNING_DICT if is_fine_tuning else self.INITIAL_TRAINING_DICT,
+        )
+
+        weight = weight_dict.get("unresolved", {}).get("unresolved", None)
+        assert weight, f"Weight not found for unresolved"
+
         unresolved_rasa = [
             self._compute_unresolved_rasa(*args)
             for args in zip(
@@ -4812,7 +4856,96 @@ class ComputeModelSelectionScore(Module):
                 atom_mask,
             )
         ]
-        return torch.stack(unresolved_rasa)
+        return torch.stack(unresolved_rasa) * weight
+
+    @typecheck
+    def compute_model_selection_score(
+        batch: BatchedAtomInput,
+        samples: List[Float["b m 3"], Float["b m m d"], Float["b m m d"]],  # type: ignore
+        is_fine_tuning: bool = None,
+        return_top_model: bool = False,
+        return_unweighted_scores: bool = False,
+        compute_rasa: bool = False,
+        unresolved_cid: List[int] | None = None,
+        unresolved_residue_mask: Bool["b n"] | None = None,
+    ) -> Float[" b"] | Tuple[Float[" b"], SCORED_SAMPLE]:  # type: ignore
+        """Compute the model selection score for an input batch and corresponding (sampled) atom
+        positions.
+
+        :param batch: A batch of `AtomInput` data.
+        :param samples: A list of sampled atom positions along with their predicted distance errors and labels.
+        :param is_fine_tuning: is fine tuning
+        :param return_top_model: return the top-ranked sample
+        :param return_unweighted_scores: return the unweighted scores (i.e., lDDT)
+        :param compute_rasa: compute the relative solvent accessible surface area (RASA) for unresolved proteins
+        :param unresolved_cid: unresolved chain ids
+        :param unresolved_residue_mask: unresolved residue mask
+        :return: [b] model selection score and optionally the top model
+        """
+        is_fine_tuning = default(is_fine_tuning, self.is_fine_tuning)
+
+        if compute_rasa:
+            assert exists(unresolved_cid) and exists(
+                unresolved_residue_mask
+            ), "RASA computation requires `unresolved_cid` and `unresolved_residue_mask` to be provided."
+
+        # collect required features
+
+        batch_dict = batch.dict()
+
+        atom_pos_true = batch_dict["atom_pos"]
+        atom_seq_len = batch_dict["atom_inputs"].shape[-2]
+
+        asym_id = batch_dict["asym_id"]
+        is_molecule_types = batch_dict["is_molecule_types"]
+
+        chains = batch_dict["chains"]
+        molecule_atom_lens = batch_dict["molecule_atom_lens"]
+        molecule_ids = batch_dict["molecule_ids"]
+
+        atom_mask = ~batch_dict["missing_atom_mask"]
+
+        # score samples
+
+        scored_samples: List[SCORED_SAMPLE] = []
+
+        for sample_idx, sample in enumerate(samples):
+            atom_pos_pred, pde_logits, dist_logits = sample
+
+            weighted_lddt = self.compute_weighted_lddt(
+                atom_pos_pred,
+                atom_pos_true,
+                atom_mask,
+                asym_id,
+                is_molecule_types,
+                molecule_atom_lens,
+                chains_list=chains,
+                is_fine_tuning=is_fine_tuning,
+                compute_rasa=compute_rasa,
+                unresolved_cid=unresolved_cid,
+                unresolved_residue_mask=unresolved_residue_mask,
+                molecule_ids=molecule_ids,
+                unweighted=return_unweighted_scores,
+            )
+
+            gpde = self.compute_gpde(
+                pde_logits,
+                dist_logits,
+                self.dist_breaks,
+                atom_mask,
+            )
+
+            scored_samples.append((sample_idx, atom_pos_pred, weighted_lddt, gpde))
+
+        top_ranked_sample = max(scored_samples, key=lambda x: x[-1])
+        best_of_5_sample = max(scored_samples, key=lambda x: x[-2])
+
+        model_selection_score = (top_1_sample[-1] + best_of_top_5_sample[-1]) / 2
+
+        if return_top_model:
+            return model_selection_score, top_1_sample
+
+        return model_selection_score
 
 
 # main class
@@ -5251,12 +5384,14 @@ class Alphafold3(Module):
         return_loss_breakdown=False,
         return_loss: bool = None,
         return_confidence_head_logits: bool = False,
+        return_distogram_head_logits: bool = False,
         num_rollout_steps: int | None = None,
         rollout_show_tqdm_pbar: bool = False,
         detach_when_recycling: bool = None,
     ) -> (
         Float["b m 3"]  # type: ignore
-        | Tuple[Float["b m 3"] | Float["l 3"], ConfidenceHeadLogits]  # type: ignore
+        | Tuple[Float["b m 3"], ConfidenceHeadLogits]  # type: ignore
+        | Tuple[Float["b m 3"], Float["b n n 3"], ConfidenceHeadLogits]  # type: ignore
         | Float[""]  # type: ignore
         | Tuple[Float[""], LossBreakdown]  # type: ignore
     ):
@@ -5288,10 +5423,12 @@ class Alphafold3(Module):
         :param return_loss_breakdown: Whether to return the loss breakdown.
         :param return_loss: Whether to return the loss.
         :param return_confidence_head_logits: Whether to return the confidence head logits.
+        :param return_distogram_head_logits: Whether to return the distogram head logits.
         :param num_rollout_steps: The number of rollout steps.
         :param rollout_show_tqdm_pbar: Whether to show a tqdm progress bar during rollout.
         :param detach_when_recycling: Whether to detach gradients when recycling.
-        :return: The atomic coordinates or the loss.
+        :return: The atomic coordinates, the confidence head logits, the distogram head logits, the
+            loss, or the loss breakdown.
         """
         atom_seq_len = atom_inputs.shape[-2]
 
@@ -5589,6 +5726,12 @@ class Alphafold3(Module):
                 mask=mask,
                 return_pae_logits=True,
             )
+            if return_distogram_head_logits:
+                return (
+                    sampled_atom_pos,
+                    confidence_head_logits,
+                    self.distogram_head(pairwise.clone().detach()),
+                )
             return sampled_atom_pos, confidence_head_logits
 
         # if being forced to return loss, but do not have sufficient information to return losses, just return 0
