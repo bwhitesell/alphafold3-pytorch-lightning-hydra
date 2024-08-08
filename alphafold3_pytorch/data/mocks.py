@@ -76,7 +76,7 @@ class MockAtomDataset(Dataset):
 
         asym_id = additional_molecule_feats[:, 2]
         majority_asym_id = asym_id.mode().values.item()
-        chains = torch.tensor([majority_asym_id, -1]).int()
+        chains = torch.tensor([majority_asym_id, -1]).long()
 
         return AtomInput(
             atom_inputs=atom_inputs,
