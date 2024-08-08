@@ -74,6 +74,10 @@ class MockAtomDataset(Dataset):
         plddt_labels = torch.randint(0, 50, (seq_len,))
         resolved_labels = torch.randint(0, 2, (seq_len,))
 
+        asym_id = additional_molecule_feats[:, 2]
+        majority_asym_id = asym_id.mode().values.item()
+        chains = torch.tensor([majority_asym_id, -1]).int()
+
         return AtomInput(
             atom_inputs=atom_inputs,
             atompair_inputs=atompair_inputs,
@@ -96,4 +100,5 @@ class MockAtomDataset(Dataset):
             pde_labels=pde_labels,
             plddt_labels=plddt_labels,
             resolved_labels=resolved_labels,
+            chains=chains,
         )

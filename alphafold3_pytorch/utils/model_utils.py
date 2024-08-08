@@ -4,7 +4,7 @@ from typing import List, Tuple, Union
 import einx
 import torch
 import torch.nn.functional as F
-from einops import pack, rearrange, repeat, unpack
+from einops import pack, rearrange, reduce, repeat, unpack
 from torch import Tensor
 from torch.nn import Module
 
@@ -313,6 +313,46 @@ def mean_pool_with_lens(
     avg = einx.divide("b n d, b n", summed, lens.clamp(min=1))
     avg = einx.where("b n, b n d, -> b n d", mask, avg, 0.0)
     return avg
+
+
+@typecheck
+def mean_pool_fixed_windows_with_mask(
+    feats: Float["b m d"],  # type: ignore
+    mask: Bool["b m"],  # type: ignore
+    window_size: int,
+    return_mask_and_inverse: bool = False,
+) -> Float["b n d"] | Tuple[Float["b n d"], Bool["b n"], Callable[[Float["b m d"]], Float["b n d"]]]:  # type: ignore
+    """Mean pool a sequence of features with a fixed window size.
+
+    :param feats: The features tensor.
+    :param mask: The mask tensor.
+    :param window_size: The window size.
+    :param return_mask_and_inverse: Whether to return the pooled mask and the pooled inverse mask.
+    :return: The pooled features tensor and optionally the pooled mask and the inverse function.
+    """
+    seq_len = feats.shape[-2]
+    assert divisible_by(seq_len, window_size)
+
+    feats = einx.where("b m, b m d, -> b m d", mask, feats, 0.0)
+
+    num = reduce(feats, "b (n w) d -> b n d", "sum", w=window_size)
+    den = reduce(mask.float(), "b (n w) -> b n 1", "sum", w=window_size)
+
+    avg = num / den.clamp(min=1.0)
+
+    if not return_mask_and_inverse:
+        return avg
+
+    pooled_mask = reduce(mask, "b (n w) -> b n", "any", w=window_size)
+
+    @typecheck
+    def inverse_fn(pooled: Float["b n d"]) -> Float["b m d"]:  # type: ignore
+        """An inverse function to unpool the pooled features."""
+        unpooled = repeat(pooled, "b n d -> b (n w) d", w=window_size)
+        unpooled = einx.where("b m, b m d, -> b m d", mask, unpooled, 0.0)
+        return unpooled
+
+    return avg, pooled_mask, inverse_fn
 
 
 @typecheck
