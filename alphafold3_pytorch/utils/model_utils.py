@@ -1,5 +1,5 @@
 from functools import wraps
-from typing import List, Tuple, Union
+from typing import Callable, List, Tuple, Union
 
 import einx
 import torch
