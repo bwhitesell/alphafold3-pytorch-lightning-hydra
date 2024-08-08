@@ -4367,10 +4367,10 @@ class ComputeModelSelectionScore(Module):
         "ligand-protein": {"interface": 10},
         "DNA-ligand": {"interface": 5},
         "RNA-ligand": {"interface": 5},
-        "DNA-DNA": {"intra-chain": 4},
-        "RNA-RNA": {"intra-chain": 16},
-        "ligand-ligand": {"intra-chain": 20},
-        "metal_ion-metal_ion": {"intra-chain": 10},
+        "DNA-DNA": {"interface": 4, "intra-chain": 4},
+        "RNA-RNA": {"interface": 16, "intra-chain": 16},
+        "ligand-ligand": {"interface": 20, "intra-chain": 20},
+        "metal_ion-metal_ion": {"interface": 10, "intra-chain": 10},
         "unresolved": {"unresolved": 10},
     }
 
@@ -4381,10 +4381,10 @@ class ComputeModelSelectionScore(Module):
         "ligand-protein": {"interface": 10},
         "DNA-ligand": {"interface": 5},
         "RNA-ligand": {"interface": 2},
-        "DNA-DNA": {"intra-chain": 4},
-        "RNA-RNA": {"intra-chain": 16},
-        "ligand-ligand": {"intra-chain": 20},
-        "metal_ion-metal_ion": {"intra-chain": 0},
+        "DNA-DNA": {"interface": 4, "intra-chain": 4},
+        "RNA-RNA": {"interface": 16, "intra-chain": 16},
+        "ligand-ligand": {"interface": 20, "intra-chain": 20},
+        "metal_ion-metal_ion": {"interface": 0, "intra-chain": 0},
         "unresolved": {"unresolved": 10},
     }
 
