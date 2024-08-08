@@ -66,6 +66,7 @@ class MockAtomDataset(Dataset):
 
         atom_pos = torch.randn(atom_seq_len, 3)
         molecule_atom_indices = molecule_atom_lens - 1
+        distogram_atom_indices = molecule_atom_lens - 1
 
         distance_labels = torch.randint(0, 37, (seq_len, seq_len))
         pae_labels = torch.randint(0, 64, (seq_len, seq_len))
@@ -89,6 +90,7 @@ class MockAtomDataset(Dataset):
             msa_mask=msa_mask,
             atom_pos=atom_pos,
             molecule_atom_indices=molecule_atom_indices,
+            distogram_atom_indices=distogram_atom_indices,
             distance_labels=distance_labels,
             pae_labels=pae_labels,
             pde_labels=pde_labels,

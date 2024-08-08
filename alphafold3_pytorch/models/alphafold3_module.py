@@ -16,6 +16,7 @@ from alphafold3_pytorch.models.components.inputs import BatchedAtomInput
 from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.model_utils import default_lambda_lr_fn
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, typecheck
+from alphafold3_pytorch.utils.utils import exists
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
@@ -82,15 +83,18 @@ class Alphafold3LitModule(LightningModule):
 
         self.train_loss = MeanMetric()
 
-        # for tracking best so far validation model selection score as well as the top-ranked test lDDT
+        # for tracking best so far validation metrics as well as test metrics
 
         self.compute_model_selection_score = ComputeModelSelectionScore(
             is_fine_tuning=self.hparams.is_fine_tuning
         )
 
-        self.val_model_selection_score = MeanMetric()
         self.val_model_selection_score_best = MaxMetric()
 
+        self.val_model_selection_score = MeanMetric()
+        self.test_model_selection_score = MeanMetric()
+
+        self.val_top_ranked_lddt = MeanMetric()
         self.test_top_ranked_lddt = MeanMetric()
 
     @property
@@ -217,12 +221,37 @@ class Alphafold3LitModule(LightningModule):
             top_sample[2],
         )
 
+        # compute the unweighted lDDT score
+
+        (
+            _,
+            unweighted_top_sample,
+        ) = self.compute_model_selection_score.compute_model_selection_score(
+            batch,
+            samples,
+            is_fine_tuning=self.hparams.is_fine_tuning,
+            return_top_model=True,
+            return_unweighted_scores=True,
+            compute_rasa=False,
+        )
+        top_ranked_lddt = unweighted_top_sample[2]
+
         # update and log metrics
 
         self.val_model_selection_score(model_selection_score)
         self.log(
             "val/model_selection_score",
             self.val_model_selection_score,
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+            batch_size=len(batch.atom_inputs),
+        )
+
+        self.val_top_ranked_lddt(top_ranked_lddt)
+        self.log(
+            "val/top_ranked_lddt",
+            self.val_top_ranked_lddt,
             on_step=True,
             on_epoch=True,
             prog_bar=True,
@@ -236,6 +265,9 @@ class Alphafold3LitModule(LightningModule):
                 assert (
                     top_batch_sampled_atom_pos is not None
                 ), "The top sampled atom positions must be provided to visualize them."
+                filename_suffixes = [
+                    f"-score-{score:.4f}" for score in top_model_selection_score.tolist()
+                ]
                 self.visualize(
                     sampled_atom_pos=top_batch_sampled_atom_pos,
                     atom_mask=~batch_dict["missing_atom_mask"],
@@ -243,7 +275,7 @@ class Alphafold3LitModule(LightningModule):
                     batch_idx=batch_idx,
                     phase="val",
                     sample_idx=top_sample_idx,
-                    filename_suffix=f"-score-{top_model_selection_score:.4f}",
+                    filename_suffixes=filename_suffixes,
                 )
 
     def on_validation_epoch_end(self) -> None:
@@ -289,7 +321,7 @@ class Alphafold3LitModule(LightningModule):
             samples.append((batch_sampled_atom_pos, ch_logits.pde, dist_logits))
 
         (
-            _,
+            model_selection_score,
             top_sample,
         ) = self.compute_model_selection_score.compute_model_selection_score(
             batch,
@@ -326,6 +358,16 @@ class Alphafold3LitModule(LightningModule):
 
         # update and log metrics
 
+        self.test_model_selection_score(model_selection_score)
+        self.log(
+            "test/model_selection_score",
+            self.test_model_selection_score,
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+            batch_size=len(batch.atom_inputs),
+        )
+
         self.test_top_ranked_lddt(top_ranked_lddt)
         self.log(
             "test/top_ranked_lddt",
@@ -343,6 +385,9 @@ class Alphafold3LitModule(LightningModule):
                 assert (
                     top_batch_sampled_atom_pos is not None
                 ), "The top sampled atom positions must be provided to visualize them."
+                filename_suffixes = [
+                    f"-score-{score:.4f}" for score in top_model_selection_score.tolist()
+                ]
                 self.visualize(
                     sampled_atom_pos=top_batch_sampled_atom_pos,
                     atom_mask=~batch_dict["missing_atom_mask"],
@@ -350,20 +395,20 @@ class Alphafold3LitModule(LightningModule):
                     batch_idx=batch_idx,
                     phase="test",
                     sample_idx=top_sample_idx,
-                    filename_suffix=f"-score-{top_model_selection_score:.4f}",
+                    filename_suffixes=filename_suffixes,
                 )
 
     @typecheck
     @torch.no_grad()
     def visualize(
         self,
-        sampled_atom_pos: Float["b m"],  # type: ignore
+        sampled_atom_pos: Float["b m 3"],  # type: ignore
         atom_mask: Bool["b m"],  # type: ignore
         filepaths: List[str],
         batch_idx: int,
         phase: PHASES,
         sample_idx: int = 1,
-        filename_suffix: str = "",
+        filename_suffixes: List[str] | None = None,
     ) -> None:
         """Visualize samples pre-generated for the examples in a batch.
 
@@ -372,7 +417,7 @@ class Alphafold3LitModule(LightningModule):
         :param batch_idx: The index of the current batch.
         :param phase: The phase of the current step.
         :param sample_idx: The index of the sample to visualize.
-        :param filename_suffix: The suffix to append to the filename.
+        :param filename_suffixes: The suffixes to append to the filenames.
         """
         samples_output_dir = os.path.join(self.trainer.default_root_dir, f"{phase}_samples")
         os.makedirs(samples_output_dir, exist_ok=True)
@@ -380,6 +425,7 @@ class Alphafold3LitModule(LightningModule):
         for example_idx, atom_pos in enumerate(sampled_atom_pos):
             input_filepath = filepaths[example_idx]
             file_id = os.path.splitext(os.path.basename(input_filepath))[0]
+            filename_suffix = filename_suffixes[example_idx] if exists(filename_suffixes) else ""
 
             output_filepath = os.path.join(
                 samples_output_dir,
@@ -409,7 +455,7 @@ class Alphafold3LitModule(LightningModule):
         batch_idx: int,
         phase: PHASES,
         sample_idx: int = 1,
-        filename_suffix: str = "",
+        filename_suffixes: List[str] | None = None,
     ) -> None:
         """Visualize samples generated for the examples in the input batch.
 
@@ -417,7 +463,7 @@ class Alphafold3LitModule(LightningModule):
         :param batch_idx: The index of the current batch.
         :param phase: The phase of the current step.
         :param sample_idx: The index of the sample to visualize.
-        :param filename_suffix: The suffix to append to the filename.
+        :param filename_suffixes: The suffixes to append to the filenames.
         """
         batch_dict = batch.dict()
         prepared_model_batch_dict = self.prepare_batch_dict(batch.model_forward_dict())
@@ -433,6 +479,7 @@ class Alphafold3LitModule(LightningModule):
         for example_idx, sampled_atom_pos in enumerate(batch_sampled_atom_pos):
             input_filepath = batch_dict["filepath"][example_idx]
             file_id = os.path.splitext(os.path.basename(input_filepath))[0]
+            filename_suffix = filename_suffixes[example_idx] if exists(filename_suffixes) else ""
 
             output_filepath = os.path.join(
                 samples_output_dir,
@@ -510,7 +557,7 @@ class Alphafold3LitModule(LightningModule):
             "optimizer": optimizer,
             "lr_scheduler": {
                 "scheduler": scheduler,
-                "monitor": "val/loss",
+                "monitor": "val/model_selection_score",
                 "interval": "step",
                 "frequency": 1,
                 "name": "lambda_lr",

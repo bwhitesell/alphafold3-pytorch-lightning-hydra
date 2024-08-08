@@ -109,7 +109,7 @@ def test_train_resume(tmp_path: Path, cfg_train: DictConfig) -> None:
     HydraConfig().set_config(cfg_train)
     train_metric_dict_1, _ = train(cfg_train)
 
-    assert train_metric_dict_1["test/loss"] < 10000.0
+    assert train_metric_dict_1["test/top_ranked_lddt"] > 0.0
 
     files = os.listdir(tmp_path / "checkpoints")
     assert "last.ckpt" in files
@@ -120,7 +120,7 @@ def test_train_resume(tmp_path: Path, cfg_train: DictConfig) -> None:
 
     train_metric_dict_2, _ = train(cfg_train)
 
-    assert train_metric_dict_2["test/loss"] < 10000.0
+    assert train_metric_dict_2["test/top_ranked_lddt"] > 0.0
 
-    # NOTE: when sanity-checking the model with a random dataset, the validation loss may not decrease
-    # assert train_metric_dict_1["val/loss"] > train_metric_dict_2["val/loss"]
+    # NOTE: when sanity-checking the model with a random dataset, the validation metric may not increase
+    # assert train_metric_dict_1["val/model_selection_score"] < train_metric_dict_2["val/model_selection_score"]

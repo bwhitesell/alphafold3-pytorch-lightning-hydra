@@ -6,7 +6,7 @@
 # python train.py experiment=alphafold3_initial_training
 
 defaults:
-  - override /data: atom
+  - override /data: pdb
   - override /model: alphafold3
   - override /callbacks: default
   - override /trainer: default
@@ -14,7 +14,7 @@ defaults:
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 
-tags: ["atom", "alphafold3", "initial_training"]
+tags: ["pdb", "alphafold3", "initial_training"]
 
 seed: 12345
 

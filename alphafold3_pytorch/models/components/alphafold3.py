@@ -3922,7 +3922,7 @@ class ComputeConfidenceScore(Module):
         bin_centers = self._calculate_bin_centers(self.pde_breaks)
         probs = F.softmax(logits, dim=-1)
 
-        pde = einsum(probs, bin_centers, "b i j pde, pde -> b i j ")
+        pde = einsum(probs, bin_centers, "b i j pde, pde -> b i j")
 
         mask = to_pairwise_mask(tok_repr_atm_mask)
 
@@ -4257,7 +4257,11 @@ def get_cid_molecule_type(
     is_molecule_types: Bool[f"n {IS_MOLECULE_TYPES}"],  # type: ignore
     return_one_hot: bool = False,
 ) -> int | Bool[f" {IS_MOLECULE_TYPES}"]:  # type: ignore
-    """Get the molecule type for where `asym_id == cid`.
+    """Get the (majority) molecule type for where `asym_id == cid`.
+
+    NOTE: Several PDB chains contain multiple molecule types, so
+    we must choose a single molecule type for the chain. We choose
+    the molecule type that is most common (i.e., the mode) in the chain.
 
     :param cid: chain id
     :param asym_id: [n] asym_id of each residue
@@ -4267,13 +4271,13 @@ def get_cid_molecule_type(
     """
 
     cid_is_molecule_types = is_molecule_types[asym_id == cid]
-    molecule_type, rest_molecule_type = cid_is_molecule_types[0], cid_is_molecule_types[1:]
 
-    valid = einx.equal("b i, i -> b i", rest_molecule_type, molecule_type).all()
-    assert valid, f"Ambiguous molecule types for chain {cid}"
+    molecule_types = cid_is_molecule_types.int().argmax(1)
+    molecule_type_mode = molecule_types.mode()
+    molecule_type = cid_is_molecule_types[molecule_type_mode.indices.item()]
 
     if not return_one_hot:
-        molecule_type = molecule_type.int().argmax().item()
+        molecule_type = molecule_type_mode.values.item()
     return molecule_type
 
 
@@ -4399,7 +4403,7 @@ class ComputeModelSelectionScore(Module):
         dist_breaks: Float[" dist_break"] = torch.linspace(  # type: ignore
             2.3125,
             21.6875,
-            63,
+            37,
         ),
         nucleic_acid_cutoff: float = 30.0,
         other_cutoff: float = 15.0,
@@ -4900,7 +4904,7 @@ class ComputeModelSelectionScore(Module):
         asym_id = batch_dict["additional_molecule_feats"].unbind(dim=-1)[2]
         is_molecule_types = batch_dict["is_molecule_types"]
 
-        chains = batch_dict["chains"]
+        chains = [tuple(chains_list) for chains_list in batch_dict["chains"].tolist()]
         molecule_atom_lens = batch_dict["molecule_atom_lens"]
         molecule_ids = batch_dict["molecule_ids"]
 
@@ -4939,10 +4943,14 @@ class ComputeModelSelectionScore(Module):
 
             scored_samples.append((sample_idx, atom_pos_pred, weighted_lddt, gpde))
 
-        top_ranked_sample = max(scored_samples, key=lambda x: x[-1])
-        best_of_5_sample = max(scored_samples, key=lambda x: x[-2])
+        top_ranked_sample = max(
+            scored_samples, key=lambda x: x[-1].mean()
+        )  # rank by batch-averaged gPDE
+        best_of_5_sample = max(
+            scored_samples, key=lambda x: x[-2].mean()
+        )  # rank by batch-averaged lDDT
 
-        model_selection_score = (top_ranked_sample[-1] + best_of_5_sample[-1]) / 2
+        model_selection_score = (top_ranked_sample[-2] + best_of_5_sample[-2]) / 2
 
         if return_top_model:
             return model_selection_score, top_ranked_sample
