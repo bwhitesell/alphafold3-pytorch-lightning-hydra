@@ -4704,7 +4704,6 @@ class ComputeModelSelectionScore(Module):
                 true_coords[b],
                 atom_is_molecule_types[b],
                 atom_mask[b],
-                compute_rasa=compute_rasa,
             )
 
             weighted_lddt[b] = (1.0 if unweighted else lddt_weight) * lddt
