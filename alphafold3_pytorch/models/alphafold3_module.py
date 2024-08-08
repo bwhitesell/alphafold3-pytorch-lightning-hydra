@@ -189,7 +189,7 @@ class Alphafold3LitModule(LightningModule):
 
         # generate multiple samples per example in each batch
 
-        samples: List[Float["b m 3"], Float["b n n d"], Float["b n n d"]] = []  # type: ignore
+        samples: List[Float["b m 3"], Float["b m m d"], Float["b m m d"]] = []  # type: ignore
 
         for _ in range(self.hparams.num_samples_per_example):
             batch_sampled_atom_pos, ch_logits, dist_logits = self.net(
@@ -277,7 +277,7 @@ class Alphafold3LitModule(LightningModule):
 
         # generate multiple samples per example in each batch
 
-        samples: List[Float["b m 3"], Float["b n n d"], Float["b n n d"]] = []  # type: ignore
+        samples: List[Float["b m 3"], Float["b m m d"], Float["b m m d"]] = []  # type: ignore
 
         for _ in range(self.hparams.num_samples_per_example):
             batch_sampled_atom_pos, ch_logits, dist_logits = self.net(
