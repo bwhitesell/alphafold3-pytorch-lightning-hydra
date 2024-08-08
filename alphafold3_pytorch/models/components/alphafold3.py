@@ -7,7 +7,6 @@ h - heads
 n - molecule sequence length
 i - molecule sequence length (source)
 j - molecule sequence length (target)
-l - present (i.e., non-missing) atom sequence length
 m - atom sequence length
 nw - windowed sequence length
 d - feature dimension
@@ -3914,22 +3913,17 @@ class ComputeConfidenceScore(Module):
     @typecheck
     def compute_pde(
         self,
-        logits: Float["b pde m m"],  # type: ignore
-        atom_mask: Bool[" b m"],  # type: ignore
-    ) -> Float[" b m m"]:  # type: ignore
-        """Compute PDE from logits.
-
-        :param logits: [b pde m m] logits
-        :param atom_mask: [b m] atom mask
-        :return: [b m m] PDE
-        """
+        logits: Float["b pde n n"],  # type: ignore
+        tok_repr_atm_mask: Bool[" b n"],  # type: ignore
+    ) -> Float[" b n n"]:  # type: ignore
+        """Compute PDE from logits."""
         logits = rearrange(logits, "b pde i j -> b i j pde")
         bin_centers = self._calculate_bin_centers(self.pde_breaks)
         probs = F.softmax(logits, dim=-1)
 
         pde = einsum(probs, bin_centers, "b i j pde, pde -> b i j ")
 
-        mask = to_pairwise_mask(atom_mask)
+        mask = to_pairwise_mask(tok_repr_atm_mask)
 
         pde = pde * mask
         return pde
@@ -4441,21 +4435,21 @@ class ComputeModelSelectionScore(Module):
     @typecheck
     def compute_gpde(
         self,
-        pde_logits: Float["b pde m m"],  # type: ignore
-        dist_logits: Float["b dist m m "],  # type: ignore
+        pde_logits: Float["b pde n n"],  # type: ignore
+        dist_logits: Float["b dist n n "],  # type: ignore
         dist_breaks: Float[" dist_break"],  # type: ignore
-        atom_mask: Bool[" b m"],  # type: ignore
+        tok_repr_atm_mask: Bool[" b n"],  # type: ignore
     ) -> Float[" b"]:  # type: ignore
         """Compute global PDE following Section 5.7 of the AF3 supplement.
 
-        :param pde_logits: [b pde m m] PDE logits
-        :param dist_logits: [b dist m m] distance logits
+        :param pde_logits: [b pde n n] PDE logits
+        :param dist_logits: [b dist n n] distance logits
         :param dist_breaks: [dist_break] distance breaks
-        :param atom_mask: [b m] atom mask
+        :param tok_repr_atm_mask: [b n] true if token representation atoms exists
         :return: [b] global PDE
         """
 
-        pde = self.compute_confidence_score.compute_pde(pde_logits, atom_mask)
+        pde = self.compute_confidence_score.compute_pde(pde_logits, tok_repr_atm_mask)
 
         dist_logits = rearrange(dist_logits, "b dist i j -> b i j dist")
         dist_probs = F.softmax(dist_logits, dim=-1)
@@ -4468,7 +4462,7 @@ class ComputeModelSelectionScore(Module):
             " dist, b i j dist, -> b i j dist", contact_mask, dist_probs, 0.0
         ).sum(dim=-1)
 
-        mask = to_pairwise_mask(atom_mask)
+        mask = to_pairwise_mask(tok_repr_atm_mask)
         contact_prob = contact_prob * mask
 
         # Section 5.7 equation 16
@@ -4867,7 +4861,7 @@ class ComputeModelSelectionScore(Module):
     def compute_model_selection_score(
         self,
         batch: BatchedAtomInput,
-        samples: List[Tuple[Float["b m 3"], Float["b m m d"], Float["b m m d"]]],  # type: ignore
+        samples: List[Tuple[Float["b m 3"], Float["b n n d"], Float["b n n d"]]],  # type: ignore
         is_fine_tuning: bool = None,
         return_top_model: bool = False,
         return_unweighted_scores: bool = False,
@@ -4909,6 +4903,9 @@ class ComputeModelSelectionScore(Module):
         molecule_atom_lens = batch_dict["molecule_atom_lens"]
         molecule_ids = batch_dict["molecule_ids"]
 
+        valid_atom_len_mask = batch_dict["molecule_atom_lens"] >= 0
+        tok_repr_atm_mask = batch_dict["distogram_atom_indices"] >= 0 & valid_atom_len_mask
+
         # score samples
 
         scored_samples: List[SCORED_SAMPLE] = []
@@ -4936,7 +4933,7 @@ class ComputeModelSelectionScore(Module):
                 pde_logits,
                 dist_logits,
                 self.dist_breaks,
-                atom_mask,
+                tok_repr_atm_mask,
             )
 
             scored_samples.append((sample_idx, atom_pos_pred, weighted_lddt, gpde))
@@ -5394,9 +5391,8 @@ class Alphafold3(Module):
         detach_when_recycling: bool = None,
     ) -> (
         Float["b m 3"]  # type: ignore
-        | Float["l 3"]  # type: ignore
         | Tuple[Float["b m 3"], ConfidenceHeadLogits]  # type: ignore
-        | Tuple[Float["b m 3"], ConfidenceHeadLogits, Float["b m m 3"]]  # type: ignore
+        | Tuple[Float["b m 3"], ConfidenceHeadLogits, Float["b n n 3"]]  # type: ignore
         | Float[""]  # type: ignore
         | Tuple[Float[""], LossBreakdown]  # type: ignore
     ):

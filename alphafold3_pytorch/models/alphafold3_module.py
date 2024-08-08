@@ -189,7 +189,7 @@ class Alphafold3LitModule(LightningModule):
 
         # generate multiple samples per example in each batch
 
-        samples: List[Float["b m 3"], Float["b m m d"], Float["b m m d"]] = []  # type: ignore
+        samples: List[Float["b m 3"], Float["b n n d"], Float["b n n d"]] = []  # type: ignore
 
         for _ in range(self.hparams.num_samples_per_example):
             batch_sampled_atom_pos, ch_logits, dist_logits = self.net(
@@ -204,7 +204,7 @@ class Alphafold3LitModule(LightningModule):
             model_selection_score,
             top_sample,
         ) = self.compute_model_selection_score.compute_model_selection_score(
-            batch_dict,
+            batch,
             samples,
             is_fine_tuning=self.hparams.is_fine_tuning,
             return_top_model=True,
@@ -277,7 +277,7 @@ class Alphafold3LitModule(LightningModule):
 
         # generate multiple samples per example in each batch
 
-        samples: List[Float["b m 3"], Float["b m m d"], Float["b m m d"]] = []  # type: ignore
+        samples: List[Float["b m 3"], Float["b n n d"], Float["b n n d"]] = []  # type: ignore
 
         for _ in range(self.hparams.num_samples_per_example):
             batch_sampled_atom_pos, ch_logits, dist_logits = self.net(
@@ -292,7 +292,7 @@ class Alphafold3LitModule(LightningModule):
             _,
             top_sample,
         ) = self.compute_model_selection_score.compute_model_selection_score(
-            batch_dict,
+            batch,
             samples,
             is_fine_tuning=self.hparams.is_fine_tuning,
             return_top_model=True,
@@ -315,7 +315,7 @@ class Alphafold3LitModule(LightningModule):
             _,
             unweighted_top_sample,
         ) = self.compute_model_selection_score.compute_model_selection_score(
-            batch_dict,
+            batch,
             samples,
             is_fine_tuning=self.hparams.is_fine_tuning,
             return_top_model=True,
