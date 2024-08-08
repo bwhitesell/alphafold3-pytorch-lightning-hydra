@@ -48,7 +48,7 @@ class MockAtomDataset(Dataset):
 
         # ensure the molecule-atom length mappings match the randomly-sampled atom sequence length
 
-        if molecule_atom_lens.sum() != atom_seq_len:
+        if molecule_atom_lens.sum() < atom_seq_len:
             molecule_atom_lens[-1] = atom_seq_len - molecule_atom_lens[:-1].sum()
 
         # ensure each unique asymmetric ID has at least one molecule type associated with it
