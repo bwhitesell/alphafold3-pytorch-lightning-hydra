@@ -271,7 +271,7 @@ class Alphafold3LitModule(LightningModule):
                 self.visualize(
                     sampled_atom_pos=top_batch_sampled_atom_pos,
                     atom_mask=~batch_dict["missing_atom_mask"],
-                    filepaths=batch_dict["filepath"],
+                    filepaths=list(batch_dict["filepath"]),
                     batch_idx=batch_idx,
                     phase="val",
                     sample_idx=top_sample_idx,
@@ -391,7 +391,7 @@ class Alphafold3LitModule(LightningModule):
                 self.visualize(
                     sampled_atom_pos=top_batch_sampled_atom_pos,
                     atom_mask=~batch_dict["missing_atom_mask"],
-                    filepaths=batch_dict["filepath"],
+                    filepaths=list(batch_dict["filepath"]),
                     batch_idx=batch_idx,
                     phase="test",
                     sample_idx=top_sample_idx,
@@ -435,7 +435,8 @@ class Alphafold3LitModule(LightningModule):
                 ),
             )
 
-            sampled_atom_positions = atom_pos[atom_mask].cpu().numpy()
+            example_atom_mask = atom_mask[example_idx]
+            sampled_atom_positions = atom_pos[example_atom_mask].cpu().numpy()
 
             mmcif_writing.write_mmcif_from_filepath_and_id(
                 input_filepath=input_filepath,
