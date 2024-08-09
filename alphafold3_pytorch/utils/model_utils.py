@@ -359,15 +359,18 @@ def mean_pool_fixed_windows_with_mask(
 def batch_repeat_interleave(
     feats: Float["b n ..."] | Bool["b n ..."] | Bool["b n"] | Int["b n"],  # type: ignore
     lens: Int["b n"],  # type: ignore
-    mask_value: float | int | bool | None = None,  # type: ignore
+    output_padding_value: float
+    | int
+    | bool
+    | None = None,  # NOTE: this value determines what the output padding value will be
 ) -> Float["b m ..."] | Bool["b m ..."] | Bool["b m"] | Int["b m"]:  # type: ignore
-    """Repeat a Tensor's values consecutively with the given lengths.
+    """Batch repeat and interleave a sequence of features.
 
-    :param feats: The features Tensor.
-    :param lens: The lengths Tensor.
-    :return: The repeated Tensor.
+    :param feats: The features tensor.
+    :param lens: The lengths tensor.
+    :param output_padding_value: The output padding value.
+    :return: The batch repeated and interleaved features tensor.
     """
-
     device, dtype = feats.device, feats.dtype
 
     batch, seq, *dims = feats.shape
@@ -386,7 +389,7 @@ def batch_repeat_interleave(
 
     # create output tensor + a sink position on the very right (index max_len)
 
-    total_lens = lens.sum(dim=-1)
+    total_lens = lens.clamp(min=0).sum(dim=-1)
     output_mask = lens_to_mask(total_lens)
 
     max_len = total_lens.amax()
@@ -418,11 +421,11 @@ def batch_repeat_interleave(
     output = feats.gather(1, output_indices)
     output = unpack_one(output)
 
-    # final mask
+    # set output padding value
 
-    mask_value = default(mask_value, False if dtype == torch.bool else 0)
+    output_padding_value = default(output_padding_value, False if dtype == torch.bool else 0)
 
-    output = einx.where("b n, b n ..., -> b n ...", output_mask, output, mask_value)
+    output = einx.where("b n, b n ..., -> b n ...", output_mask, output, output_padding_value)
 
     return output
 
