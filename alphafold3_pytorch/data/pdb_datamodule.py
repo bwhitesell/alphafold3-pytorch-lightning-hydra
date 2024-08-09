@@ -267,7 +267,7 @@ class PDBDataModule(LightningDataModule):
         map_dataset_input_fn: Callable | None = None,
         train_val_test_split: Tuple[int, int, int] | None = None,
         shuffle_train_val_test_subsets: bool = True,
-        overfit_examples: int = 0,
+        overfitting_train_examples: bool = False,
         sample_only_pdb_ids: List[str] | None = None,
         batch_size: int = 256,
         num_workers: int = 0,
@@ -328,15 +328,6 @@ class PDBDataModule(LightningDataModule):
 
         # load dataset splits only if not loaded already
         if not self.data_train and not self.data_val and not self.data_test:
-            # subsample clusters as requested
-
-            if exists(self.hparams.train_val_test_split):
-                train_count, val_count, test_count = self.hparams.train_val_test_split
-
-                train_subset_to_ids = list(range(train_count))
-                val_subset_to_ids = list(range(val_count))
-                test_subset_to_ids = list(range(test_count))
-
             # sample only specific PDB IDs as requested
 
             sample_only_pdb_ids = (
@@ -347,11 +338,9 @@ class PDBDataModule(LightningDataModule):
 
             # data paths for each split
 
-            overfitting_examples = self.hparams.overfit_examples > 0
-
             for split in ("train", "val", "test"):
                 path_split = split
-                if overfitting_examples:
+                if self.hparams.overfitting_train_examples:
                     # NOTE: when overfitting to a subset of examples,
                     # we want to load the training set multiple times
                     # to ensure that the model sees the same examples
@@ -409,7 +398,7 @@ class PDBDataModule(LightningDataModule):
                     chain_mapping_paths=self.train_chain_mapping_paths,
                     interface_mapping_path=self.train_interface_mapping_path,
                     batch_size=1,
-                    subset_to_ids=train_subset_to_ids,
+                    pdb_ids_to_keep=list(sample_only_pdb_ids),
                 ),
                 sample_type=self.hparams.sample_type,
                 contiguous_weight=self.hparams.contiguous_weight,
@@ -428,7 +417,7 @@ class PDBDataModule(LightningDataModule):
                     chain_mapping_paths=self.val_chain_mapping_paths,
                     interface_mapping_path=self.val_interface_mapping_path,
                     batch_size=1,
-                    subset_to_ids=val_subset_to_ids,
+                    pdb_ids_to_keep=list(sample_only_pdb_ids),
                 ),
                 sample_type=self.hparams.sample_type,
                 contiguous_weight=self.hparams.contiguous_weight,
@@ -447,7 +436,7 @@ class PDBDataModule(LightningDataModule):
                     chain_mapping_paths=self.test_chain_mapping_paths,
                     interface_mapping_path=self.test_interface_mapping_path,
                     batch_size=1,
-                    subset_to_ids=test_subset_to_ids,
+                    pdb_ids_to_keep=list(sample_only_pdb_ids),
                 ),
                 sample_type=self.hparams.sample_type,
                 contiguous_weight=self.hparams.contiguous_weight,
@@ -458,14 +447,19 @@ class PDBDataModule(LightningDataModule):
                 sample_only_pdb_ids=sample_only_pdb_ids,
             )
 
-            # subsample datasets as requested
+            # subsample dataset splits as requested
 
             if exists(self.hparams.train_val_test_split):
+                train_count, val_count, test_count = self.hparams.train_val_test_split
+
                 train_indices = list(range(len(self.data_train)))
                 val_indices = list(range(len(self.data_val)))
                 test_indices = list(range(len(self.data_test)))
 
-                if self.hparams.shuffle_train_val_test_subsets and not overfitting_examples:
+                if (
+                    self.hparams.shuffle_train_val_test_subsets
+                    and not self.hparams.overfitting_train_examples
+                ):
                     random.shuffle(train_indices)  # nosec
                     random.shuffle(val_indices)  # nosec
                     random.shuffle(test_indices)  # nosec
@@ -475,22 +469,6 @@ class PDBDataModule(LightningDataModule):
                 )
                 self.data_val = torch.utils.data.Subset(self.data_val, val_indices[:val_count])
                 self.data_test = torch.utils.data.Subset(self.data_test, test_indices[:test_count])
-
-            # overfit batches as requested using the training dataset
-
-            if overfitting_examples:
-                assert self.hparams.overfit_examples <= len(
-                    self.data_train
-                ), f"Number of training examples to overfit ({self.hparams.overfit_examples}) must be less than or equal to the total number of training examples ({len(self.data_train)})."
-                self.data_train = torch.utils.data.Subset(
-                    self.data_train, list(range(self.hparams.overfit_examples))
-                )
-                self.data_val = torch.utils.data.Subset(
-                    self.data_val, list(range(self.hparams.overfit_examples))
-                )
-                self.data_test = torch.utils.data.Subset(
-                    self.data_test, list(range(self.hparams.overfit_examples))
-                )
 
     def train_dataloader(self) -> DataLoader[Any]:
         """Create and return the train dataloader.

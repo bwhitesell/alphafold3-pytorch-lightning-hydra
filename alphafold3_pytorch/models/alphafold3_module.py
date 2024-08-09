@@ -422,21 +422,23 @@ class Alphafold3LitModule(LightningModule):
         samples_output_dir = os.path.join(self.trainer.default_root_dir, f"{phase}_samples")
         os.makedirs(samples_output_dir, exist_ok=True)
 
-        for example_idx, atom_pos in enumerate(sampled_atom_pos):
-            input_filepath = filepaths[example_idx]
+        batch_size = len(atom_mask)
+
+        for b in range(batch_size):
+            input_filepath = filepaths[b]
             file_id = os.path.splitext(os.path.basename(input_filepath))[0]
-            filename_suffix = filename_suffixes[example_idx] if exists(filename_suffixes) else ""
+            filename_suffix = filename_suffixes[b] if exists(filename_suffixes) else ""
 
             output_filepath = os.path.join(
                 samples_output_dir,
                 os.path.basename(input_filepath).replace(
                     ".cif",
-                    f"-sampled-epoch-{self.current_epoch}-step-{self.global_step}-batch-{batch_idx}-example-{example_idx}-sample-{sample_idx}{filename_suffix}.cif",
+                    f"-sampled-epoch-{self.current_epoch}-step-{self.global_step}-batch-{batch_idx}-example-{b}-sample-{sample_idx}{filename_suffix}.cif",
                 ),
             )
 
-            example_atom_mask = atom_mask[example_idx]
-            sampled_atom_positions = atom_pos[example_atom_mask].cpu().numpy()
+            example_atom_mask = atom_mask[b]
+            sampled_atom_positions = sampled_atom_pos[b][example_atom_mask].cpu().numpy()
 
             mmcif_writing.write_mmcif_from_filepath_and_id(
                 input_filepath=input_filepath,
