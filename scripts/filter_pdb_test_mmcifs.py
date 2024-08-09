@@ -24,7 +24,6 @@ import argparse
 import glob
 import os
 from datetime import datetime
-from typing import List, Tuple
 
 import rootutils
 import timeout_decorator
