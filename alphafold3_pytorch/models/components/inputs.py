@@ -57,7 +57,7 @@ from alphafold3_pytorch.utils.data_utils import (
 from alphafold3_pytorch.utils.model_utils import exclusive_cumsum, maybe
 from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
-from alphafold3_pytorch.utils.utils import default, exists, first, identity
+from alphafold3_pytorch.utils.utils import default, exists, first
 
 logger = RankedLogger(__name__, rank_zero_only=False)
 
@@ -160,7 +160,7 @@ UNCOLLATABLE_ATOM_INPUT_FIELDS = {"filepath"}
 
 ATOM_INPUT_EXCLUDE_MODEL_FIELDS = {"filepath", "chains"}
 
-ATOM_DEFAULT_PAD_VALUES = dict(molecule_atom_lens=0)
+ATOM_DEFAULT_PAD_VALUES = dict(molecule_atom_lens=0, missing_atom_mask=True)
 
 
 @typecheck
