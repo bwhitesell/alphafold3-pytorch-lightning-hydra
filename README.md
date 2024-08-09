@@ -107,7 +107,7 @@ cd alphafold3-pytorch-lightning-hydra
 
 # Create Conda environment
 mamba env create -f environment.yaml
-conda activate alphafold3-plh  # note: one still needs to use `conda` to (de)activate environments
+conda activate alphafold3-pytorch  # note: one still needs to use `conda` to (de)activate environments
 
 # Install local project as package
 pip3 install -e .
