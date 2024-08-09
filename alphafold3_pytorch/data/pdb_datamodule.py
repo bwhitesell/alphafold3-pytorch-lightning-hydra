@@ -14,6 +14,7 @@ from alphafold3_pytorch.models.components.attention import (
     full_pairwise_repr_to_windowed,
 )
 from alphafold3_pytorch.models.components.inputs import (
+    ATOM_DEFAULT_PAD_VALUES,
     UNCOLLATABLE_ATOM_INPUT_FIELDS,
     Alphafold3Input,
     BatchedAtomInput,
@@ -104,7 +105,9 @@ def collate_inputs_to_batched_atom_input(
 
         # use -1 for padding int values, for assuming int are labels - if not, handle within alphafold3
 
-        if dtype in (torch.int, torch.long):
+        if key in ATOM_DEFAULT_PAD_VALUES:
+            pad_value = ATOM_DEFAULT_PAD_VALUES[key]
+        elif dtype in (torch.int, torch.long):
             pad_value = int_pad_value
         elif dtype == torch.bool:
             pad_value = False
