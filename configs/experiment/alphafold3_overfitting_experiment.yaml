@@ -30,7 +30,7 @@ trainer:
 
 model:
   optimizer:
-    lr: 1.8e-3
+    lr: 1e-4
   net:
     dim_atom_inputs: 3
     dim_template_feats: 44
