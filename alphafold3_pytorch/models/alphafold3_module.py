@@ -399,7 +399,7 @@ class Alphafold3LitModule(LightningModule):
                 )
 
     @typecheck
-    @torch.no_grad()
+    @torch.inference_mode()
     def visualize(
         self,
         sampled_atom_pos: Float["b m 3"],  # type: ignore
@@ -451,7 +451,7 @@ class Alphafold3LitModule(LightningModule):
             )
 
     @typecheck
-    @torch.no_grad()
+    @torch.inference_mode()
     def sample_and_visualize(
         self,
         batch: BatchedAtomInput,
