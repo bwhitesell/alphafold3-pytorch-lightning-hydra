@@ -188,8 +188,8 @@ class AtomInput:
     missing_atom_mask: Bool[" m"] | None = None  # type: ignore
     molecule_atom_indices: Int[" n"] | None = None  # type: ignore
     distogram_atom_indices: Int[" n"] | None = None  # type: ignore
+    atom_indices_for_frame: Int["n 3"] | None = None  # type: ignore
     distance_labels: Int["n n"] | None = None  # type: ignore
-    pae_labels: Int["n n"] | None = None  # type: ignore
     pde_labels: Int["n n"] | None = None  # type: ignore
     plddt_labels: Int[" n"] | None = None  # type: ignore
     resolved_labels: Int[" n"] | None = None  # type: ignore
@@ -230,8 +230,8 @@ class BatchedAtomInput:
     missing_atom_mask: Bool["b m"] | None = None  # type: ignore
     molecule_atom_indices: Int["b n"] | None = None  # type: ignore
     distogram_atom_indices: Int["b n"] | None = None  # type: ignore
+    atom_indices_for_frame: Int["b n 3"] | None = None  # type: ignore
     distance_labels: Int["b n n"] | None = None  # type: ignore
-    pae_labels: Int["b n n"] | None = None  # type: ignore
     pde_labels: Int["b n n"] | None = None  # type: ignore
     plddt_labels: Int["b n"] | None = None  # type: ignore
     resolved_labels: Int["b n"] | None = None  # type: ignore
@@ -474,6 +474,7 @@ class MoleculeInput:
     is_molecule_mod: Bool["n num_mods"] | Bool[" n"] | None = None  # type: ignore
     molecule_atom_indices: List[int | None] | None = None  # type: ignore
     distogram_atom_indices: List[int | None] | None = None  # type: ignore
+    atom_indices_for_frame: List[Tuple[int, int, int] | None] | None = None  # type: ignore
     missing_atom_indices: List[Int[" _"] | None] | None = None  # type: ignore
     missing_token_indices: List[Int[" _"] | None] | None = None  # type: ignore
     atom_parent_ids: Int[" m"] | None = None  # type: ignore
@@ -484,7 +485,6 @@ class MoleculeInput:
     template_mask: Bool[" t"] | None = None  # type: ignore
     msa_mask: Bool[" s"] | None = None  # type: ignore
     distance_labels: Int["n n"] | None = None  # type: ignore
-    pae_labels: Int["n n"] | None = None  # type: ignore
     pde_labels: Int[" n"] | None = None  # type: ignore
     resolved_labels: Int[" n"] | None = None  # type: ignore
     chains: Tuple[int | None, int | None] | None = (None, None)
@@ -752,6 +752,16 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
     if is_molecule_mod.ndim == 1:
         is_molecule_mod = rearrange(is_molecule_mod, "n -> n 1")
 
+    # handle `atom_indices_for_frame` for the PAE
+
+    atom_indices_for_frame = i.atom_indices_for_frame
+
+    if exists(atom_indices_for_frame):
+        atom_indices_for_frame = [
+            default(indices, (-1, -1, -1)) for indices in i.atom_indices_for_frame
+        ]
+        atom_indices_for_frame = tensor(atom_indices_for_frame)
+
     # atom input
 
     atom_input = AtomInput(
@@ -761,6 +771,7 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
         molecule_ids=i.molecule_ids,
         molecule_atom_indices=i.molecule_atom_indices,
         distogram_atom_indices=i.distogram_atom_indices,
+        atom_indices_for_frame=atom_indices_for_frame,
         is_molecule_mod=is_molecule_mod,
         msa=i.msa,
         templates=i.templates,
@@ -812,7 +823,6 @@ class MoleculeLengthMoleculeInput:
     template_mask: Bool[" t"] | None = None  # type: ignore
     msa_mask: Bool[" s"] | None = None  # type: ignore
     distance_labels: Int["n n"] | None = None  # type: ignore
-    pae_labels: Int["n n"] | None = None  # type: ignore
     pde_labels: Int[" n"] | None = None  # type: ignore
     resolved_labels: Int[" n"] | None = None  # type: ignore
     chains: Tuple[int | None, int | None] | None = (None, None)
@@ -1246,7 +1256,6 @@ class Alphafold3Input:
     template_mask: Bool[" t"] | None = None  # type: ignore
     msa_mask: Bool[" s"] | None = None  # type: ignore
     distance_labels: Int["n n"] | None = None  # type: ignore
-    pae_labels: Int["n n"] | None = None  # type: ignore
     pde_labels: Int[" n"] | None = None  # type: ignore
     resolved_labels: Int[" n"] | None = None  # type: ignore
     chains: Tuple[int | None, int | None] | None = (None, None)
