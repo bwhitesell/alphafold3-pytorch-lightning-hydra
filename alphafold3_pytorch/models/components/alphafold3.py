@@ -3721,12 +3721,7 @@ class ConfidenceHead(Module):
 
         intermolecule_dist = torch.cdist(pred_molecule_pos, pred_molecule_pos, p=2)
 
-        dist_from_dist_bins = einx.subtract(
-            "b m dist, dist_bins -> b m dist dist_bins",
-            intermolecule_dist,
-            self.atompair_dist_bins,
-        ).abs()
-        dist_bin_indices = dist_from_dist_bins.argmin(dim=-1)
+        dist_bin_indices = distance_to_bins(intermolecule_dist, self.atompair_dist_bins)
         pairwise_repr = pairwise_repr + self.dist_bin_pairwise_embed(dist_bin_indices)
 
         # pairformer stack
@@ -3751,12 +3746,8 @@ class ConfidenceHead(Module):
 
             interatomic_dist = torch.cdist(pred_atom_pos, pred_atom_pos, p=2)
 
-            dist_from_dist_bins = einx.subtract(
-                "b m dist, dist_bins -> b m dist dist_bins",
-                interatomic_dist,
-                self.atompair_dist_bins,
-            ).abs()
-            dist_bin_indices = dist_from_dist_bins.argmin(dim=-1)
+            dist_bin_indices = distance_to_bins(interatomic_dist, self.atompair_dist_bins)
+
             pairwise_repr = pairwise_repr + self.dist_bin_pairwise_embed(dist_bin_indices)
 
             single_repr = single_repr + self.atom_feats_to_single(atom_feats)
@@ -3832,6 +3823,7 @@ class ComputeConfidenceScore(Module):
         asym_id: Int["b n"],  # type: ignore
         has_frame: Bool["b n"],  # type: ignore
         ptm_residue_weight: Float["b n"] | None = None,  # type: ignore
+        molecule_atom_lens: Int["b n"] | None = None,  # type: ignore
         multimer_mode: bool = True,
     ) -> ConfidenceScore:
         """Main function to compute confidence score.
@@ -3840,6 +3832,7 @@ class ComputeConfidenceScore(Module):
         :param asym_id: [b n] asym_id of each residue
         :param has_frame: [b n] has_frame of each residue
         :param ptm_residue_weight: [b n] weight of each residue
+        :param molecule_atom_lens: [b n] molecule atom lengths
         :param multimer_mode: bool
         :return: Confidence score
         """
@@ -3847,7 +3840,12 @@ class ComputeConfidenceScore(Module):
 
         # Section 5.9.1 equation 17
         ptm = self.compute_ptm(
-            confidence_head_logits.pae, asym_id, has_frame, ptm_residue_weight, interface=False
+            confidence_head_logits.pae,
+            asym_id,
+            has_frame,
+            ptm_residue_weight,
+            interface=False,
+            molecule_atom_lens=molecule_atom_lens,
         )
 
         iptm = None
@@ -3855,7 +3853,12 @@ class ComputeConfidenceScore(Module):
         if multimer_mode:
             # Section 5.9.2 equation 18
             iptm = self.compute_ptm(
-                confidence_head_logits.pae, asym_id, has_frame, ptm_residue_weight, interface=True
+                confidence_head_logits.pae,
+                asym_id,
+                has_frame,
+                ptm_residue_weight,
+                interface=True,
+                molecule_atom_lens=molecule_atom_lens,
             )
 
         confidence_score = ConfidenceScore(plddt=plddt, ptm=ptm, iptm=iptm)
@@ -3883,10 +3886,11 @@ class ComputeConfidenceScore(Module):
     @typecheck
     def compute_ptm(
         self,
-        logits: Float["b pae n n"],  # type: ignore
+        logits: Float["b pae m_or_n m_or_n"],  # type: ignore
         asym_id: Int["b n"],  # type: ignore
         has_frame: Bool["b n"],  # type: ignore
         residue_weights: Float["b n"] | None = None,  # type: ignore
+        molecule_atom_lens: Int["b n"] | None = None,  # type: ignore
         interface: bool = False,
         compute_chain_wise_iptm: bool = False,
     ):
@@ -3896,10 +3900,23 @@ class ComputeConfidenceScore(Module):
         :param asym_id: [b n] asym_id of each residue
         :param has_frame: [b n] has_frame of each residue
         :param residue_weights: [b n] weight of each residue
+        :param molecule_atom_lens: [b n] molecule atom lengths
         :param interface: bool
         :param compute_chain_wise_iptm: bool
         :return: pTM
         """
+
+        is_atom_resolution = logits.shape[-1] != asym_id.shape[-1]
+        assert not is_atom_resolution or exists(
+            molecule_atom_lens
+        ), "`molecule_atom_lens` must be passed in for atom resolution pTM"
+
+        if is_atom_resolution:
+            asym_id = batch_repeat_interleave(asym_id, molecule_atom_lens)
+            has_frame = batch_repeat_interleave(has_frame, molecule_atom_lens)
+            if exists(residue_weights):
+                residue_weights = batch_repeat_interleave(residue_weights, molecule_atom_lens)
+
         if not exists(residue_weights):
             residue_weights = torch.ones_like(has_frame)
 
@@ -5089,11 +5106,12 @@ class Alphafold3(Module):
         num_atompair_embeds: int | None = None,
         num_molecule_mods: int | None = DEFAULT_NUM_MOLECULE_MODS,
         distance_bins: List[float] = torch.linspace(3, 20, 38).float().tolist(),
+        pae_bins: List[float] = torch.linspace(0.5, 32, 64).float().tolist(),
         ignore_index=-1,
         num_dist_bins: int | None = None,
         num_plddt_bins=50,
         num_pde_bins=64,
-        num_pae_bins=64,
+        num_pae_bins: int | None = None,
         sigma_data=16,
         num_rollout_steps=20,
         diffusion_num_augmentations=4,
@@ -5315,6 +5333,8 @@ class Alphafold3(Module):
             self.diffusion_module, sigma_data=sigma_data, **edm_kwargs
         )
 
+        self.num_rollout_steps = num_rollout_steps
+
         # logit heads
 
         distance_bins_tensor = Tensor(distance_bins)
@@ -5328,7 +5348,13 @@ class Alphafold3(Module):
 
         self.distogram_head = DistogramHead(dim_pairwise=dim_pairwise, num_dist_bins=num_dist_bins)
 
-        self.num_rollout_steps = num_rollout_steps
+        # pae bins
+
+        pae_bins_tensor = Tensor(pae_bins)
+        self.register_buffer("pae_bins", pae_bins_tensor)
+        num_pae_bins = len(pae_bins)
+
+        # confidence head
 
         self.confidence_head = ConfidenceHead(
             dim_single_inputs=dim_single_inputs,
@@ -5539,13 +5565,6 @@ class Alphafold3(Module):
             atompair_inputs.shape[-1] == self.dim_atompair_inputs
         ), f"Expected {self.dim_atompair_inputs} for atompair_inputs feature dimension, but received {atompair_inputs.shape[-1]}"
 
-        # debug
-
-        if IS_DEBUGGING:
-            assert (
-                molecule_atom_lens >= 0
-            ).all(), "molecule_atom_lens must be greater or equal to 0"
-
         # soft validate
 
         valid_atom_len_mask = molecule_atom_lens >= 0
@@ -5555,20 +5574,47 @@ class Alphafold3(Module):
         if exists(molecule_atom_indices):
             valid_molecule_atom_mask = molecule_atom_indices >= 0 & valid_atom_len_mask
             molecule_atom_indices = molecule_atom_indices.masked_fill(~valid_molecule_atom_mask, 0)
-            assert (molecule_atom_indices < molecule_atom_lens)[
-                valid_molecule_atom_mask
-            ].all(), "molecule_atom_indices cannot have an index that exceeds the length of the atoms for that molecule as given by molecule_atom_lens"
 
         if exists(distogram_atom_indices):
             valid_distogram_mask = distogram_atom_indices >= 0 & valid_atom_len_mask
             distogram_atom_indices = distogram_atom_indices.masked_fill(~valid_distogram_mask, 0)
-            assert (distogram_atom_indices < molecule_atom_lens)[
-                valid_distogram_mask
-            ].all(), "distogram_atom_indices cannot have an index that exceeds the length of the atoms for that molecule as given by molecule_atom_lens"
+
+        if exists(atom_indices_for_frame):
+            valid_atom_indices_for_frame = (atom_indices_for_frame >= 0).all(
+                dim=-1
+            ) & valid_atom_len_mask
+            atom_indices_for_frame = einx.where(
+                "b n, b n three, -> b n three",
+                valid_atom_indices_for_frame,
+                atom_indices_for_frame,
+                0,
+            )
 
         assert exists(molecule_atom_lens) or exists(
             atom_mask
         ), "Either `molecule_atom_lens` or `atom_mask` must be provided."
+
+        # hard validate when debug env variable is turned on
+
+        if IS_DEBUGGING:
+            assert (
+                molecule_atom_lens >= 0
+            ).all(), "molecule_atom_lens must be greater or equal to 0"
+
+            if exists(distogram_atom_indices):
+                assert (distogram_atom_indices < molecule_atom_lens)[
+                    valid_distogram_mask
+                ].all(), "distogram_atom_indices cannot have an index that exceeds the length of the atoms for that molecule as given by molecule_atom_lens"
+
+            if exists(molecule_atom_indices):
+                assert (molecule_atom_indices < molecule_atom_lens)[
+                    valid_molecule_atom_mask
+                ].all(), "molecule_atom_indices cannot have an index that exceeds the length of the atoms for that molecule as given by molecule_atom_lens"
+
+            if exists(atom_indices_for_frame):
+                assert einx.less(
+                    "b n three, b n -> b n three", atom_indices_for_frame, molecule_atom_lens
+                ).all(), "`atom_indices_for_frame` must have indices that are all less than the corresponding `molecule_atom_lens`"
 
         # if atompair inputs are not windowed, window it
 
