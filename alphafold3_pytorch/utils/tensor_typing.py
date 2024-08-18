@@ -47,11 +47,22 @@ ChainType = Chain
 TokenType = AtomType | ResidueType
 
 # NOTE: use env variable `TYPECHECK` (which is set by `rootutils` above using `.env`) to control whether to use `beartype` + `jaxtyping`
+# NOTE: use env variable `DEBUG` to control whether to print debugging information
 
 should_typecheck = os.environ.get("TYPECHECK", False)
+IS_DEBUGGING = os.environ.get("DEBUG", False)
 
 typecheck = jaxtyped(typechecker=beartype) if should_typecheck else identity
 
 beartype_isinstance = is_bearable if should_typecheck else always(True)
 
-__all__ = [beartype_isinstance, Bool, Float, Int, Shaped, should_typecheck, typecheck]
+__all__ = [
+    beartype_isinstance,
+    Bool,
+    Float,
+    Int,
+    Shaped,
+    should_typecheck,
+    typecheck,
+    IS_DEBUGGING,
+]

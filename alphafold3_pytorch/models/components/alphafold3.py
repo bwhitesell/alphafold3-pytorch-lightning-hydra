@@ -99,6 +99,7 @@ from alphafold3_pytorch.utils.model_utils import (
     batch_repeat_interleave,
     compact,
     concat_previous_window,
+    distance_to_bins,
     exclusive_cumsum,
     l2norm,
     lens_to_mask,
@@ -114,7 +115,13 @@ from alphafold3_pytorch.utils.model_utils import (
     should_checkpoint,
     to_pairwise_mask,
 )
-from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
+from alphafold3_pytorch.utils.tensor_typing import (
+    IS_DEBUGGING,
+    Bool,
+    Float,
+    Int,
+    typecheck,
+)
 from alphafold3_pytorch.utils.utils import default, exists, identity
 
 # constants
@@ -3174,18 +3181,22 @@ class ComputeAlignmentError(Module):
     @typecheck
     def forward(
         self,
-        pred_coords: Float["b n 3"] | Float["b m 3"],  # type: ignore
-        true_coords: Float["b n 3"] | Float["b m 3"],  # type: ignore
+        pred_coords: Float["b m_or_n 3"],  # type: ignore
+        true_coords: Float["b m_or_n 3"],  # type: ignore
         pred_frames: Float["b n 3 3"],  # type: ignore
         true_frames: Float["b n 3 3"],  # type: ignore
+        mask: Bool["b m_or_n"] | None = None,  # type: ignore
         molecule_atom_lens: Int["b n"] | None = None,  # type: ignore
-    ) -> Float["b n n"] | Float["b m m"]:  # type: ignore
+    ) -> Float["b m_or_n m_or_n"]:  # type: ignore
         """Compute the alignment errors.
 
         :param pred_coords: Predicted coordinates.
         :param true_coords: True coordinates.
         :param pred_frames: Predicted frames.
         :param true_frames: True frames.
+        :param mask: The mask for variable lengths.
+        :param molecule_atom_lens: The molecule atom lengths.
+        :return: The alignment errors.
         """
 
         # detect whether using atom or residue resolution
@@ -3199,17 +3210,20 @@ class ComputeAlignmentError(Module):
             pred_frames = batch_repeat_interleave(pred_frames, molecule_atom_lens)
             true_frames = batch_repeat_interleave(true_frames, molecule_atom_lens)
 
+            if not exists(mask) and exists(molecule_atom_lens):
+                mask = batch_repeat_interleave(molecule_atom_lens > 0, molecule_atom_lens)
+
         # to pairs
 
-        num_res = pred_coords.shape[1]
+        seq = pred_coords.shape[1]
 
         pair2seq = partial(rearrange, pattern="b n m ... -> b (n m) ...")
-        seq2pair = partial(rearrange, pattern="b (n m) ... -> b n m ...", n=num_res, m=num_res)
+        seq2pair = partial(rearrange, pattern="b (n m) ... -> b n m ...", n=seq, m=seq)
 
-        pair_pred_coords = pair2seq(repeat(pred_coords, "b n d -> b n m d", m=num_res))
-        pair_true_coords = pair2seq(repeat(true_coords, "b n d -> b n m d", m=num_res))
-        pair_pred_frames = pair2seq(repeat(pred_frames, "b n d e -> b m n d e", m=num_res))
-        pair_true_frames = pair2seq(repeat(true_frames, "b n d e -> b m n d e", m=num_res))
+        pair_pred_coords = pair2seq(repeat(pred_coords, "b n d -> b n m d", m=seq))
+        pair_true_coords = pair2seq(repeat(true_coords, "b n d -> b n m d", m=seq))
+        pair_pred_frames = pair2seq(repeat(pred_frames, "b n d e -> b m n d e", m=seq))
+        pair_true_frames = pair2seq(repeat(true_frames, "b n d e -> b m n d e", m=seq))
 
         # Express predicted coordinates in predicted frames
         pred_coords_transformed = self.express_coordinates_in_frame(
@@ -3222,15 +3236,18 @@ class ComputeAlignmentError(Module):
         )
 
         # Compute alignment errors
-        alignment_errors = torch.sqrt(
-            torch.sum(
-                (pred_coords_transformed - true_coords_transformed) ** 2,
-                dim=-1,
-            )
-            + self.eps
+        alignment_errors = F.pairwise_distance(
+            pred_coords_transformed, true_coords_transformed, eps=self.eps
         )
 
         alignment_errors = seq2pair(alignment_errors)
+
+        # Masking
+        if exists(mask):
+            pair_mask = to_pairwise_mask(mask)
+            alignment_errors = einx.where(
+                "b i j, b i j, -> b i j", pair_mask, alignment_errors, 0.0
+            )
 
         return alignment_errors
 
@@ -5522,6 +5539,13 @@ class Alphafold3(Module):
             atompair_inputs.shape[-1] == self.dim_atompair_inputs
         ), f"Expected {self.dim_atompair_inputs} for atompair_inputs feature dimension, but received {atompair_inputs.shape[-1]}"
 
+        # debug
+
+        if IS_DEBUGGING:
+            assert (
+                molecule_atom_lens >= 0
+            ).all(), "molecule_atom_lens must be greater or equal to 0"
+
         # soft validate
 
         valid_atom_len_mask = molecule_atom_lens >= 0
@@ -5847,12 +5871,7 @@ class Alphafold3(Module):
             molecule_pos = atom_pos.gather(1, distogram_atom_indices)
 
             molecule_dist = torch.cdist(molecule_pos, molecule_pos, p=2)
-            dist_from_dist_bins = einx.subtract(
-                "b m dist, dist_bins -> b m dist dist_bins",
-                molecule_dist,
-                self.distance_bins,
-            ).abs()
-            distance_labels = dist_from_dist_bins.argmin(dim=-1)
+            distance_labels = distance_to_bins(molecule_dist, self.distance_bins)
 
             # account for representative distogram atom missing from residue (-1 set on distogram_atom_indices field)
 

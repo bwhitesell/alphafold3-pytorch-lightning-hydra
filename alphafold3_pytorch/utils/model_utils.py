@@ -35,6 +35,23 @@ def default_lambda_lr_fn(steps: int) -> float:
     return 0.95 ** (steps / 5e4)
 
 
+@typecheck
+def distance_to_bins(
+    distance: Float["... dist"],  # type: ignore
+    bins: Float[" bins"],  # type: ignore
+) -> Int["... dist"]:  # type: ignore
+    """Convert from distance to discrete bins, for distance_labels and pae_labels.
+
+    :param distance: The distance tensor.
+    :param bins: The bins tensor.
+    :return: The discrete bins.
+    """
+    dist_from_dist_bins = einx.subtract(
+        "... dist, dist_bins -> ... dist dist_bins", distance, bins
+    ).abs()
+    return dist_from_dist_bins.argmin(dim=-1)
+
+
 def l2norm(t: Tensor, eps: float = 1e-20, dim: int = -1) -> Tensor:
     """Perform an L2 normalization on a Tensor.
 
