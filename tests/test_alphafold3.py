@@ -28,6 +28,7 @@ from alphafold3_pytorch import (
     MSAModule,
     PairformerStack,
     RelativePositionEncoding,
+    RigidFrom3Points,
     SmoothLDDTLoss,
     TemplateEmbedder,
     WeightedRigidAlign,
@@ -195,6 +196,15 @@ def test_express_coordinates_in_frame():
     assert transformed_coords.shape == (batch_size, num_coords, 3)
 
 
+def test_rigid_from_three_points():
+    """Test the function to compute a rigid transformation from three points."""
+    rigid_from_3_points = RigidFrom3Points()
+
+    points = torch.randn(7, 11, 23, 3)
+    rotation, _ = rigid_from_3_points((points, points, points))
+    assert rotation.shape == (7, 11, 23, 3, 3)
+
+
 def test_compute_alignment_error():
     """Test the function to compute alignment error."""
     pred_coords = torch.randn(2, 100, 3)
@@ -206,6 +216,26 @@ def test_compute_alignment_error():
     alignment_errors = error_fn(pred_coords, pred_coords, pred_frames, pred_frames)
 
     assert alignment_errors.shape == (2, 100, 100)
+    assert (alignment_errors.mean(-1) < 1e-3).all()
+
+
+def test_compute_alignment_error_atom_resolution():
+    """Test the function to compute alignment error with atom resolution."""
+    seq_len = 100
+    molecule_atom_lens = torch.randint(1, 3, (2, seq_len))
+    atom_seq_len = molecule_atom_lens.sum(dim=-1).amax()
+
+    pred_coords = torch.randn(2, atom_seq_len, 3)
+    pred_frames = torch.randn(2, seq_len, 3, 3)
+
+    # NOTE: `pred_coords` should match itself in frame basis
+
+    error_fn = ComputeAlignmentError()
+    alignment_errors = error_fn(
+        pred_coords, pred_coords, pred_frames, pred_frames, molecule_atom_lens=molecule_atom_lens
+    )
+
+    assert alignment_errors.shape == (2, atom_seq_len, atom_seq_len)
     assert (alignment_errors.mean(-1) < 1e-3).all()
 
 

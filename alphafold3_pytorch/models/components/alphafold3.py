@@ -100,6 +100,7 @@ from alphafold3_pytorch.utils.model_utils import (
     compact,
     concat_previous_window,
     exclusive_cumsum,
+    l2norm,
     lens_to_mask,
     log,
     masked_average,
@@ -3053,8 +3054,11 @@ class WeightedRigidAlign(Module):
             )
 
         det = torch.det(einsum(V, U_T, "b i j, b j k -> b i k"))
+
         # Ensure proper rotation matrix with determinant 1
-        diag = torch.eye(dim, dtype=det.dtype, device=det.device)[None].repeat(batch_size, 1, 1)
+        diag = torch.eye(dim, dtype=det.dtype, device=det.device)
+        diag = repeat(diag, "i j -> b i j", b=batch_size).clone()
+
         diag[:, -1, -1] = det
         rot_matrix = einsum(V, diag, U_T, "b i j, b j k, b k l -> b i l")
 
@@ -3094,26 +3098,68 @@ class ExpressCoordinatesInFrame(Module):
 
         # Extract frame atoms
         a, b, c = frame.unbind(dim=-1)
-        w1 = F.normalize(a - b, dim=-1, eps=self.eps)
-        w2 = F.normalize(c - b, dim=-1, eps=self.eps)
+        w1 = l2norm(a - b, eps=self.eps)
+        w2 = l2norm(c - b, eps=self.eps)
 
         # Build orthonormal basis
-        e1 = F.normalize(w1 + w2, dim=-1, eps=self.eps)
-        e2 = F.normalize(w2 - w1, dim=-1, eps=self.eps)
+        e1 = l2norm(w1 + w2, eps=self.eps)
+        e2 = l2norm(w2 - w1, eps=self.eps)
         e3 = torch.cross(e1, e2, dim=-1)
 
         # Project onto frame basis
         d = coords - b
+
         transformed_coords = torch.stack(
-            [
+            (
                 einsum(d, e1, "... i, ... i -> ..."),
                 einsum(d, e2, "... i, ... i -> ..."),
                 einsum(d, e3, "... i, ... i -> ..."),
-            ],
+            ),
             dim=-1,
         )
 
         return transformed_coords
+
+
+class RigidFrom3Points(Module):
+    """An implementation of Algorithm 21 in Section 1.8.1 in AlphaFold 2 paper:
+
+    https://www.nature.com/articles/s41586-021-03819-2
+    """
+
+    @typecheck
+    def forward(
+        self,
+        three_points: Tuple[Float["... 3"], Float["... 3"], Float["... 3"]] | Float["3 ... 3"],  # type: ignore
+    ) -> Tuple[Float["... 3 3"], Float["... 3"]]:  # type: ignore
+        """Compute a rigid transformation from three points."""
+        if isinstance(three_points, tuple):
+            three_points = torch.stack(three_points)
+
+        # allow for any number of leading dimensions
+
+        (x1, x2, x3), unpack_one = pack_one(three_points, "three * d")
+
+        # main algorithm
+
+        v1 = x3 - x2
+        v2 = x1 - x2
+
+        e1 = l2norm(v1)
+        u2 = v2 - e1 @ (e1.t() @ v2)
+        e2 = l2norm(u2)
+
+        e3 = torch.cross(e1, e2, dim=-1)
+
+        R = torch.stack((e1, e2, e3), dim=-1)
+        t = x2
+
+        # unpack
+
+        R = unpack_one(R, "* r1 r2")
+        t = unpack_one(t, "* c")
+
+        return R, t
 
 
 class ComputeAlignmentError(Module):
@@ -3128,11 +3174,12 @@ class ComputeAlignmentError(Module):
     @typecheck
     def forward(
         self,
-        pred_coords: Float["b n 3"],  # type: ignore
-        true_coords: Float["b n 3"],  # type: ignore
+        pred_coords: Float["b n 3"] | Float["b m 3"],  # type: ignore
+        true_coords: Float["b n 3"] | Float["b m 3"],  # type: ignore
         pred_frames: Float["b n 3 3"],  # type: ignore
         true_frames: Float["b n 3 3"],  # type: ignore
-    ) -> Float["b n n"]:  # type: ignore
+        molecule_atom_lens: Int["b n"] | None = None,  # type: ignore
+    ) -> Float["b n n"] | Float["b m m"]:  # type: ignore
         """Compute the alignment errors.
 
         :param pred_coords: Predicted coordinates.
@@ -3140,6 +3187,20 @@ class ComputeAlignmentError(Module):
         :param pred_frames: Predicted frames.
         :param true_frames: True frames.
         """
+
+        # detect whether using atom or residue resolution
+
+        is_atom_resolution = pred_coords.shape[1] != pred_frames.shape[1]
+        assert not is_atom_resolution or exists(
+            molecule_atom_lens
+        ), "`molecule_atom_lens` must be passed in for atom resolution alignment error"
+
+        if is_atom_resolution:
+            pred_frames = batch_repeat_interleave(pred_frames, molecule_atom_lens)
+            true_frames = batch_repeat_interleave(true_frames, molecule_atom_lens)
+
+        # to pairs
+
         num_res = pred_coords.shape[1]
 
         pair2seq = partial(rearrange, pattern="b n m ... -> b (n m) ...")

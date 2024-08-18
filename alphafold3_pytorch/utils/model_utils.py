@@ -35,6 +35,17 @@ def default_lambda_lr_fn(steps: int) -> float:
     return 0.95 ** (steps / 5e4)
 
 
+def l2norm(t: Tensor, eps: float = 1e-20, dim: int = -1) -> Tensor:
+    """Perform an L2 normalization on a Tensor.
+
+    :param t: The Tensor.
+    :param eps: The epsilon value.
+    :param dim: The dimension to normalize over.
+    :return: The L2 normalized Tensor.
+    """
+    return F.normalize(t, p=2, eps=eps, dim=dim)
+
+
 def max_neg_value(t: Tensor) -> Tensor:
     """Get the maximum negative value of Tensor based on its `dtype`.
 
