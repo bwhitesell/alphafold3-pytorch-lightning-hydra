@@ -151,6 +151,16 @@ def exclusive_cumsum(t: Tensor, dim: int = -1) -> Tensor:
     return t.cumsum(dim=dim) - t
 
 
+@typecheck
+def symmetrize(t: Float["b n n ..."]) -> Float["b n n ..."]:  # type: ignore
+    """Symmetrize a Tensor.
+
+    :param t: The Tensor.
+    :return: The symmetrized Tensor.
+    """
+    return t + rearrange(t, "b i j ... -> b j i ...")
+
+
 # decorators
 
 
@@ -464,6 +474,20 @@ def batch_repeat_interleave(
     output = einx.where("b n, b n ..., -> b n ...", output_mask, output, output_padding_value)
 
     return output
+
+
+@typecheck
+def batch_repeat_interleave_pairwise(
+    pairwise: Float["b n n d"],  # type: ignore
+    molecule_atom_lens: Int["b n"],  # type: ignore
+) -> Float["b m m d"]:  # type: ignore
+    """Batch repeat and interleave a sequence of pairwise features."""
+    pairwise = batch_repeat_interleave(pairwise, molecule_atom_lens)
+
+    molecule_atom_lens = repeat(molecule_atom_lens, "b ... -> (b r) ...", r=pairwise.shape[1])
+    pairwise, unpack_one = pack_one(pairwise, "* n d")
+    pairwise = batch_repeat_interleave(pairwise, molecule_atom_lens)
+    return unpack_one(pairwise)
 
 
 @typecheck

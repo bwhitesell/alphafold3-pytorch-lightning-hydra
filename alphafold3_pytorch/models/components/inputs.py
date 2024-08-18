@@ -1477,13 +1477,6 @@ def alphafold3_input_to_molecule_lengthed_molecule_input(
 
         chainable_biomol_entries.append(ss_dna_entries)
 
-    # convert metal ions to rdchem.Mol
-
-    metal_ions = alphafold3_input.metal_ions
-    mol_metal_ions = map_int_or_string_indices_to_mol(METALS, metal_ions)
-
-    molecule_ids.append(tensor([MOLECULE_METAL_ION_ID] * len(mol_metal_ions)))
-
     # convert ligands to rdchem.Mol
 
     ligands = list(alphafold3_input.ligands)
@@ -1492,6 +1485,13 @@ def alphafold3_input_to_molecule_lengthed_molecule_input(
     ]
 
     molecule_ids.append(tensor([ligand_id] * len(mol_ligands)))
+
+    # convert metal ions to rdchem.Mol
+
+    metal_ions = alphafold3_input.metal_ions
+    mol_metal_ions = map_int_or_string_indices_to_mol(METALS, metal_ions)
+
+    molecule_ids.append(tensor([MOLECULE_METAL_ION_ID] * len(mol_metal_ions)))
 
     # create the molecule input
 
