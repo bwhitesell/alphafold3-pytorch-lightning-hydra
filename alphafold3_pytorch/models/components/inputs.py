@@ -54,7 +54,11 @@ from alphafold3_pytorch.utils.data_utils import (
     is_atomized_residue,
     is_polymer,
 )
-from alphafold3_pytorch.utils.model_utils import exclusive_cumsum, maybe
+from alphafold3_pytorch.utils.model_utils import (
+    exclusive_cumsum,
+    maybe,
+    offset_only_positive,
+)
 from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
 from alphafold3_pytorch.utils.utils import default, exists, first
@@ -813,6 +817,7 @@ class MoleculeLengthMoleculeInput:
     is_molecule_mod: Bool["n num_mods"] | Bool[" n"] | None = None  # type: ignore
     molecule_atom_indices: List[int | None] | None = None
     distogram_atom_indices: List[int | None] | None = None
+    atom_indices_for_frame: List[Tuple[int, int, int] | None] | None = None
     missing_atom_indices: List[Int[" _"] | None] | None = None  # type: ignore
     missing_token_indices: List[Int[" _"] | None] | None = None  # type: ignore
     atom_parent_ids: Int[" m"] | None = None  # type: ignore
@@ -919,6 +924,10 @@ def molecule_lengthed_molecule_input_to_atom_input(
 
     additional_token_feats = repeat_interleave(i.additional_token_feats, token_repeats, dim=0)
     molecule_ids = repeat_interleave(i.molecule_ids, token_repeats)
+
+    atom_indices_offsets = repeat_interleave(
+        exclusive_cumsum(atoms_per_molecule), token_repeats, dim=0
+    )
 
     distogram_atom_indices = repeat_interleave(i.distogram_atom_indices, token_repeats)
     molecule_atom_indices = repeat_interleave(i.molecule_atom_indices, token_repeats)
@@ -1052,6 +1061,18 @@ def molecule_lengthed_molecule_input_to_atom_input(
             batch_first=True,
             padding_value=-2,
         )
+
+    # handle `atom_indices_for_frame` for the PAE
+
+    atom_indices_for_frame = i.atom_indices_for_frame
+
+    if exists(atom_indices_for_frame):
+        atom_indices_for_frame = [
+            default(indices, (-1, -1, -1)) for indices in i.atom_indices_for_frame
+        ]
+        atom_indices_for_frame = tensor(atom_indices_for_frame)
+
+    atom_indices_for_frame = repeat_interleave(atom_indices_for_frame, token_repeats, dim=0)
 
     # handle maybe atompair embeds
 
@@ -1187,8 +1208,24 @@ def molecule_lengthed_molecule_input_to_atom_input(
             "n missing, n -> n missing", missing_token_indices, distogram_atom_indices
         ).any(dim=-1)
 
+        is_missing_atom_indices_for_frame = einx.equal(
+            "n missing, n c -> n c missing", missing_token_indices, atom_indices_for_frame
+        ).any(dim=(-1, -2))
+
         molecule_atom_indices = molecule_atom_indices.masked_fill(is_missing_molecule_atom, -1)
         distogram_atom_indices = distogram_atom_indices.masked_fill(is_missing_distogram_atom, -1)
+
+        atom_indices_for_frame = atom_indices_for_frame.masked_fill(
+            is_missing_atom_indices_for_frame[..., None], -1
+        )
+
+    # offsets for all indices
+
+    distogram_atom_indices = offset_only_positive(distogram_atom_indices, atom_indices_offsets)
+    molecule_atom_indices = offset_only_positive(molecule_atom_indices, atom_indices_offsets)
+    atom_indices_for_frame = offset_only_positive(
+        atom_indices_for_frame, atom_indices_offsets[..., None]
+    )
 
     # handle atom positions
 
@@ -1210,6 +1247,7 @@ def molecule_lengthed_molecule_input_to_atom_input(
         molecule_ids=molecule_ids,
         molecule_atom_indices=molecule_atom_indices,
         distogram_atom_indices=distogram_atom_indices,
+        atom_indices_for_frame=atom_indices_for_frame,
         missing_atom_mask=missing_atom_mask,
         additional_token_feats=additional_token_feats,
         additional_molecule_feats=additional_molecule_feats,
@@ -1361,6 +1399,7 @@ def alphafold3_input_to_molecule_lengthed_molecule_input(
     mol_proteins = []
     protein_entries = []
 
+    atom_indices_for_frame = []
     distogram_atom_indices = []
     molecule_atom_indices = []
     src_tgt_atom_indices = []
@@ -1378,6 +1417,10 @@ def alphafold3_input_to_molecule_lengthed_molecule_input(
 
         src_tgt_atom_indices.extend(
             [[entry["first_atom_idx"], entry["last_atom_idx"]] for entry in protein_entries]
+        )
+
+        atom_indices_for_frame.extend(
+            [entry["three_atom_indices_for_frame"] for entry in protein_entries]
         )
 
         protein_ids = maybe_string_to_int(HUMAN_AMINO_ACIDS, protein)
@@ -1403,6 +1446,10 @@ def alphafold3_input_to_molecule_lengthed_molecule_input(
             [[entry["first_atom_idx"], entry["last_atom_idx"]] for entry in ss_rna_entries]
         )
 
+        atom_indices_for_frame.extend(
+            [entry["three_atom_indices_for_frame"] for entry in ss_rna_entries]
+        )
+
         rna_ids = maybe_string_to_int(RNA_NUCLEOTIDES, seq) + rna_offset
         molecule_ids.append(rna_ids)
 
@@ -1419,6 +1466,10 @@ def alphafold3_input_to_molecule_lengthed_molecule_input(
 
         src_tgt_atom_indices.extend(
             [[entry["first_atom_idx"], entry["last_atom_idx"]] for entry in ss_dna_entries]
+        )
+
+        atom_indices_for_frame.extend(
+            [entry["three_atom_indices_for_frame"] for entry in ss_dna_entries]
         )
 
         dna_ids = maybe_string_to_int(DNA_NUCLEOTIDES, seq) + dna_offset
@@ -1490,6 +1541,15 @@ def alphafold3_input_to_molecule_lengthed_molecule_input(
 
     for mol in molecules:
         Chem.SanitizeMol(mol)
+
+    # handle rest of non-biomolecules for atom_indices_for_frame
+
+    atom_indices_for_frame = [
+        *atom_indices_for_frame,
+        *([None] * (len(molecules) - len(atom_indices_for_frame))),
+    ]
+
+    assert len(atom_indices_for_frame) == len(molecules)
 
     # handle molecule ids
 
@@ -1647,6 +1707,7 @@ def alphafold3_input_to_molecule_lengthed_molecule_input(
         missing_atom_indices=missing_atom_indices,
         missing_token_indices=missing_token_indices,
         src_tgt_atom_indices=src_tgt_atom_indices,
+        atom_indices_for_frame=atom_indices_for_frame,
         atom_pos=atom_pos,
         templates=i.templates,
         msa=i.msa,

@@ -8,6 +8,7 @@ from rdkit.Chem import AllChem as Chem
 from rdkit.Chem.rdchem import Mol
 
 from alphafold3_pytorch.utils.tensor_typing import Int, typecheck
+from alphafold3_pytorch.utils.utils import exists
 
 
 def is_unique(arr):
@@ -539,6 +540,7 @@ for entries in [*CHAINABLE_BIOMOLECULES, *METALS_AND_MISC]:
 for entries in CHAINABLE_BIOMOLECULES:
     for rescode in entries:
         entry = entries[rescode]
+        mol = entry["rdchem_mol"]
         num_atoms = mol.GetNumAtoms()
 
         assert 0 <= entry["first_atom_idx"] < num_atoms
@@ -546,3 +548,6 @@ for entries in CHAINABLE_BIOMOLECULES:
         assert 0 <= entry["distogram_atom_idx"] < num_atoms
         assert 0 <= entry["token_center_atom_idx"] < num_atoms
         assert entry["first_atom_idx"] != entry["last_atom_idx"]
+
+        if exists(entry.get("three_atom_indices_for_frame", None)):
+            assert all([(0 <= i < num_atoms) for i in entry["three_atom_indices_for_frame"]])

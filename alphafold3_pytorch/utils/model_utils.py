@@ -52,6 +52,14 @@ def distance_to_bins(
     return dist_from_dist_bins.argmin(dim=-1)
 
 
+@typecheck
+def offset_only_positive(t: Tensor, offset: Tensor) -> Tensor:
+    """Offset a Tensor only if it is positive."""
+    is_positive = t >= 0
+    t_offsetted = t + offset
+    return torch.where(is_positive, t_offsetted, t)
+
+
 def l2norm(t: Tensor, eps: float = 1e-20, dim: int = -1) -> Tensor:
     """Perform an L2 normalization on a Tensor.
 

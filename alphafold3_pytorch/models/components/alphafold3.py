@@ -3893,7 +3893,7 @@ class ComputeConfidenceScore(Module):
         molecule_atom_lens: Int["b n"] | None = None,  # type: ignore
         interface: bool = False,
         compute_chain_wise_iptm: bool = False,
-    ):
+    ) -> Float[" b"] | Tuple[Float["b chains chains"], Bool["b chains chains"], Int["b chains"]]:  # type: ignore
         """Compute pTM from logits.
 
         :param logits: [b c n n] logits
@@ -3972,22 +3972,21 @@ class ComputeConfidenceScore(Module):
                             if pair_residue_weights.sum() == 0:
                                 # chain i or chain j does not have any valid frame
                                 continue
-                            else:
-                                normed_residue_mask = pair_residue_weights / (
-                                    self.eps
-                                    + torch.sum(pair_residue_weights, dim=-1, keepdims=True)
-                                )
 
-                                masked_predicted_tm_term = predicted_tm_term[b] * pair_mask
+                            normed_residue_mask = pair_residue_weights / (
+                                self.eps + torch.sum(pair_residue_weights, dim=-1, keepdims=True)
+                            )
 
-                                per_alignment = torch.sum(
-                                    masked_predicted_tm_term * normed_residue_mask, dim=-1
-                                )
-                                weighted_argmax = (residue_weights[b] * per_alignment).argmax()
-                                chain_wise_iptm[b, i, j] = per_alignment[weighted_argmax]
-                                chain_wise_iptm_mask[b, i, j] = True
+                            masked_predicted_tm_term = predicted_tm_term[b] * pair_mask
 
-            return chain_wise_iptm, chain_wise_iptm_mask, unique_chains
+                            per_alignment = torch.sum(
+                                masked_predicted_tm_term * normed_residue_mask, dim=-1
+                            )
+                            weighted_argmax = (residue_weights[b] * per_alignment).argmax()
+                            chain_wise_iptm[b, i, j] = per_alignment[weighted_argmax]
+                            chain_wise_iptm_mask[b, i, j] = True
+
+            return chain_wise_iptm, chain_wise_iptm_mask, torch.tensor(unique_chains)
 
         else:
             pair_mask = torch.ones(size=(num_batch, num_res, num_res), device=logits.device).bool()
@@ -4045,7 +4044,7 @@ class ComputeClash(Module):
         atom_pos: Float["m 3"],  # type: ignore
         asym_id: Int[" n"],  # type: ignore
         indices: Int[" m"],  # type: ignore
-        valid_indices: Int[" m"],  # type: ignore
+        valid_indices: Bool[" m"],  # type: ignore
     ) -> Bool[""]:  # type: ignore
         """Compute if there is a clash in the chain.
 
@@ -4091,7 +4090,7 @@ class ComputeClash(Module):
         atom_mask: Bool["b m"] | Bool[" m"],  # type: ignore
         molecule_atom_lens: Int["b n"] | Int[" n"],  # type: ignore
         asym_id: Int["b n"] | Int[" n"],  # type: ignore
-    ) -> Bool[""]:  # type: ignore
+    ) -> Bool[" b"]:  # type: ignore
         """Compute if there is a clash in the chain.
 
         :param atom_pos: [b m 3] atom positions
@@ -4151,11 +4150,12 @@ class ComputeRankingScore(Module):
         self.score_ptm_weight = score_ptm_weight
         self.score_disorder_weight = score_disorder_weight
 
+    @typecheck
     def compute_disorder(
         self,
         plddt: Float["b m"],  # type: ignore
-        atom_mask: Float["b m"],  # type: ignore
-        atom_is_molecule_types: Float["b m"],  # type: ignore
+        atom_mask: Bool["b m"],  # type: ignore
+        atom_is_molecule_types: Bool[f"b m {IS_MOLECULE_TYPES}"],  # type: ignore
     ) -> Float[" b"]:  # type: ignore
         """Compute disorder score.
 
@@ -4172,6 +4172,7 @@ class ComputeRankingScore(Module):
         disorder = ((atom_rasa > 0.581) * mask).sum(dim=-1) / (self.eps + mask.sum(dim=1))
         return disorder
 
+    @typecheck
     def compute_full_complex_metric(
         self,
         confidence_head_logits: ConfidenceHeadLogits,
@@ -4180,7 +4181,7 @@ class ComputeRankingScore(Module):
         molecule_atom_lens: Int["b n"],  # type: ignore
         atom_pos: Float["b m 3"],  # type: ignore
         atom_mask: Bool["b m"],  # type: ignore
-        is_molecule_types: Int[f"b n {IS_MOLECULE_TYPES}"],  # type: ignore
+        is_molecule_types: Bool[f"b n {IS_MOLECULE_TYPES}"],  # type: ignore
         return_confidence_score: bool = False,
     ) -> Float[" b"] | Tuple[Float[" b"], Tuple[ConfidenceScore, Bool[" b"]]]:  # type: ignore
         """Compute full complex metric.
@@ -4241,6 +4242,7 @@ class ComputeRankingScore(Module):
 
         return weighted_score, (confidence_score, has_clash)
 
+    @typecheck
     def compute_single_chain_metric(
         self,
         confidence_head_logits: ConfidenceHeadLogits,
@@ -4264,6 +4266,7 @@ class ComputeRankingScore(Module):
         score = confidence_score.ptm
         return score
 
+    @typecheck
     def compute_interface_metric(
         self,
         confidence_head_logits: ConfidenceHeadLogits,
@@ -4310,13 +4313,14 @@ class ComputeRankingScore(Module):
 
         for b, chains in enumerate(interface_chains):
             for chain in chains:
-                idx = unique_chains[b].index(chain)
+                idx = unique_chains[b].tolist().index(chain)
                 interface_metric[b] += iptm_sum[b, idx].sum() / iptm_count[b, idx].sum().clamp(
                     min=1
                 )
             interface_metric[b] /= len(chains)
         return interface_metric
 
+    @typecheck
     def compute_modified_residue_score(
         self,
         confidence_head_logits: ConfidenceHeadLogits,
@@ -5584,9 +5588,15 @@ class Alphafold3(Module):
             distogram_atom_indices = distogram_atom_indices.masked_fill(~valid_distogram_mask, 0)
 
         if exists(atom_indices_for_frame):
-            valid_atom_indices_for_frame = (atom_indices_for_frame >= 0).all(
-                dim=-1
-            ) & valid_atom_len_mask
+            valid_atom_indices_for_frame = default(
+                valid_atom_indices_for_frame, torch.ones_like(molecule_atom_lens).bool()
+            )
+
+            valid_atom_indices_for_frame = (
+                valid_atom_indices_for_frame
+                & (atom_indices_for_frame >= 0).all(dim=-1)
+                & valid_atom_len_mask
+            )
             atom_indices_for_frame = einx.where(
                 "b n, b n three, -> b n three",
                 valid_atom_indices_for_frame,
@@ -5604,21 +5614,6 @@ class Alphafold3(Module):
             assert (
                 molecule_atom_lens >= 0
             ).all(), "molecule_atom_lens must be greater or equal to 0"
-
-            if exists(distogram_atom_indices):
-                assert (distogram_atom_indices < molecule_atom_lens)[
-                    valid_distogram_mask
-                ].all(), "distogram_atom_indices cannot have an index that exceeds the length of the atoms for that molecule as given by molecule_atom_lens"
-
-            if exists(molecule_atom_indices):
-                assert (molecule_atom_indices < molecule_atom_lens)[
-                    valid_molecule_atom_mask
-                ].all(), "molecule_atom_indices cannot have an index that exceeds the length of the atoms for that molecule as given by molecule_atom_lens"
-
-            if exists(atom_indices_for_frame):
-                assert einx.less(
-                    "b n three, b n -> b n three", atom_indices_for_frame, molecule_atom_lens
-                ).all(), "`atom_indices_for_frame` must have indices that are all less than the corresponding `molecule_atom_lens`"
 
         # if atompair inputs are not windowed, window it
 
@@ -5969,6 +5964,7 @@ class Alphafold3(Module):
                     molecule_atom_indices,
                     molecule_pos,
                     distogram_atom_indices,
+                    valid_atom_indices_for_frame,
                     atom_indices_for_frame,
                     molecule_atom_lens,
                     pde_labels,
@@ -5994,6 +5990,7 @@ class Alphafold3(Module):
                         molecule_atom_indices,
                         molecule_pos,
                         distogram_atom_indices,
+                        valid_atom_indices_for_frame,
                         atom_indices_for_frame,
                         molecule_atom_lens,
                         pde_labels,
@@ -6060,17 +6057,33 @@ class Alphafold3(Module):
                 ), "`distogram_atom_indices` must be passed in for calculating non-atomic PAE labels"
                 denoised_molecule_pos = denoised_atom_pos.gather(1, distogram_atom_indices)
 
-            three_atoms = einx.get_at(
-                "b [m] c, b n three -> three b n c", atom_pos, atom_indices_for_frame
+            # three_atoms = einx.get_at('b [m] c, b n three -> three b n c', atom_pos, atom_indices_for_frame)
+            # pred_three_atoms = einx.get_at('b [m] c, b n three -> three b n c', denoised_atom_pos, atom_indices_for_frame)
+
+            atom_indices_for_frame = repeat(
+                atom_indices_for_frame, "b n three -> three b n c", c=3
             )
-            pred_three_atoms = einx.get_at(
-                "b [m] c, b n three -> three b n c", denoised_atom_pos, atom_indices_for_frame
-            )
+            three_atom_pos = repeat(atom_pos, "b m c -> three b m c", three=3)
+            three_denoised_atom_pos = repeat(denoised_atom_pos, "b m c -> three b m c", three=3)
+
+            three_atoms = three_atom_pos.gather(2, atom_indices_for_frame)
+            pred_three_atoms = three_denoised_atom_pos.gather(2, atom_indices_for_frame)
 
             # compute frames
 
             frames, _ = self.rigid_from_three_points(three_atoms)
             pred_frames, _ = self.rigid_from_three_points(pred_three_atoms)
+
+            # determine mask
+            # must be residue or nucleotide with greater than 0 atoms
+
+            align_error_mask = (
+                is_molecule_types[..., IS_BIOMOLECULE_INDICES].any(dim=-1)
+                & valid_atom_indices_for_frame
+            )
+
+            if ch_atom_res:
+                align_error_mask = batch_repeat_interleave(align_error_mask, molecule_atom_lens)
 
             # align error
 
@@ -6079,12 +6092,21 @@ class Alphafold3(Module):
                 atom_pos if ch_atom_res else molecule_pos,
                 pred_frames,
                 frames,
+                mask=align_error_mask,
                 molecule_atom_lens=molecule_atom_lens,
             )
 
             # calculate pae labels as alignment error binned to 64 (0 - 32A)
 
             pae_labels = distance_to_bins(align_error, self.pae_bins)
+
+            # set ignore index for invalid molecules or frames (todo: figure out what is meant by invalid frame)
+
+            pair_align_error_mask = to_pairwise_mask(align_error_mask)
+
+            pae_labels = einx.where(
+                "b i j, b i j, -> b i j", pair_align_error_mask, pae_labels, ignore
+            )
 
         # confidence head
 
@@ -6134,25 +6156,23 @@ class Alphafold3(Module):
 
             # cross entropy losses
 
-            assert (
-                len(set([t.shape[-1] for t in compact(pde_labels, plddt_labels, resolved_labels)]))
-                == 1
-            )
-            assert pde_labels.shape[-1] == ch_logits.pde.shape[-1]
-
             if exists(pae_labels):
+                assert pae_labels.shape[-1] == ch_logits.pae.shape[-1]
                 pae_labels = torch.where(label_pairwise_mask, pae_labels, ignore)
                 pae_loss = F.cross_entropy(ch_logits.pae, pae_labels, ignore_index=ignore)
 
             if exists(pde_labels):
+                assert pde_labels.shape[-1] == ch_logits.pde.shape[-1]
                 pde_labels = torch.where(label_pairwise_mask, pde_labels, ignore)
                 pde_loss = F.cross_entropy(ch_logits.pde, pde_labels, ignore_index=ignore)
 
             if exists(plddt_labels):
+                assert plddt_labels.shape[-1] == ch_logits.plddt.shape[-1]
                 plddt_labels = torch.where(label_mask, plddt_labels, ignore)
                 plddt_loss = F.cross_entropy(ch_logits.plddt, plddt_labels, ignore_index=ignore)
 
             if exists(resolved_labels):
+                assert resolved_labels.shape[-1] == ch_logits.resolved.shape[-1]
                 resolved_labels = torch.where(label_mask, resolved_labels, ignore)
                 resolved_loss = F.cross_entropy(
                     ch_logits.resolved, resolved_labels, ignore_index=ignore
