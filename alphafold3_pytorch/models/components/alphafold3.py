@@ -5526,6 +5526,8 @@ class Alphafold3(Module):
         is_molecule_mod: Bool["b n {self.num_mods}"] | None = None,  # type: ignore
         atom_mask: Bool["b m"] | None = None,  # type: ignore
         missing_atom_mask: Bool["b m"] | None = None,  # type: ignore
+        atom_indices_for_frame: Int["b n 3"] | None = None,  # type: ignore
+        valid_atom_indices_for_frame: Bool["b n"] | None = None,  # type: ignore
         atom_parent_ids: Int["b m"] | None = None,  # type: ignore
         token_bonds: Bool["b n n"] | None = None,  # type: ignore
         msa: Float["b s n d"] | None = None,  # type: ignore
