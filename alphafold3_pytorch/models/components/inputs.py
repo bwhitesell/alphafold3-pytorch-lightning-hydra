@@ -2741,12 +2741,13 @@ def pdb_input_to_molecule_input(
     # 1: f_deletion_mean
     additional_token_feats = None
 
-    # retrieve multiple sequence alignments (MSAs) for the current biomolecule
+    # retrieve multiple sequence alignments (MSAs) for each chain
     # NOTE: if they are not locally available, `Nones` will be returned
     msa, msa_mask = load_msa_from_msa_dir(i.msa_dir, file_id)
 
-    # TODO: retrieve templates for each chain once available
+    # TODO: retrieve templates for each chain
     # templates, template_mask = load_templates_from_templates_dir(i.templates_dir)
+    # NOTE: if they are not locally available, `Nones` will be returned
     templates, template_mask = None, None
 
     # construct atom positions from template molecules after instantiating their 3D conformers
