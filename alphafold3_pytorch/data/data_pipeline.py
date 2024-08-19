@@ -1,10 +1,11 @@
 """General-purpose data pipeline."""
 
 import os
-from typing import MutableMapping, Optional, Sequence, Tuple
+from typing import MutableMapping, Optional, Tuple
 
 import numpy as np
 import torch
+from torch import Tensor
 
 from alphafold3_pytorch.common import amino_acid_constants
 from alphafold3_pytorch.common.biomolecule import (
@@ -16,7 +17,7 @@ from alphafold3_pytorch.data import mmcif_parsing, msa_parsing
 from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.utils import exists
 
-FeatureDict = MutableMapping[str, np.ndarray]
+FeatureDict = MutableMapping[str, np.ndarray | Tensor]
 
 log = RankedLogger(__name__, rank_zero_only=True)
 
@@ -29,7 +30,7 @@ def make_sequence_features(sequence: str, description: str) -> FeatureDict:
     return features
 
 
-def make_msa_mask(protein):
+def make_msa_mask(protein: FeatureDict) -> FeatureDict:
     """
     Make MSA mask features.
     From: https://github.com/aqlaboratory/openfold/blob/6f63267114435f94ac0604b6d89e82ef45d94484/openfold/data/data_transforms.py#L379
@@ -76,7 +77,7 @@ def make_msa_features(msas: dict) -> FeatureDict:
     num_alignments = len(int_msa)
     features = {}
     features["deletion_matrix_int"] = np.array(deletion_matrix, dtype=np.int32)
-    features["msa"] = np.array(int_msa, dtype=np.int32)
+    features["msa"] = torch.tensor(int_msa, dtype=np.int32)
     features["num_alignments"] = np.array([num_alignments] * num_res, dtype=np.int32)
     features["msa_species_identifiers"] = np.array(species_ids, dtype=object)
     return features

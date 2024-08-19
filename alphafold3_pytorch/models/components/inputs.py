@@ -2285,10 +2285,17 @@ def find_mismatched_symmetry(
 
 
 @typecheck
-def load_msa_from_msa_dir(msa_dir: str, file_id: str) -> Tuple[torch.Tensor, torch.Tensor]:
+def load_msa_from_msa_dir(
+    msa_dir: str, file_id: str, raise_missing_exception: bool = False
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """Load MSA from a directory containing MSA files."""
-    if not os.path.exists(msa_dir):
+    if not os.path.exists(msa_dir) and raise_missing_exception:
         raise FileNotFoundError(f"{msa_dir} does not exists")
+    elif not os.path.exists(msa_dir):
+        logger.warning(
+            f"{msa_dir} does not exists. Skipping MSA loading by returning zero tensors."
+        )
+        return torch.zeros(1, 1), torch.zeros(1, 1)
 
     msa_fpath = os.path.join(msa_dir, f"{file_id}.a3m")
     with open(msa_fpath, "r") as f:
@@ -2736,10 +2743,12 @@ def pdb_input_to_molecule_input(
     # 1: f_deletion_mean
     additional_token_feats = None
 
+    # retrieve multiple sequence alignments (MSAs) for the current biomolecule
+    # NOTE: if they are not locally available, zero tensors will be returned
+    msa, msa_mask = load_msa_from_msa_dir(i.msa_dir, file_id)
+
     # TODO: retrieve templates for each chain once available
     # templates, template_mask = load_templates_from_templates_dir(i.templates_dir)
-    msa, msa_mask = load_msa_from_msa_dir(i.msa_dir, file_id)
-    msa = torch.from_numpy(msa)
     templates, template_mask = None, None
 
     # construct atom positions from template molecules after instantiating their 3D conformers
