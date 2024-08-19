@@ -18,6 +18,7 @@ net:
   dim_atom_inputs: 3
   dim_template_feats: 44
   num_dist_bins: 38
+  pdb_training_set: true
 
 # training parameters
 compile: false # compile model for faster training with pytorch 2.0

@@ -34,6 +34,7 @@ model:
   net:
     dim_atom_inputs: 3
     dim_template_feats: 44
+    pdb_training_set: true
   # training parameters
   compile: false
   skip_invalid_gradient_updates: true

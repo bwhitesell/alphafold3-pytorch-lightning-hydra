@@ -3,12 +3,16 @@ from typing import Any, Dict, Literal, Set
 import numpy as np
 
 from alphafold3_pytorch.utils.tensor_typing import ChainType, ResidueType, typecheck
+from alphafold3_pytorch.utils.utils import exists
 
 # constants
 
 RESIDUE_MOLECULE_TYPE = Literal["protein", "rna", "dna", "ligand"]
 PDB_INPUT_RESIDUE_MOLECULE_TYPE = Literal[
     "protein", "rna", "dna", "mod_protein", "mod_rna", "mod_dna", "ligand"
+]
+MMCIF_METADATA_FIELD = Literal[
+    "structure_method", "release_date", "resolution", "structure_connectivity"
 ]
 
 
@@ -166,3 +170,63 @@ def deep_merge_dicts(
             # Otherwise, set/overwrite the key in dict1 with dict2's value
             dict1[key] = value
     return dict1
+
+
+@typecheck
+def coerce_to_float(obj: Any) -> float | None:
+    """Coerce an object to a float, returning `None` if the object is not coercible.
+
+    :param obj: The object to coerce to a float.
+    :return: The object coerced to a float if possible, otherwise `None`.
+    """
+    try:
+        if isinstance(obj, (int, float, str)):
+            return float(obj)
+        elif isinstance(obj, list):
+            return float(obj[0])
+        else:
+            return None
+    except (ValueError, TypeError):
+        return None
+
+
+@typecheck
+def extract_mmcif_metadata_field(
+    mmcif_object: Any,
+    metadata_field: MMCIF_METADATA_FIELD,
+    min_resolution: float = 0.0,
+    max_resolution: float = 1000.0,
+) -> str | float | None:
+    """Extract a metadata field from an mmCIF object. If the field is not found, return `None`.
+
+    :param mmcif_object: The mmCIF object to extract the metadata field from.
+    :param metadata_field: The metadata field to extract.
+    :return: The extracted metadata field.
+    """
+    # Extract structure method
+    if metadata_field == "structure_method" and "_exptl.method" in mmcif_object.raw_string:
+        return mmcif_object.raw_string["_exptl.method"]
+
+    # Extract release date
+    if (
+        metadata_field == "release_date"
+        and "_pdbx_audit_revision_history.revision_date" in mmcif_object.raw_string
+    ):
+        return mmcif_object.raw_string["_pdbx_audit_revision_history.revision_date"]
+
+    # Extract resolution
+    if metadata_field == "resolution" and "_refine.ls_d_res_high" in mmcif_object.raw_string:
+        resolution = coerce_to_float(mmcif_object.raw_string["_refine.ls_d_res_high"])
+        if exists(resolution) and min_resolution <= resolution <= max_resolution:
+            return resolution
+    elif (
+        metadata_field == "resolution"
+        and "_em_3d_reconstruction.resolution" in mmcif_object.raw_string
+    ):
+        resolution = coerce_to_float(mmcif_object.raw_string["_em_3d_reconstruction.resolution"])
+        if exists(resolution) and min_resolution <= resolution <= max_resolution:
+            return resolution
+    elif metadata_field == "resolution" and "_reflns.d_resolution_high" in mmcif_object.raw_string:
+        resolution = coerce_to_float(mmcif_object.raw_string["_reflns.d_resolution_high"])
+        if exists(resolution) and min_resolution <= resolution <= max_resolution:
+            return resolution

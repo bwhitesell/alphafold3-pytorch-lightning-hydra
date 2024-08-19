@@ -54,6 +54,7 @@ from alphafold3_pytorch.data.life import (
 from alphafold3_pytorch.data.weighted_pdb_sampler import WeightedPDBSampler
 from alphafold3_pytorch.utils.data_utils import (
     PDB_INPUT_RESIDUE_MOLECULE_TYPE,
+    extract_mmcif_metadata_field,
     get_pdb_input_residue_molecule_type,
     is_atomized_residue,
     is_polymer,
@@ -201,6 +202,7 @@ class AtomInput:
     pde_labels: Int["n n"] | None = None  # type: ignore
     plddt_labels: Int[" n"] | None = None  # type: ignore
     resolved_labels: Int[" n"] | None = None  # type: ignore
+    resolution: Float[""] | None = None  # type: ignore
     chains: Int[" 2"] | None = None  # type: ignore
     filepath: str | None = None
 
@@ -243,6 +245,7 @@ class BatchedAtomInput:
     pde_labels: Int["b n n"] | None = None  # type: ignore
     plddt_labels: Int["b n"] | None = None  # type: ignore
     resolved_labels: Int["b n"] | None = None  # type: ignore
+    resolution: Float[" b"] | None = None  # type: ignore
     chains: Int["b 2"] | None = None  # type: ignore
     filepath: List[str] | None = None
 
@@ -495,6 +498,7 @@ class MoleculeInput:
     distance_labels: Int["n n"] | None = None  # type: ignore
     pde_labels: Int[" n"] | None = None  # type: ignore
     resolved_labels: Int[" n"] | None = None  # type: ignore
+    resolution: Float[""] | None = None  # type: ignore
     chains: Tuple[int | None, int | None] | None = (None, None)
     filepath: str | None = None
     add_atom_ids: bool = False
@@ -794,6 +798,7 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
         atom_parent_ids=i.atom_parent_ids,
         atom_ids=atom_ids,
         atompair_ids=atompair_ids,
+        resolution=i.resolution,
         chains=chains,
         filepath=i.filepath,
     )
@@ -1747,6 +1752,7 @@ class PDBInput:
     add_atompair_ids: bool = False
     directed_bonds: bool = False
     training: bool = False
+    resolution: float | None = None
     extract_atom_feats_fn: Callable[[Atom], Float["m dai"]] = default_extract_atom_feats_fn  # type: ignore
     extract_atompair_feats_fn: Callable[[Mol], Float["m m dapi"]] = default_extract_atompair_feats_fn  # type: ignore
 
@@ -2286,13 +2292,17 @@ def find_mismatched_symmetry(
 
 @typecheck
 def load_msa_from_msa_dir(
-    msa_dir: str | None, file_id: str, raise_missing_exception: bool = False
+    msa_dir: str | None,
+    file_id: str,
+    raise_missing_exception: bool = False,
+    verbose: bool = False,
 ) -> Tuple[torch.Tensor | None, torch.Tensor | None]:
     """Load MSA from a directory containing MSA files."""
     if (not exists(msa_dir) or not os.path.exists(msa_dir)) and raise_missing_exception:
         raise FileNotFoundError(f"{msa_dir} does not exist.")
     elif not exists(msa_dir) or not os.path.exists(msa_dir):
-        logger.warning(f"{msa_dir} does not exist. Skipping MSA loading by returning `Nones`.")
+        if verbose:
+            logger.warning(f"{msa_dir} does not exist. Skipping MSA loading by returning `Nones`.")
         return None, None
 
     msa_fpath = os.path.join(msa_dir, f"{file_id}.a3m")
@@ -2317,6 +2327,7 @@ def pdb_input_to_molecule_input(
 
     filepath = i.mmcif_filepath
     file_id = os.path.splitext(os.path.basename(filepath))[0] if exists(filepath) else None
+    resolution = i.resolution
 
     # acquire a `Biomolecule` object for the given `PDBInput`
 
@@ -2331,11 +2342,15 @@ def pdb_input_to_molecule_input(
             filepath=filepath,
             file_id=file_id,
         )
+        mmcif_resolution = extract_mmcif_metadata_field(mmcif_object, "resolution")
         biomol = (
             _from_mmcif_object(mmcif_object)
             if "assembly" in file_id
             else get_assembly(_from_mmcif_object(mmcif_object))
         )
+
+        if not exists(resolution) and exists(mmcif_resolution):
+            resolution = mmcif_resolution
 
     # map (sampled) chain IDs to indices prior to cropping
 
@@ -2789,6 +2804,7 @@ def pdb_input_to_molecule_input(
         atom_pos=atom_pos,
         template_mask=template_mask,
         msa_mask=msa_mask,
+        resolution=tensor(resolution),
         chains=chains,
         filepath=filepath,
         add_atom_ids=i.add_atom_ids,
