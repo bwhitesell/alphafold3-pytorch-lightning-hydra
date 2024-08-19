@@ -2,17 +2,14 @@ import os
 
 import pytest
 
-from alphafold3_pytorch.data.weighted_pdb_sampler import WeightedPDBSampler
-from alphafold3_pytorch.models.components.alphafold3 import Alphafold3
-from alphafold3_pytorch.models.components.inputs import (
-    PDBDataset,
-    molecule_to_atom_input,
-    pdb_input_to_molecule_input,
-)
 from alphafold3_pytorch.data.pdb_datamodule import pdb_inputs_to_batched_atom_input
+from alphafold3_pytorch.data.weighted_pdb_sampler import WeightedPDBSampler
+from alphafold3_pytorch.models.components.inputs import PDBDataset
+from alphafold3_pytorch.utils.utils import exists
+
 
 def test_msa_loading():
-    """Test a PDBDataset constructed using a WeightedPDBSampler."""
+    """Test an MSA-featurized PDBDataset constructed using a WeightedPDBSampler."""
     data_test = os.path.join("data", "test")
     if not os.path.exists(os.path.join("data", "test", "mmcif")):
         pytest.skip("The directory `data/test/mmcif` is not populated yet.")
@@ -35,10 +32,13 @@ def test_msa_loading():
     )
 
     pdb_input = PDBDataset(
-        folder=os.path.join("data", "test","mmcif"), sampler=sampler, sample_type="default", crop_size=128,
-        msa_dir=os.path.join("data", "test","msa")
-    ,training=False)
+        folder=os.path.join("data", "test", "mmcif"),
+        sampler=sampler,
+        sample_type="default",
+        crop_size=128,
+        msa_dir=os.path.join("data", "test", "msa"),
+        training=False,
+    )
 
     batched_atom_input = pdb_inputs_to_batched_atom_input(pdb_input[0], atoms_per_window=27)
-
-
+    assert exists(batched_atom_input)
