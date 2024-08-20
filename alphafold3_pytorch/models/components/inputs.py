@@ -2347,6 +2347,10 @@ def pdb_input_to_molecule_input(
         if not exists(resolution) and exists(mmcif_resolution):
             resolution = mmcif_resolution
 
+    # record PDB resolution value if available
+
+    resolution = tensor(resolution) if exists(resolution) else None
+
     # map (sampled) chain IDs to indices prior to cropping
 
     chains = None
@@ -2781,6 +2785,14 @@ def pdb_input_to_molecule_input(
         ]
     )
 
+    # craft experimentally resolved labels per the AF2 supplement's Section 1.9.10
+
+    resolved_labels = None
+
+    if exists(resolution):
+        is_resolved_label = ((resolution >= 0.1) & (resolution <= 3.0)).item()
+        resolved_labels = torch.full((num_atoms,), is_resolved_label, dtype=torch.long)
+
     # create molecule input
 
     molecule_input = MoleculeInput(
@@ -2804,8 +2816,8 @@ def pdb_input_to_molecule_input(
         atom_pos=atom_pos,
         template_mask=template_mask,
         msa_mask=msa_mask,
-        resolved_labels=None,  # TODO: resolve labels
-        resolution=tensor(resolution),
+        resolved_labels=resolved_labels,
+        resolution=resolution,
         chains=chains,
         filepath=filepath,
         add_atom_ids=i.add_atom_ids,
