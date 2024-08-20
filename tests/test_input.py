@@ -226,6 +226,7 @@ def test_pdbinput_input():
         dim_template_feats=44,
         num_molecule_mods=4,
         num_dist_bins=38,
+        num_rollout_steps=2,
         confidence_head_kwargs=dict(pairformer_depth=1),
         template_embedder_kwargs=dict(pairformer_stack_depth=1),
         msa_module_kwargs=dict(depth=1),
@@ -265,13 +266,13 @@ def test_pdbinput_input():
 
     # visualizing
 
-    # mmcif_writing.write_mmcif_from_filepath_and_id(
-    #     input_filepath=filepath,
-    #     output_filepath=filepath.replace(".cif", "-sampled.cif"),
-    #     file_id=file_id,
-    #     gapless_poly_seq=True,
-    #     insert_orig_atom_names=True,
-    #     insert_alphafold_mmcif_metadata=True,
-    #     sampled_atom_positions=sampled_atom_positions,
-    # )
-    # assert os.path.exists(filepath.replace(".cif", "-sampled.cif"))
+    mmcif_writing.write_mmcif_from_filepath_and_id(
+        input_filepath=filepath,
+        output_filepath=filepath.replace(".cif", "-sampled.cif"),
+        file_id=file_id,
+        gapless_poly_seq=True,
+        insert_orig_atom_names=True,
+        insert_alphafold_mmcif_metadata=True,
+        sampled_atom_positions=sampled_atom_positions,
+    )
+    assert os.path.exists(filepath.replace(".cif", "-sampled.cif"))
