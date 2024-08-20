@@ -5551,7 +5551,6 @@ class Alphafold3(Module):
         num_sample_steps: int | None = None,
         atom_pos: Float["b m 3"] | None = None,  # type: ignore
         distance_labels: Int["b n n"] | Int["b m m"] | None = None,  # type: ignore
-        pde_labels: Int["b n n"] | Int["b m m"] | None = None,  # type: ignore
         resolved_labels: Int["b n"] | Int["b m"] | None = None,  # type: ignore
         resolution: Float[" b"] | None = None,  # type: ignore
         return_loss_breakdown=False,
@@ -5591,9 +5590,6 @@ class Alphafold3(Module):
         :param num_sample_steps: The number of sample steps.
         :param atom_pos: The atom positions tensor.
         :param distance_labels: The distance labels tensor.
-        :param pae_labels: The predicted aligned error (PAE) labels tensor.
-        :param pde_labels: The predicted distance error (PDE) labels tensor.
-        :param plddt_labels: The predicted lDDT labels tensor.
         :param resolved_labels: The resolved labels tensor.
         :param return_loss_breakdown: Whether to return the loss breakdown.
         :param return_loss: Whether to return the loss.
@@ -5874,7 +5870,6 @@ class Alphafold3(Module):
 
         confidence_head_labels = (
             atom_indices_for_frame,
-            pde_labels,
             resolved_labels,
         )
         all_labels = (distance_labels, *confidence_head_labels)
@@ -6034,7 +6029,6 @@ class Alphafold3(Module):
                     valid_atom_indices_for_frame,
                     atom_indices_for_frame,
                     molecule_atom_lens,
-                    pde_labels,
                     resolved_labels,
                     resolution,
                 ) = tuple(
@@ -6061,7 +6055,6 @@ class Alphafold3(Module):
                         valid_atom_indices_for_frame,
                         atom_indices_for_frame,
                         molecule_atom_lens,
-                        pde_labels,
                         resolved_labels,
                         resolution,
                     )
@@ -6218,7 +6211,9 @@ class Alphafold3(Module):
 
             # determine pde labels if possible
 
-            if atom_pos_given and not exists(pde_labels):
+            pde_labels = None
+
+            if atom_pos_given:
                 denoised_molecule_pos = None
 
                 if not ch_atom_res:
@@ -6298,8 +6293,8 @@ class Alphafold3(Module):
 
             if exists(pae_labels):
                 assert pae_labels.shape[-1] == ch_logits.pae.shape[-1], (
-                    f"pae_labels shape {pae_labels.shape[-1]} does not match "
-                    f"ch_logits.pae shape {ch_logits.pae.shape[-1]}"
+                    f"pae_labels shape {pae_labels.shape} does not match "
+                    f"ch_logits.pae shape {ch_logits.pae.shape}"
                 )
                 pae_labels = torch.where(label_pairwise_mask, pae_labels, ignore)
                 pae_loss = F.cross_entropy(
@@ -6310,8 +6305,8 @@ class Alphafold3(Module):
 
             if exists(pde_labels):
                 assert pde_labels.shape[-1] == ch_logits.pde.shape[-1], (
-                    f"pde_labels shape {pde_labels.shape[-1]} does not match "
-                    f"ch_logits.pde shape {ch_logits.pde.shape[-1]}"
+                    f"pde_labels shape {pde_labels.shape} does not match "
+                    f"ch_logits.pde shape {ch_logits.pde.shape}"
                 )
                 pde_labels = torch.where(label_pairwise_mask, pde_labels, ignore)
                 pde_loss = F.cross_entropy(
@@ -6322,8 +6317,8 @@ class Alphafold3(Module):
 
             if exists(plddt_labels):
                 assert plddt_labels.shape[-1] == ch_logits.plddt.shape[-1], (
-                    f"plddt_labels shape {plddt_labels.shape[-1]} does not match "
-                    f"ch_logits.plddt shape {ch_logits.plddt.shape[-1]}"
+                    f"plddt_labels shape {plddt_labels.shape} does not match "
+                    f"ch_logits.plddt shape {ch_logits.plddt.shape}"
                 )
                 plddt_labels = torch.where(label_mask, plddt_labels, ignore)
                 plddt_loss = F.cross_entropy(
@@ -6334,8 +6329,8 @@ class Alphafold3(Module):
 
             if exists(resolved_labels):
                 assert resolved_labels.shape[-1] == ch_logits.resolved.shape[-1], (
-                    f"resolved_labels shape {resolved_labels.shape[-1]} does not match "
-                    f"ch_logits.resolved shape {ch_logits.resolved.shape[-1]}"
+                    f"resolved_labels shape {resolved_labels.shape} does not match "
+                    f"ch_logits.resolved shape {ch_logits.resolved.shape}"
                 )
                 resolved_labels = torch.where(label_mask, resolved_labels, ignore)
                 resolved_loss = F.cross_entropy(

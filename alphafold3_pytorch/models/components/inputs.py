@@ -199,7 +199,6 @@ class AtomInput:
     distogram_atom_indices: Int[" n"] | None = None  # type: ignore
     atom_indices_for_frame: Int["n 3"] | None = None  # type: ignore
     distance_labels: Int["n n"] | None = None  # type: ignore
-    pde_labels: Int["n n"] | None = None  # type: ignore
     resolved_labels: Int[" m"] | None = None  # type: ignore
     resolution: Float[""] | None = None  # type: ignore
     chains: Int[" 2"] | None = None  # type: ignore
@@ -241,7 +240,6 @@ class BatchedAtomInput:
     distogram_atom_indices: Int["b n"] | None = None  # type: ignore
     atom_indices_for_frame: Int["b n 3"] | None = None  # type: ignore
     distance_labels: Int["b n n"] | None = None  # type: ignore
-    pde_labels: Int["b n n"] | None = None  # type: ignore
     resolved_labels: Int["b m"] | None = None  # type: ignore
     resolution: Float[" b"] | None = None  # type: ignore
     chains: Int["b 2"] | None = None  # type: ignore
@@ -494,7 +492,6 @@ class MoleculeInput:
     template_mask: Bool[" t"] | None = None  # type: ignore
     msa_mask: Bool[" s"] | None = None  # type: ignore
     distance_labels: Int["n n"] | None = None  # type: ignore
-    pde_labels: Int["n n"] | None = None  # type: ignore
     resolved_labels: Int[" m"] | None = None  # type: ignore
     resolution: Float[""] | None = None  # type: ignore
     chains: Tuple[int | None, int | None] | None = (None, None)
@@ -796,7 +793,6 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
         atom_parent_ids=i.atom_parent_ids,
         atom_ids=atom_ids,
         atompair_ids=atompair_ids,
-        pde_labels=i.pde_labels,
         resolved_labels=i.resolved_labels,
         resolution=i.resolution,
         chains=chains,
@@ -837,7 +833,6 @@ class MoleculeLengthMoleculeInput:
     template_mask: Bool[" t"] | None = None  # type: ignore
     msa_mask: Bool[" s"] | None = None  # type: ignore
     distance_labels: Int["n n"] | None = None  # type: ignore
-    pde_labels: Int["n n"] | None = None  # type: ignore
     resolved_labels: Int[" m"] | None = None  # type: ignore
     chains: Tuple[int | None, int | None] | None = (None, None)
     filepath: str | None = None
@@ -1269,7 +1264,6 @@ def molecule_lengthed_molecule_input_to_atom_input(
         atom_parent_ids=i.atom_parent_ids,
         atom_ids=atom_ids,
         atompair_ids=atompair_ids,
-        pde_labels=i.pde_labels,
         resolved_labels=i.resolved_labels,
         chains=chains,
         filepath=i.filepath,
@@ -1305,7 +1299,6 @@ class Alphafold3Input:
     template_mask: Bool[" t"] | None = None  # type: ignore
     msa_mask: Bool[" s"] | None = None  # type: ignore
     distance_labels: Int["n n"] | None = None  # type: ignore
-    pde_labels: Int["n n"] | None = None  # type: ignore
     resolved_labels: Int[" m"] | None = None  # type: ignore
     chains: Tuple[int | None, int | None] | None = (None, None)
     add_atom_ids: bool = False
