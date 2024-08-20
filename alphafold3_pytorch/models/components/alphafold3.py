@@ -5369,6 +5369,7 @@ class Alphafold3(Module):
 
         self.confidence_head = ConfidenceHead(
             dim_single_inputs=dim_single_inputs,
+            dim_atom=dim_atom,
             atompair_dist_bins=distance_bins,
             dim_single=dim_single,
             dim_pairwise=dim_pairwise,
