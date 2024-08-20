@@ -625,8 +625,7 @@ def test_alphafold3(
     molecule_atom_indices = molecule_atom_lens - 1
 
     label_len = atom_seq_len if confidence_head_atom_resolution else seq_len
-    pde_labels = torch.randint(0, 64, (2, label_len, label_len))
-    plddt_labels = torch.randint(0, 50, (2, label_len))
+    pde_labels = torch.randint(0, 64, (2, seq_len, seq_len))
     resolved_labels = torch.randint(0, 2, (2, label_len))
 
     alphafold3 = Alphafold3(
@@ -683,7 +682,6 @@ def test_alphafold3(
         distogram_atom_indices=distogram_atom_indices,
         molecule_atom_indices=molecule_atom_indices,
         pde_labels=pde_labels,
-        plddt_labels=plddt_labels,
         resolved_labels=resolved_labels,
         num_rollout_steps=1,
         diffusion_add_smooth_lddt_loss=True,
@@ -729,8 +727,7 @@ def test_alphafold3_without_msa_and_templates():
 
     distance_labels = torch.randint(0, 38, (2, seq_len, seq_len))
     pde_labels = torch.randint(0, 64, (2, seq_len, seq_len))
-    plddt_labels = torch.randint(0, 50, (2, seq_len))
-    resolved_labels = torch.randint(0, 2, (2, seq_len))
+    resolved_labels = torch.randint(0, 2, (2, atom_seq_len))
 
     alphafold3 = Alphafold3(
         dim_atom_inputs=77,
@@ -773,7 +770,6 @@ def test_alphafold3_without_msa_and_templates():
         molecule_atom_indices=molecule_atom_indices,
         distance_labels=distance_labels,
         pde_labels=pde_labels,
-        plddt_labels=plddt_labels,
         resolved_labels=resolved_labels,
         return_loss_breakdown=True,
     )
@@ -800,8 +796,7 @@ def test_alphafold3_force_return_loss():
 
     distance_labels = torch.randint(0, 38, (2, seq_len, seq_len))
     pde_labels = torch.randint(0, 64, (2, seq_len, seq_len))
-    plddt_labels = torch.randint(0, 50, (2, seq_len))
-    resolved_labels = torch.randint(0, 2, (2, seq_len))
+    resolved_labels = torch.randint(0, 2, (2, atom_seq_len))
 
     alphafold3 = Alphafold3(
         dim_atom_inputs=77,
@@ -833,7 +828,6 @@ def test_alphafold3_force_return_loss():
         molecule_atom_indices=molecule_atom_indices,
         distance_labels=distance_labels,
         pde_labels=pde_labels,
-        plddt_labels=plddt_labels,
         resolved_labels=resolved_labels,
         return_loss_breakdown=True,
         return_loss=False,  # force sampling even if labels are given
@@ -877,8 +871,7 @@ def test_alphafold3_force_return_loss_with_confidence_logits():
 
     distance_labels = torch.randint(0, 38, (2, seq_len, seq_len))
     pde_labels = torch.randint(0, 64, (2, seq_len, seq_len))
-    plddt_labels = torch.randint(0, 50, (2, seq_len))
-    resolved_labels = torch.randint(0, 2, (2, seq_len))
+    resolved_labels = torch.randint(0, 2, (2, atom_seq_len))
 
     alphafold3 = Alphafold3(
         dim_atom_inputs=77,
@@ -910,7 +903,6 @@ def test_alphafold3_force_return_loss_with_confidence_logits():
         molecule_atom_indices=molecule_atom_indices,
         distance_labels=distance_labels,
         pde_labels=pde_labels,
-        plddt_labels=plddt_labels,
         resolved_labels=resolved_labels,
         return_loss_breakdown=True,
         return_loss=False,  # force sampling even if labels are given
@@ -962,8 +954,7 @@ def test_alphafold3_with_atom_and_bond_embeddings():
 
     distance_labels = torch.randint(0, 37, (2, seq_len, seq_len))
     pde_labels = torch.randint(0, 64, (2, seq_len, seq_len))
-    plddt_labels = torch.randint(0, 50, (2, seq_len))
-    resolved_labels = torch.randint(0, 2, (2, seq_len))
+    resolved_labels = torch.randint(0, 2, (2, atom_seq_len))
 
     # train
 
@@ -987,7 +978,6 @@ def test_alphafold3_with_atom_and_bond_embeddings():
         molecule_atom_indices=molecule_atom_indices,
         distance_labels=distance_labels,
         pde_labels=pde_labels,
-        plddt_labels=plddt_labels,
         resolved_labels=resolved_labels,
     )
 

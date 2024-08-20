@@ -2951,8 +2951,8 @@ class SmoothLDDTLoss(Module):
         :return: The output tensor.
         """
         # Compute distances between all pairs of atoms
-        pred_dists = torch.cdist(pred_coords, pred_coords)
-        true_dists = torch.cdist(true_coords, true_coords)
+        pred_dists = torch.cdist(pred_coords, pred_coords, p=2)
+        true_dists = torch.cdist(true_coords, true_coords, p=2)
 
         # Compute distance difference for all pairs of atoms
         dist_diff = torch.abs(true_dists - pred_dists)
@@ -4094,7 +4094,7 @@ class ComputeClash(Module):
                 chain_j_len = mask_j.sum()
                 assert min(chain_i_len, chain_j_len) > 0
 
-                chain_pair_dist = torch.cdist(atom_pos[mask_i], atom_pos[mask_j])
+                chain_pair_dist = torch.cdist(atom_pos[mask_i], atom_pos[mask_j], p=2)
                 chain_pair_clash = chain_pair_dist < self.atom_clash_dist
                 clashes = chain_pair_clash.sum()
                 has_clash = (clashes > self.chain_clash_count) or (
@@ -4621,8 +4621,8 @@ class ComputeModelSelectionScore(Module):
         atom_seq_len, device = pred_coords.shape[1], pred_coords.device
 
         # Compute distances between all pairs of atoms
-        pred_dists = torch.cdist(pred_coords, pred_coords)
-        true_dists = torch.cdist(true_coords, true_coords)
+        pred_dists = torch.cdist(pred_coords, pred_coords, p=2)
+        true_dists = torch.cdist(true_coords, true_coords, p=2)
 
         # Compute distance difference for all pairs of atoms
         dist_diff = torch.abs(true_dists - pred_dists)
@@ -5133,11 +5133,12 @@ class Alphafold3(Module):
         num_molecule_mods: int | None = DEFAULT_NUM_MOLECULE_MODS,
         distance_bins: List[float] = torch.linspace(3, 20, 38).float().tolist(),
         pae_bins: List[float] = torch.linspace(0.5, 32, 64).float().tolist(),
+        pde_bins: List[float] = torch.linspace(0.5, 32, 64).float().tolist(),
         ignore_index=-1,
         num_dist_bins: int | None = None,
         num_plddt_bins=50,
-        num_pde_bins=64,
         num_pae_bins: int | None = None,
+        num_pde_bins: int | None = None,
         sigma_data=16,
         num_rollout_steps=20,
         diffusion_num_augmentations=4,
@@ -5392,6 +5393,12 @@ class Alphafold3(Module):
         self.rigid_from_three_points = RigidFrom3Points()
         self.compute_alignment_error = ComputeAlignmentError()
 
+        # pde related bins
+
+        pde_bins_tensor = Tensor(pde_bins)
+        self.register_buffer("pde_bins", pde_bins_tensor)
+        num_pde_bins = len(pde_bins)
+
         # confidence head
 
         self.confidence_head_atom_resolution = confidence_head_atom_resolution
@@ -5545,7 +5552,6 @@ class Alphafold3(Module):
         atom_pos: Float["b m 3"] | None = None,  # type: ignore
         distance_labels: Int["b n n"] | Int["b m m"] | None = None,  # type: ignore
         pde_labels: Int["b n n"] | Int["b m m"] | None = None,  # type: ignore
-        plddt_labels: Int["b n"] | Int["b m"] | None = None,  # type: ignore
         resolved_labels: Int["b n"] | Int["b m"] | None = None,  # type: ignore
         resolution: Float[" b"] | None = None,  # type: ignore
         return_loss_breakdown=False,
@@ -5603,7 +5609,6 @@ class Alphafold3(Module):
         :return: The atomic coordinates, the confidence head logits, the distogram head logits, the
             loss, or the loss breakdown.
         """
-        batch_size = atom_inputs.shape[0]
         atom_seq_len = atom_inputs.shape[-2]
 
         # validate atom and atompair input dimensions
@@ -5671,10 +5676,13 @@ class Alphafold3(Module):
         total_atoms = molecule_atom_lens.sum(dim=-1)
         atom_mask = lens_to_mask(total_atoms, max_len=atom_seq_len)
 
-        # handle offsets for molecule atom indices
+        # handle offsets for molecule and distogram atom indices
 
         if exists(molecule_atom_indices):
             molecule_atom_indices = molecule_atom_indices + exclusive_cumsum(molecule_atom_lens)
+
+        if exists(distogram_atom_indices):
+            distogram_atom_indices = distogram_atom_indices + exclusive_cumsum(molecule_atom_lens)
 
         # get atom sequence length and molecule sequence length depending on whether using packed atomic seq
 
@@ -5867,7 +5875,6 @@ class Alphafold3(Module):
         confidence_head_labels = (
             atom_indices_for_frame,
             pde_labels,
-            plddt_labels,
             resolved_labels,
         )
         all_labels = (distance_labels, *confidence_head_labels)
@@ -5994,10 +6001,12 @@ class Alphafold3(Module):
 
         # otherwise, noise and make it learn to denoise
 
+        batch_size = atom_inputs.shape[0]
         calc_diffusion_loss = exists(atom_pos)
 
         if calc_diffusion_loss:
             num_augs = self.num_augmentations + int(self.stochastic_frame_average)
+            batch_size *= num_augs
 
             # take care of augmentation
             # they did 48 during training, as the trunk did the heavy lifting
@@ -6007,6 +6016,7 @@ class Alphafold3(Module):
                     atom_pos,
                     atom_mask,
                     missing_atom_mask,
+                    valid_molecule_atom_mask,
                     atom_feats,
                     atom_parent_ids,
                     atompair_feats,
@@ -6024,15 +6034,14 @@ class Alphafold3(Module):
                     valid_atom_indices_for_frame,
                     atom_indices_for_frame,
                     molecule_atom_lens,
-                    pde_labels,
-                    plddt_labels,
-                    resolved_labels,
+                    resolution,
                 ) = tuple(
                     maybe(repeat)(t, "b ... -> (b a) ...", a=num_augs)
                     for t in (
                         atom_pos,
                         atom_mask,
                         missing_atom_mask,
+                        valid_molecule_atom_mask,
                         atom_feats,
                         atom_parent_ids,
                         atompair_feats,
@@ -6050,9 +6059,7 @@ class Alphafold3(Module):
                         valid_atom_indices_for_frame,
                         atom_indices_for_frame,
                         molecule_atom_lens,
-                        pde_labels,
-                        plddt_labels,
-                        resolved_labels,
+                        resolution,
                     )
                 )
 
@@ -6100,84 +6107,16 @@ class Alphafold3(Module):
                 return_denoised_pos=True,
             )
 
-        # determine pae labels if possible
-
-        pae_labels = None
-        ch_atom_res = self.confidence_head_atom_resolution
-
-        if atom_pos_given and exists(atom_indices_for_frame):
-            denoised_molecule_pos = None
-
-            if not ch_atom_res:
-                if not exists(molecule_pos):
-                    assert exists(
-                        distogram_atom_indices
-                    ), "`distogram_atom_indices` must be passed in for calculating non-atomic PAE labels"
-
-                    distogram_atom_indices = repeat(
-                        distogram_atom_indices, "b n -> b n c", c=distogram_pos.shape[-1]
-                    )
-                    molecule_pos = atom_pos.gather(1, distogram_atom_indices)
-
-                denoised_molecule_pos = denoised_atom_pos.gather(1, distogram_atom_indices)
-
-            # three_atoms = einx.get_at('b [m] c, b n three -> three b n c', atom_pos, atom_indices_for_frame)
-            # pred_three_atoms = einx.get_at('b [m] c, b n three -> three b n c', denoised_atom_pos, atom_indices_for_frame)
-
-            atom_indices_for_frame = repeat(
-                atom_indices_for_frame, "b n three -> three b n c", c=3
-            )
-            three_atom_pos = repeat(atom_pos, "b m c -> three b m c", three=3)
-            three_denoised_atom_pos = repeat(denoised_atom_pos, "b m c -> three b m c", three=3)
-
-            three_atoms = three_atom_pos.gather(2, atom_indices_for_frame)
-            pred_three_atoms = three_denoised_atom_pos.gather(2, atom_indices_for_frame)
-
-            # compute frames
-
-            frames, _ = self.rigid_from_three_points(three_atoms)
-            pred_frames, _ = self.rigid_from_three_points(pred_three_atoms)
-
-            # determine mask
-            # must be residue or nucleotide with greater than 0 atoms
-
-            align_error_mask = (
-                is_molecule_types[..., IS_BIOMOLECULE_INDICES].any(dim=-1)
-                & valid_atom_indices_for_frame
-            )
-
-            if ch_atom_res:
-                align_error_mask = batch_repeat_interleave(align_error_mask, molecule_atom_lens)
-
-            # align error
-
-            align_error = self.compute_alignment_error(
-                denoised_atom_pos if ch_atom_res else denoised_molecule_pos,
-                atom_pos if ch_atom_res else molecule_pos,
-                pred_frames,
-                frames,
-                mask=align_error_mask,
-                molecule_atom_lens=molecule_atom_lens,
-            )
-
-            # calculate pae labels as alignment error binned to 64 (0 - 32A)
-
-            pae_labels = distance_to_bins(align_error, self.pae_bins)
-
-            # set ignore index for invalid molecules or frames (todo: figure out what is meant by invalid frame)
-
-            pair_align_error_mask = to_pairwise_mask(align_error_mask)
-
-            pae_labels = einx.where(
-                "b i j, b i j, -> b i j", pair_align_error_mask, pae_labels, ignore
-            )
-
         # confidence head
 
         should_call_confidence_head = any([*map(exists, confidence_head_labels)])
-        return_pae_logits = exists(pae_labels)
 
-        if calc_diffusion_loss and should_call_confidence_head and exists(molecule_atom_indices):
+        if (
+            calc_diffusion_loss
+            and should_call_confidence_head
+            and exists(molecule_atom_indices)
+            and self.pdb_training_set
+        ):
             # rollout
 
             num_rollout_steps = default(num_rollout_steps, self.num_rollout_steps)
@@ -6196,6 +6135,130 @@ class Alphafold3(Module):
                 use_tqdm_pbar=rollout_show_tqdm_pbar,
                 tqdm_pbar_title="Training rollout",
             )
+
+            # determine pae labels if possible
+
+            pae_labels = None
+            ch_atom_res = self.confidence_head_atom_resolution
+
+            if atom_pos_given and exists(atom_indices_for_frame):
+                denoised_molecule_pos = None
+
+                if not ch_atom_res:
+                    if not exists(molecule_pos):
+                        assert exists(
+                            distogram_atom_indices
+                        ), "`distogram_atom_indices` must be passed in for calculating non-atomic PAE labels"
+
+                        distogram_atom_indices = repeat(
+                            distogram_atom_indices, "b n -> b n c", c=distogram_pos.shape[-1]
+                        )
+                        molecule_pos = atom_pos.gather(1, distogram_atom_indices)
+
+                    denoised_molecule_pos = denoised_atom_pos.gather(1, distogram_atom_indices)
+
+                # three_atoms = einx.get_at('b [m] c, b n three -> three b n c', atom_pos, atom_indices_for_frame)
+                # pred_three_atoms = einx.get_at('b [m] c, b n three -> three b n c', denoised_atom_pos, atom_indices_for_frame)
+
+                atom_indices_for_frame = repeat(
+                    atom_indices_for_frame, "b n three -> three b n c", c=3
+                )
+                three_atom_pos = repeat(atom_pos, "b m c -> three b m c", three=3)
+                three_denoised_atom_pos = repeat(
+                    denoised_atom_pos, "b m c -> three b m c", three=3
+                )
+
+                three_atoms = three_atom_pos.gather(2, atom_indices_for_frame)
+                pred_three_atoms = three_denoised_atom_pos.gather(2, atom_indices_for_frame)
+
+                # compute frames
+
+                frames, _ = self.rigid_from_three_points(three_atoms)
+                pred_frames, _ = self.rigid_from_three_points(pred_three_atoms)
+
+                # determine mask
+                # must be residue or nucleotide with greater than 0 atoms
+
+                align_error_mask = (
+                    is_molecule_types[..., IS_BIOMOLECULE_INDICES].any(dim=-1)
+                    & valid_atom_indices_for_frame
+                )
+
+                if ch_atom_res:
+                    align_error_mask = batch_repeat_interleave(
+                        align_error_mask, molecule_atom_lens
+                    )
+
+                # align error
+
+                align_error = self.compute_alignment_error(
+                    denoised_atom_pos if ch_atom_res else denoised_molecule_pos,
+                    atom_pos if ch_atom_res else molecule_pos,
+                    pred_frames,
+                    frames,
+                    mask=align_error_mask,
+                    molecule_atom_lens=molecule_atom_lens,
+                )
+
+                # calculate pae labels as alignment error binned to 64 (0 - 32A)
+
+                pae_labels = distance_to_bins(align_error, self.pae_bins)
+
+                # set ignore index for invalid molecules or frames (todo: figure out what is meant by invalid frame)
+
+                pair_align_error_mask = to_pairwise_mask(align_error_mask)
+
+                pae_labels = einx.where(
+                    "b i j, b i j, -> b i j", pair_align_error_mask, pae_labels, ignore
+                )
+
+            # determine pde labels if possible
+
+            if atom_pos_given and not exists(pde_labels):
+                denoised_molecule_pos = None
+
+                if not ch_atom_res:
+                    assert exists(
+                        molecule_atom_indices
+                    ), "`molecule_atom_indices` must be passed in for calculating non-atomic PDE labels"
+                    # molecule_pos = einx.get_at('b [m] c, b n -> b n c', atom_pos, molecule_atom_indices)
+
+                    mol_atom_indices = repeat(
+                        molecule_atom_indices, "b n -> b n c", c=atom_pos.shape[-1]
+                    )
+
+                    molecule_pos = atom_pos.gather(1, mol_atom_indices)
+                    denoised_molecule_pos = denoised_atom_pos.gather(1, mol_atom_indices)
+
+                    molecule_mask = valid_molecule_atom_mask
+                else:
+                    molecule_mask = atom_mask
+
+                pde_gt_dist = torch.cdist(molecule_pos, molecule_pos, p=2)
+                pde_pred_dist = torch.cdist(
+                    denoised_atom_pos if ch_atom_res else denoised_molecule_pos,
+                    denoised_atom_pos if ch_atom_res else denoised_molecule_pos,
+                    p=2,
+                )
+
+                # calculate pde labels as distance error binned to 64 (0 - 32A)
+
+                pde_dist = torch.abs(pde_pred_dist - pde_gt_dist)
+                pde_labels = distance_to_bins(pde_dist, self.pde_bins)
+
+                # account for representative molecule atom missing from residue (-1 set on molecule_atom_indices field)
+
+                molecule_mask = to_pairwise_mask(molecule_mask)
+                pde_labels.masked_fill_(~molecule_mask, ignore)
+
+            # determine pde labels if possible
+
+            plddt_labels = None
+
+            if atom_pos_given and not exists(plddt_labels):
+                pass
+
+            return_pae_logits = exists(pae_labels)
 
             ch_logits = self.confidence_head(
                 single_repr=single.detach(),
@@ -6221,8 +6284,7 @@ class Alphafold3(Module):
             # cross entropy losses
 
             confidence_mask = (
-                (resolution >= min_conf_resolution)
-                & (resolution <= max_conf_resolution) * self.pdb_training_set
+                (resolution >= min_conf_resolution) & (resolution <= max_conf_resolution)
                 if exists(resolution)
                 else torch.full((batch_size,), False, device=self.device)
             )
@@ -6234,8 +6296,8 @@ class Alphafold3(Module):
                 assert pae_labels.shape[-1] == ch_logits.pae.shape[-1]
                 pae_labels = torch.where(label_pairwise_mask, pae_labels, ignore)
                 pae_loss = F.cross_entropy(
-                    ch_logits.pae * confidence_weight,
-                    pae_labels * confidence_weight,
+                    ch_logits.pae * confidence_weight[..., None, None, None],
+                    pae_labels * confidence_weight[..., None, None].long(),
                     ignore_index=ignore,
                 )
 
@@ -6243,8 +6305,8 @@ class Alphafold3(Module):
                 assert pde_labels.shape[-1] == ch_logits.pde.shape[-1]
                 pde_labels = torch.where(label_pairwise_mask, pde_labels, ignore)
                 pde_loss = F.cross_entropy(
-                    ch_logits.pde * confidence_weight,
-                    pde_labels * confidence_weight,
+                    ch_logits.pde * confidence_weight[..., None, None, None],
+                    pde_labels * confidence_weight[..., None, None].long(),
                     ignore_index=ignore,
                 )
 
@@ -6252,8 +6314,8 @@ class Alphafold3(Module):
                 assert plddt_labels.shape[-1] == ch_logits.plddt.shape[-1]
                 plddt_labels = torch.where(label_mask, plddt_labels, ignore)
                 plddt_loss = F.cross_entropy(
-                    ch_logits.plddt * confidence_weight,
-                    plddt_labels * confidence_weight,
+                    ch_logits.plddt * confidence_weight[..., None, None],
+                    plddt_labels * confidence_weight[..., None, None].long(),
                     ignore_index=ignore,
                 )
 
@@ -6261,8 +6323,8 @@ class Alphafold3(Module):
                 assert resolved_labels.shape[-1] == ch_logits.resolved.shape[-1]
                 resolved_labels = torch.where(label_mask, resolved_labels, ignore)
                 resolved_loss = F.cross_entropy(
-                    ch_logits.resolved * confidence_weight,
-                    resolved_labels * confidence_weight,
+                    ch_logits.resolved * confidence_weight[..., None, None],
+                    resolved_labels * confidence_weight[..., None, None].long(),
                     ignore_index=ignore,
                 )
 

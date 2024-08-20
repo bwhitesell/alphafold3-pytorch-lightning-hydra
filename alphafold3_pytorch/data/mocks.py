@@ -22,12 +22,14 @@ class MockAtomDataset(Dataset):
         atoms_per_window: int = 4,
         dim_atom_inputs: int = 77,
         has_molecule_mods: bool = True,
+        confidence_head_atom_resolution: bool = True,
     ):
         self.data_length = data_length
         self.max_seq_len = max_seq_len
         self.atoms_per_window = atoms_per_window
         self.dim_atom_inputs = dim_atom_inputs
         self.has_molecule_mods = has_molecule_mods
+        self.confidence_head_atom_resolution = confidence_head_atom_resolution
 
     def __len__(self) -> int:
         """Return the length of the dataset."""
@@ -82,10 +84,10 @@ class MockAtomDataset(Dataset):
         molecule_atom_indices = molecule_atom_lens - 1
         distogram_atom_indices = molecule_atom_lens - 1
 
+        label_len = atom_seq_len if self.confidence_head_atom_resolution else seq_len
         distance_labels = torch.randint(0, 37, (seq_len, seq_len))
         pde_labels = torch.randint(0, 64, (seq_len, seq_len))
-        plddt_labels = torch.randint(0, 50, (seq_len,))
-        resolved_labels = torch.randint(0, 2, (seq_len,))
+        resolved_labels = torch.randint(0, 2, (label_len,))
 
         majority_asym_id = asym_id.mode().values.item()
         chains = torch.tensor([majority_asym_id, -1]).long()
@@ -109,7 +111,6 @@ class MockAtomDataset(Dataset):
             distogram_atom_indices=distogram_atom_indices,
             distance_labels=distance_labels,
             pde_labels=pde_labels,
-            plddt_labels=plddt_labels,
             resolved_labels=resolved_labels,
             chains=chains,
         )

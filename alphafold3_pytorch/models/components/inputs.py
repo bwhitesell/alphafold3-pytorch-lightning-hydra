@@ -200,8 +200,7 @@ class AtomInput:
     atom_indices_for_frame: Int["n 3"] | None = None  # type: ignore
     distance_labels: Int["n n"] | None = None  # type: ignore
     pde_labels: Int["n n"] | None = None  # type: ignore
-    plddt_labels: Int[" n"] | None = None  # type: ignore
-    resolved_labels: Int[" n"] | None = None  # type: ignore
+    resolved_labels: Int[" m"] | None = None  # type: ignore
     resolution: Float[""] | None = None  # type: ignore
     chains: Int[" 2"] | None = None  # type: ignore
     filepath: str | None = None
@@ -243,8 +242,7 @@ class BatchedAtomInput:
     atom_indices_for_frame: Int["b n 3"] | None = None  # type: ignore
     distance_labels: Int["b n n"] | None = None  # type: ignore
     pde_labels: Int["b n n"] | None = None  # type: ignore
-    plddt_labels: Int["b n"] | None = None  # type: ignore
-    resolved_labels: Int["b n"] | None = None  # type: ignore
+    resolved_labels: Int["b m"] | None = None  # type: ignore
     resolution: Float[" b"] | None = None  # type: ignore
     chains: Int["b 2"] | None = None  # type: ignore
     filepath: List[str] | None = None
@@ -496,8 +494,8 @@ class MoleculeInput:
     template_mask: Bool[" t"] | None = None  # type: ignore
     msa_mask: Bool[" s"] | None = None  # type: ignore
     distance_labels: Int["n n"] | None = None  # type: ignore
-    pde_labels: Int[" n"] | None = None  # type: ignore
-    resolved_labels: Int[" n"] | None = None  # type: ignore
+    pde_labels: Int["n n"] | None = None  # type: ignore
+    resolved_labels: Int[" m"] | None = None  # type: ignore
     resolution: Float[""] | None = None  # type: ignore
     chains: Tuple[int | None, int | None] | None = (None, None)
     filepath: str | None = None
@@ -798,6 +796,8 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
         atom_parent_ids=i.atom_parent_ids,
         atom_ids=atom_ids,
         atompair_ids=atompair_ids,
+        pde_labels=i.pde_labels,
+        resolved_labels=i.resolved_labels,
         resolution=i.resolution,
         chains=chains,
         filepath=i.filepath,
@@ -837,8 +837,8 @@ class MoleculeLengthMoleculeInput:
     template_mask: Bool[" t"] | None = None  # type: ignore
     msa_mask: Bool[" s"] | None = None  # type: ignore
     distance_labels: Int["n n"] | None = None  # type: ignore
-    pde_labels: Int[" n"] | None = None  # type: ignore
-    resolved_labels: Int[" n"] | None = None  # type: ignore
+    pde_labels: Int["n n"] | None = None  # type: ignore
+    resolved_labels: Int[" m"] | None = None  # type: ignore
     chains: Tuple[int | None, int | None] | None = (None, None)
     filepath: str | None = None
     add_atom_ids: bool = False
@@ -1269,6 +1269,8 @@ def molecule_lengthed_molecule_input_to_atom_input(
         atom_parent_ids=i.atom_parent_ids,
         atom_ids=atom_ids,
         atompair_ids=atompair_ids,
+        pde_labels=i.pde_labels,
+        resolved_labels=i.resolved_labels,
         chains=chains,
         filepath=i.filepath,
     )
@@ -1303,8 +1305,8 @@ class Alphafold3Input:
     template_mask: Bool[" t"] | None = None  # type: ignore
     msa_mask: Bool[" s"] | None = None  # type: ignore
     distance_labels: Int["n n"] | None = None  # type: ignore
-    pde_labels: Int[" n"] | None = None  # type: ignore
-    resolved_labels: Int[" n"] | None = None  # type: ignore
+    pde_labels: Int["n n"] | None = None  # type: ignore
+    resolved_labels: Int[" m"] | None = None  # type: ignore
     chains: Tuple[int | None, int | None] | None = (None, None)
     add_atom_ids: bool = False
     add_atompair_ids: bool = False
@@ -2486,7 +2488,8 @@ def pdb_input_to_molecule_input(
             is_molecule_mod.append(is_mol_mod_type)
             molecule_idx += 1
 
-    # collect token center, distogram, and source-target atom indices for each token
+    # collect frame, token center, distogram, and source-target atom indices for each token
+    atom_indices_for_frame = []
     molecule_atom_indices = []
     distogram_atom_indices = []
     src_tgt_atom_indices = []
@@ -2508,11 +2511,13 @@ def pdb_input_to_molecule_input(
 
         if is_atomized_residue(mol_type):
             # collect indices for each ligand and modified polymer residue token (i.e., atom)
+            atom_indices_for_frame.append(None)
             molecule_atom_indices.append(-1)
             distogram_atom_indices.append(-1)
             # NOTE: ligand and modified polymer residue tokens do not have source-target atom indices
         else:
             # collect indices for each polymer residue token
+            atom_indices_for_frame.append(entry["three_atom_indices_for_frame"])
             molecule_atom_indices.append(entry["token_center_atom_idx"])
             distogram_atom_indices.append(entry["distogram_atom_idx"])
             src_tgt_atom_indices.append([entry["first_atom_idx"], entry["last_atom_idx"]])
@@ -2795,6 +2800,7 @@ def pdb_input_to_molecule_input(
         is_molecule_mod=tensor(is_molecule_mod),
         molecule_atom_indices=molecule_atom_indices,
         distogram_atom_indices=distogram_atom_indices,
+        atom_indices_for_frame=atom_indices_for_frame,
         missing_atom_indices=missing_atom_indices,
         missing_token_indices=missing_token_indices,
         atom_parent_ids=atom_parent_ids,
@@ -2804,6 +2810,7 @@ def pdb_input_to_molecule_input(
         atom_pos=atom_pos,
         template_mask=template_mask,
         msa_mask=msa_mask,
+        resolved_labels=None,  # TODO: resolve labels
         resolution=tensor(resolution),
         chains=chains,
         filepath=filepath,

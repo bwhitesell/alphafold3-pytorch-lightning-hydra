@@ -40,7 +40,7 @@ def distance_to_bins(
     distance: Float["... dist"],  # type: ignore
     bins: Float[" bins"],  # type: ignore
 ) -> Int["... dist"]:  # type: ignore
-    """Convert from distance to discrete bins, for distance_labels and pae_labels.
+    """Convert from distance to discrete bins, for distance_labels, pae_labels, and pde_labels.
 
     :param distance: The distance tensor.
     :param bins: The bins tensor.
