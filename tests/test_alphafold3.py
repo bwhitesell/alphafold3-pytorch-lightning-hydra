@@ -326,8 +326,9 @@ def test_sequence_local_attn():
 def test_diffusion_module(karras_formulation):
     """Test the diffusion module."""
     seq_len = 16
-    molecule_atom_lens = torch.randint(1, 3, (2, seq_len))
-    atom_seq_len = molecule_atom_lens.sum(dim=-1).amax()
+    atom_seq_len = 32
+
+    molecule_atom_lens = torch.full((2, seq_len), 2).long()
 
     noised_atom_pos = torch.randn(2, atom_seq_len, 3)
     atom_feats = torch.randn(2, atom_seq_len, 128)
@@ -444,17 +445,18 @@ def test_template_embed(checkpoint):
 def test_confidence_head():
     """Test the confidence head."""
     seq_len = 16
+    atom_seq_len = 32
+
+    molecule_atom_indices = torch.randint(0, 2, (2, seq_len)).long()
+    molecule_atom_lens = torch.full((2, seq_len), 2).long()
+
     single_inputs_repr = torch.randn(2, seq_len, 77)
     single_repr = torch.randn(2, seq_len, 384)
     pairwise_repr = torch.randn(2, seq_len, seq_len, 128)
     mask = torch.ones((2, seq_len)).bool()
 
-    atom_seq_len = 32
     atom_feats = torch.randn(2, atom_seq_len, 64)
     pred_atom_pos = torch.randn(2, atom_seq_len, 3)
-
-    molecule_atom_indices = torch.randint(0, atom_seq_len, (2, seq_len)).long()
-    molecule_atom_lens = torch.full((2, seq_len), 2).long()
 
     confidence_head = ConfidenceHead(
         dim_single_inputs=77,
@@ -538,7 +540,7 @@ def test_alphafold3(
     atom_seq_len = 32
     atoms_per_window = 27
 
-    molecule_atom_indices = torch.randint(0, atom_seq_len, (2, seq_len)).long()
+    molecule_atom_indices = torch.randint(0, 2, (2, seq_len)).long()
     molecule_atom_lens = torch.full((2, seq_len), 2).long()
 
     token_bonds = torch.randint(0, 2, (2, seq_len, seq_len)).bool()
@@ -665,8 +667,10 @@ def test_alphafold3(
 def test_alphafold3_without_msa_and_templates():
     """Test the AlphaFold 3 model without MSA and templates."""
     seq_len = 16
-    molecule_atom_lens = torch.randint(1, 3, (2, seq_len))
-    atom_seq_len = molecule_atom_lens.sum(dim=-1).amax()
+    atom_seq_len = 32
+
+    molecule_atom_indices = torch.randint(0, 2, (2, seq_len)).long()
+    molecule_atom_lens = torch.full((2, seq_len), 2).long()
 
     atom_inputs = torch.randn(2, atom_seq_len, 77)
     atompair_inputs = torch.randn(2, atom_seq_len, atom_seq_len, 5)
@@ -677,7 +681,6 @@ def test_alphafold3_without_msa_and_templates():
 
     atom_pos = torch.randn(2, atom_seq_len, 3)
     distogram_atom_indices = molecule_atom_lens - 1
-    molecule_atom_indices = molecule_atom_lens - 1
 
     resolved_labels = torch.randint(0, 2, (2, atom_seq_len))
 
@@ -730,8 +733,10 @@ def test_alphafold3_without_msa_and_templates():
 def test_alphafold3_force_return_loss():
     """Test the AlphaFold 3 model with forced loss returning."""
     seq_len = 16
-    molecule_atom_lens = torch.randint(1, 3, (2, seq_len))
-    atom_seq_len = molecule_atom_lens.sum(dim=-1).amax()
+    atom_seq_len = 32
+
+    molecule_atom_indices = torch.randint(0, 2, (2, seq_len)).long()
+    molecule_atom_lens = torch.full((2, seq_len), 2).long()
 
     atom_inputs = torch.randn(2, atom_seq_len, 77)
     atompair_inputs = torch.randn(2, atom_seq_len, atom_seq_len, 5)
@@ -742,7 +747,6 @@ def test_alphafold3_force_return_loss():
 
     atom_pos = torch.randn(2, atom_seq_len, 3)
     distogram_atom_indices = molecule_atom_lens - 1
-    molecule_atom_indices = molecule_atom_lens - 1
 
     resolved_labels = torch.randint(0, 2, (2, atom_seq_len))
 
@@ -801,8 +805,10 @@ def test_alphafold3_force_return_loss():
 def test_alphafold3_force_return_loss_with_confidence_logits():
     """Test the AlphaFold 3 model with forced returning of losses and confidence logits."""
     seq_len = 16
-    molecule_atom_lens = torch.randint(1, 3, (2, seq_len))
-    atom_seq_len = molecule_atom_lens.sum(dim=-1).amax()
+    atom_seq_len = 32
+
+    molecule_atom_indices = torch.randint(0, 2, (2, seq_len)).long()
+    molecule_atom_lens = torch.full((2, seq_len), 2).long()
 
     atom_inputs = torch.randn(2, atom_seq_len, 77)
     atompair_inputs = torch.randn(2, atom_seq_len, atom_seq_len, 5)
@@ -813,7 +819,6 @@ def test_alphafold3_force_return_loss_with_confidence_logits():
 
     atom_pos = torch.randn(2, atom_seq_len, 3)
     distogram_atom_indices = molecule_atom_lens - 1
-    molecule_atom_indices = molecule_atom_lens - 1
 
     resolved_labels = torch.randint(0, 2, (2, atom_seq_len))
 
@@ -867,9 +872,10 @@ def test_alphafold3_with_atom_and_bond_embeddings():
     # mock inputs
 
     seq_len = 16
+    atom_seq_len = 32
 
-    molecule_atom_lens = torch.randint(1, 3, (2, seq_len))
-    atom_seq_len = molecule_atom_lens.sum(dim=-1).amax()
+    molecule_atom_indices = torch.randint(0, 2, (2, seq_len)).long()
+    molecule_atom_lens = torch.full((2, seq_len), 2).long()
 
     atom_ids = torch.randint(0, 7, (2, atom_seq_len))
     atompair_ids = torch.randint(0, 3, (2, atom_seq_len, atom_seq_len))
@@ -892,7 +898,6 @@ def test_alphafold3_with_atom_and_bond_embeddings():
 
     atom_pos = torch.randn(2, atom_seq_len, 3)
     distogram_atom_indices = molecule_atom_lens - 1  # last atom, as an example
-    molecule_atom_indices = molecule_atom_lens - 1
 
     resolved_labels = torch.randint(0, 2, (2, atom_seq_len))
 
@@ -959,8 +964,10 @@ def test_compute_ranking_score():
 
     batch_size = 2
     seq_len = 16
-    molecule_atom_lens = torch.randint(1, 3, (batch_size, seq_len))
-    atom_seq_len = molecule_atom_lens.sum(dim=-1).amax()
+    atom_seq_len = 32
+
+    molecule_atom_lens = torch.full((2, seq_len), 2).long()
+
     is_molecule_types = torch.randint(0, 2, (batch_size, seq_len, 5)).bool()
     atom_pos = torch.randn(batch_size, atom_seq_len, 3) * 5
     atom_mask = torch.randint(0, 2, (atom_pos.shape[:-1])).type_as(atom_pos).bool()
@@ -1049,8 +1056,9 @@ def test_model_selection_score():
 
     batch_size = 2
     seq_len = 16
-    molecule_atom_lens = torch.randint(1, 3, (batch_size, seq_len))
-    atom_seq_len = molecule_atom_lens.sum(dim=-1).amax()
+    atom_seq_len = 32
+
+    molecule_atom_lens = torch.full((2, seq_len), 2).long()
 
     atom_pos_true = torch.randn(batch_size, atom_seq_len, 3) * 5
     atom_pos_pred = torch.randn(batch_size, atom_seq_len, 3) * 5
