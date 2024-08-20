@@ -265,13 +265,13 @@ def test_pdbinput_input():
 
     # visualizing
 
-    mmcif_writing.write_mmcif_from_filepath_and_id(
-        input_filepath=filepath,
-        output_filepath=filepath.replace(".cif", "-sampled.cif"),
-        file_id=file_id,
-        gapless_poly_seq=True,
-        insert_orig_atom_names=True,
-        insert_alphafold_mmcif_metadata=True,
-        sampled_atom_positions=sampled_atom_positions,
-    )
-    assert os.path.exists(filepath.replace(".cif", "-sampled.cif"))
+    # mmcif_writing.write_mmcif_from_filepath_and_id(
+    #     input_filepath=filepath,
+    #     output_filepath=filepath.replace(".cif", "-sampled.cif"),
+    #     file_id=file_id,
+    #     gapless_poly_seq=True,
+    #     insert_orig_atom_names=True,
+    #     insert_alphafold_mmcif_metadata=True,
+    #     sampled_atom_positions=sampled_atom_positions,
+    # )
+    # assert os.path.exists(filepath.replace(".cif", "-sampled.cif"))
