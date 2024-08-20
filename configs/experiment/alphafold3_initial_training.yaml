@@ -32,6 +32,7 @@ model:
   net:
     dim_atom_inputs: 3
     dim_template_feats: 44
+    confidence_head_atom_resolution: true
     pdb_training_set: true
   # training parameters
   compile: false

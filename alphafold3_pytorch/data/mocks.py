@@ -22,7 +22,7 @@ class MockAtomDataset(Dataset):
         atoms_per_window: int = 4,
         dim_atom_inputs: int = 77,
         has_molecule_mods: bool = True,
-        confidence_head_atom_resolution: bool = True,
+        confidence_head_atom_resolution: bool = False,
     ):
         self.data_length = data_length
         self.max_seq_len = max_seq_len
