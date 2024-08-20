@@ -6205,7 +6205,7 @@ class Alphafold3(Module):
                 molecule_mask = to_pairwise_mask(molecule_mask)
                 pde_labels.masked_fill_(~molecule_mask, ignore)
 
-            # determine pde labels if possible
+            # TODO: determine pde labels if possible
 
             plddt_labels = None
 
