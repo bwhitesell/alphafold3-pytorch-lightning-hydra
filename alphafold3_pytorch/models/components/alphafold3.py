@@ -6297,7 +6297,10 @@ class Alphafold3(Module):
             confidence_weight = torch.where(confidence_mask, confidence_weight, 0.0)
 
             if exists(pae_labels):
-                assert pae_labels.shape[-1] == ch_logits.pae.shape[-1]
+                assert pae_labels.shape[-1] == ch_logits.pae.shape[-1], (
+                    f"pae_labels shape {pae_labels.shape[-1]} does not match "
+                    f"ch_logits.pae shape {ch_logits.pae.shape[-1]}"
+                )
                 pae_labels = torch.where(label_pairwise_mask, pae_labels, ignore)
                 pae_loss = F.cross_entropy(
                     ch_logits.pae * confidence_weight[..., None, None, None],
@@ -6306,7 +6309,10 @@ class Alphafold3(Module):
                 )
 
             if exists(pde_labels):
-                assert pde_labels.shape[-1] == ch_logits.pde.shape[-1]
+                assert pde_labels.shape[-1] == ch_logits.pde.shape[-1], (
+                    f"pde_labels shape {pde_labels.shape[-1]} does not match "
+                    f"ch_logits.pde shape {ch_logits.pde.shape[-1]}"
+                )
                 pde_labels = torch.where(label_pairwise_mask, pde_labels, ignore)
                 pde_loss = F.cross_entropy(
                     ch_logits.pde * confidence_weight[..., None, None, None],
@@ -6315,7 +6321,10 @@ class Alphafold3(Module):
                 )
 
             if exists(plddt_labels):
-                assert plddt_labels.shape[-1] == ch_logits.plddt.shape[-1]
+                assert plddt_labels.shape[-1] == ch_logits.plddt.shape[-1], (
+                    f"plddt_labels shape {plddt_labels.shape[-1]} does not match "
+                    f"ch_logits.plddt shape {ch_logits.plddt.shape[-1]}"
+                )
                 plddt_labels = torch.where(label_mask, plddt_labels, ignore)
                 plddt_loss = F.cross_entropy(
                     ch_logits.plddt * confidence_weight[..., None, None],
@@ -6324,7 +6333,10 @@ class Alphafold3(Module):
                 )
 
             if exists(resolved_labels):
-                assert resolved_labels.shape[-1] == ch_logits.resolved.shape[-1]
+                assert resolved_labels.shape[-1] == ch_logits.resolved.shape[-1], (
+                    f"resolved_labels shape {resolved_labels.shape[-1]} does not match "
+                    f"ch_logits.resolved shape {ch_logits.resolved.shape[-1]}"
+                )
                 resolved_labels = torch.where(label_mask, resolved_labels, ignore)
                 resolved_loss = F.cross_entropy(
                     ch_logits.resolved * confidence_weight[..., None, None],
