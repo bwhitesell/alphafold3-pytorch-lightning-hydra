@@ -6034,6 +6034,8 @@ class Alphafold3(Module):
                     valid_atom_indices_for_frame,
                     atom_indices_for_frame,
                     molecule_atom_lens,
+                    pde_labels,
+                    resolved_labels,
                     resolution,
                 ) = tuple(
                     maybe(repeat)(t, "b ... -> (b a) ...", a=num_augs)
@@ -6059,6 +6061,8 @@ class Alphafold3(Module):
                         valid_atom_indices_for_frame,
                         atom_indices_for_frame,
                         molecule_atom_lens,
+                        pde_labels,
+                        resolved_labels,
                         resolution,
                     )
                 )
