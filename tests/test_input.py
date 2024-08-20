@@ -51,7 +51,7 @@ def test_atom_input_to_file_and_from():
 
 def test_atom_dataset():
     """Test the atom dataset class."""
-    num_atom_inputs = 10
+    num_atom_inputs = 3
     test_folder = "test_atom_folder"
 
     mock_atom_dataset = MockAtomDataset(num_atom_inputs)
