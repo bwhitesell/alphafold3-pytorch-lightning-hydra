@@ -54,7 +54,6 @@ class AtomDataModule(LightningDataModule):
         train_val_test_split: Tuple[int, int, int] | None = (2, 2, 2),
         atoms_per_window: int | None = None,
         map_dataset_input_fn: Optional[Callable] = None,
-        confidence_head_atom_resolution: bool = False,
         batch_size: int = 256,
         num_workers: int = 0,
         pin_memory: bool = False,
@@ -113,17 +112,14 @@ class AtomDataModule(LightningDataModule):
             self.data_train = MockAtomDataset(
                 data_length=self.hparams.train_val_test_split[0],
                 dim_atom_inputs=3,
-                confidence_head_atom_resolution=self.hparams.confidence_head_atom_resolution,
             )
             self.data_val = MockAtomDataset(
                 data_length=self.hparams.train_val_test_split[1],
                 dim_atom_inputs=3,
-                confidence_head_atom_resolution=self.hparams.confidence_head_atom_resolution,
             )
             self.data_test = MockAtomDataset(
                 data_length=self.hparams.train_val_test_split[2],
                 dim_atom_inputs=3,
-                confidence_head_atom_resolution=self.hparams.confidence_head_atom_resolution,
             )
 
     def train_dataloader(self) -> DataLoader[Any]:

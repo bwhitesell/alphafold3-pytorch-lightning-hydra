@@ -220,26 +220,6 @@ def test_compute_alignment_error():
     assert (alignment_errors.mean(-1) < 1e-3).all()
 
 
-def test_compute_alignment_error_atom_resolution():
-    """Test the function to compute alignment error with atom resolution."""
-    seq_len = 100
-    molecule_atom_lens = torch.randint(1, 3, (2, seq_len))
-    atom_seq_len = molecule_atom_lens.sum(dim=-1).amax()
-
-    pred_coords = torch.randn(2, atom_seq_len, 3)
-    pred_frames = torch.randn(2, seq_len, 3, 3)
-
-    # NOTE: `pred_coords` should match itself in frame basis
-
-    error_fn = ComputeAlignmentError()
-    alignment_errors = error_fn(
-        pred_coords, pred_coords, pred_frames, pred_frames, molecule_atom_lens=molecule_atom_lens
-    )
-
-    assert alignment_errors.shape == (2, atom_seq_len, atom_seq_len)
-    assert (alignment_errors.mean(-1) < 1e-3).all()
-
-
 def test_centre_random_augmentation():
     """Test the function to centre random augmentation."""
     coords = torch.randn(2, 100, 3)
@@ -463,45 +443,21 @@ def test_template_embed(checkpoint):
 
 def test_confidence_head():
     """Test the confidence head."""
-    single_inputs_repr = torch.randn(2, 16, 77)
-    single_repr = torch.randn(2, 16, 384)
-    pairwise_repr = torch.randn(2, 16, 16, 128)
-    pred_atom_pos = torch.randn(2, 16, 3)
-    mask = torch.ones((2, 16)).bool()
-
-    confidence_head = ConfidenceHead(
-        dim_single_inputs=77,
-        atompair_dist_bins=torch.linspace(3, 20, 37).tolist(),
-        dim_single=384,
-        dim_pairwise=128,
-    )
-
-    confidence_head(
-        single_inputs_repr=single_inputs_repr,
-        single_repr=single_repr,
-        pairwise_repr=pairwise_repr,
-        pred_atom_pos=pred_atom_pos,
-        mask=mask,
-    )
-
-
-def test_atom_resolution_confidence_head():
-    """Test the atomic resolution confidence head."""
-    single_inputs_repr = torch.randn(2, 16, 77)
-    single_repr = torch.randn(2, 16, 384)
-    pairwise_repr = torch.randn(2, 16, 16, 128)
-    mask = torch.ones((2, 16)).bool()
+    seq_len = 16
+    single_inputs_repr = torch.randn(2, seq_len, 77)
+    single_repr = torch.randn(2, seq_len, 384)
+    pairwise_repr = torch.randn(2, seq_len, seq_len, 128)
+    mask = torch.ones((2, seq_len)).bool()
 
     atom_seq_len = 32
     atom_feats = torch.randn(2, atom_seq_len, 64)
     pred_atom_pos = torch.randn(2, atom_seq_len, 3)
 
-    molecule_atom_indices = torch.randint(0, atom_seq_len, (2, 16)).long()
-    molecule_atom_lens = torch.full((2, 16), 2).long()
+    molecule_atom_indices = torch.randint(0, atom_seq_len, (2, seq_len)).long()
+    molecule_atom_lens = torch.full((2, seq_len), 2).long()
 
     confidence_head = ConfidenceHead(
         dim_single_inputs=77,
-        atom_resolution=True,
         dim_atom=64,
         atompair_dist_bins=torch.linspace(3, 20, 37).tolist(),
         dim_single=384,
@@ -511,15 +467,19 @@ def test_atom_resolution_confidence_head():
     logits = confidence_head(
         single_inputs_repr=single_inputs_repr,
         single_repr=single_repr,
+        pairwise_repr=pairwise_repr,
+        pred_atom_pos=pred_atom_pos,
         atom_feats=atom_feats,
         molecule_atom_indices=molecule_atom_indices,
         molecule_atom_lens=molecule_atom_lens,
-        pairwise_repr=pairwise_repr,
-        pred_atom_pos=pred_atom_pos,
         mask=mask,
     )
 
-    assert logits.pde.shape[-1] == atom_seq_len
+    assert logits.pae.shape[-1] == seq_len
+    assert logits.pde.shape[-1] == seq_len
+
+    assert logits.plddt.shape[-1] == atom_seq_len
+    assert logits.resolved.shape[-1] == atom_seq_len
 
 
 def test_input_embedder():
@@ -563,7 +523,6 @@ def test_distogram_head():
 @pytest.mark.parametrize("calculate_pae", (True, False))
 @pytest.mark.parametrize("atom_transformer_intramolecular_attn", (True, False))
 @pytest.mark.parametrize("num_molecule_mods", (0, 4))
-@pytest.mark.parametrize("confidence_head_atom_resolution", (True, False))
 @pytest.mark.parametrize("distogram_atom_resolution", (True, False))
 def test_alphafold3(
     window_atompair_inputs: bool,
@@ -572,7 +531,6 @@ def test_alphafold3(
     calculate_pae: bool,
     atom_transformer_intramolecular_attn: bool,
     num_molecule_mods: int,
-    confidence_head_atom_resolution: bool,
     distogram_atom_resolution: bool,
 ):
     """Test the AlphaFold 3 model."""
@@ -624,8 +582,7 @@ def test_alphafold3(
     distogram_atom_indices = molecule_atom_lens - 1
     molecule_atom_indices = molecule_atom_lens - 1
 
-    label_len = atom_seq_len if confidence_head_atom_resolution else seq_len
-    resolved_labels = torch.randint(0, 2, (2, label_len))
+    resolved_labels = torch.randint(0, 2, (2, atom_seq_len))
 
     alphafold3 = Alphafold3(
         dim_atom_inputs=77,
@@ -655,7 +612,6 @@ def test_alphafold3(
             atom_encoder_kwargs=dict(attn_pair_bias_kwargs=dict(dim_head=4)),
         ),
         stochastic_frame_average=stochastic_frame_average,
-        confidence_head_atom_resolution=confidence_head_atom_resolution,
         distogram_atom_resolution=distogram_atom_resolution,
     )
 
@@ -723,7 +679,6 @@ def test_alphafold3_without_msa_and_templates():
     distogram_atom_indices = molecule_atom_lens - 1
     molecule_atom_indices = molecule_atom_lens - 1
 
-    distance_labels = torch.randint(0, 38, (2, seq_len, seq_len))
     resolved_labels = torch.randint(0, 2, (2, atom_seq_len))
 
     alphafold3 = Alphafold3(
@@ -765,7 +720,6 @@ def test_alphafold3_without_msa_and_templates():
         atom_pos=atom_pos,
         distogram_atom_indices=distogram_atom_indices,
         molecule_atom_indices=molecule_atom_indices,
-        distance_labels=distance_labels,
         resolved_labels=resolved_labels,
         return_loss_breakdown=True,
     )
@@ -790,7 +744,6 @@ def test_alphafold3_force_return_loss():
     distogram_atom_indices = molecule_atom_lens - 1
     molecule_atom_indices = molecule_atom_lens - 1
 
-    distance_labels = torch.randint(0, 38, (2, seq_len, seq_len))
     resolved_labels = torch.randint(0, 2, (2, atom_seq_len))
 
     alphafold3 = Alphafold3(
@@ -821,7 +774,6 @@ def test_alphafold3_force_return_loss():
         atom_pos=atom_pos,
         distogram_atom_indices=distogram_atom_indices,
         molecule_atom_indices=molecule_atom_indices,
-        distance_labels=distance_labels,
         resolved_labels=resolved_labels,
         return_loss_breakdown=True,
         return_loss=False,  # force sampling even if labels are given
@@ -863,7 +815,6 @@ def test_alphafold3_force_return_loss_with_confidence_logits():
     distogram_atom_indices = molecule_atom_lens - 1
     molecule_atom_indices = molecule_atom_lens - 1
 
-    distance_labels = torch.randint(0, 38, (2, seq_len, seq_len))
     resolved_labels = torch.randint(0, 2, (2, atom_seq_len))
 
     alphafold3 = Alphafold3(
@@ -894,7 +845,6 @@ def test_alphafold3_force_return_loss_with_confidence_logits():
         atom_pos=atom_pos,
         distogram_atom_indices=distogram_atom_indices,
         molecule_atom_indices=molecule_atom_indices,
-        distance_labels=distance_labels,
         resolved_labels=resolved_labels,
         return_loss_breakdown=True,
         return_loss=False,  # force sampling even if labels are given
@@ -944,7 +894,6 @@ def test_alphafold3_with_atom_and_bond_embeddings():
     distogram_atom_indices = molecule_atom_lens - 1  # last atom, as an example
     molecule_atom_indices = molecule_atom_lens - 1
 
-    distance_labels = torch.randint(0, 37, (2, seq_len, seq_len))
     resolved_labels = torch.randint(0, 2, (2, atom_seq_len))
 
     # train
@@ -967,7 +916,6 @@ def test_alphafold3_with_atom_and_bond_embeddings():
         atom_pos=atom_pos,
         distogram_atom_indices=distogram_atom_indices,
         molecule_atom_indices=molecule_atom_indices,
-        distance_labels=distance_labels,
         resolved_labels=resolved_labels,
     )
 

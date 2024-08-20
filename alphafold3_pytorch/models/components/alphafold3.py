@@ -3611,10 +3611,10 @@ class DistogramHead(Module):
 class ConfidenceHeadLogits(NamedTuple):
     """The ConfidenceHeadLogits class."""
 
-    pae: Float["b pae n n"] | Float["b pae m m"] | None  # type: ignore
-    pde: Float["b pde n n"] | Float["b pde m m"]  # type: ignore
-    plddt: Float["b plddt n"] | Float["b plddt m"]  # type: ignore
-    resolved: Float["b 2 n"] | Float["b 2 m"]  # type: ignore
+    pae: Float["b pae n n"] | None  # type: ignore
+    pde: Float["b pde n n"]  # type: ignore
+    plddt: Float["b plddt m"]  # type: ignore
+    resolved: Float["b 2 m"]  # type: ignore
 
 
 class ConfidenceHead(Module):
@@ -3625,7 +3625,6 @@ class ConfidenceHead(Module):
         self,
         *,
         dim_single_inputs,
-        atom_resolution=False,  # @amorehead discovers that the public api has per-atom resolution confidences. improvise a solution
         dim_atom=128,
         atompair_dist_bins: List[float],
         dim_single=384,
@@ -3679,13 +3678,8 @@ class ConfidenceHead(Module):
         )
 
         # atom resolution
-        # for now, just embed per atom distances, sum to atom features, project to pairwise dimension
 
-        self.atom_resolution = atom_resolution
-
-        if atom_resolution:
-            self.atom_feats_to_single = LinearNoBias(dim_atom, dim_single)
-            self.atom_feats_to_pairwise = LinearNoBiasThenOuterSum(dim_atom, dim_pairwise)
+        self.atom_feats_to_single = LinearNoBias(dim_atom, dim_single)
 
         # tensor typing
 
@@ -3698,12 +3692,12 @@ class ConfidenceHead(Module):
         single_inputs_repr: Float["b n dsi"],  # type: ignore
         single_repr: Float["b n ds"],  # type: ignore
         pairwise_repr: Float["b n n dp"],  # type: ignore
-        pred_atom_pos: Float["b n 3"] | Float["b m 3"],  # type: ignore
-        molecule_atom_indices: Int["b n"] | None = None,  # type: ignore
-        molecule_atom_lens: Int["b n"] | None = None,  # type: ignore
+        pred_atom_pos: Float["b m 3"],  # type: ignore
+        atom_feats: Float["b m {self.da}"],  # type: ignore
+        molecule_atom_indices: Int["b n"],  # type: ignore
+        molecule_atom_lens: Int["b n"],  # type: ignore
         mask: Bool["b n"] | None = None,  # type: ignore
-        atom_feats: Float["b m {self.da}"] | None = None,  # type: ignore
-        return_pae_logits=True,
+        return_pae_logits: bool = True,
     ) -> ConfidenceHeadLogits:
         """Compute the confidence head logits.
 
@@ -3711,41 +3705,24 @@ class ConfidenceHead(Module):
         :param single_repr: The single representation tensor.
         :param pairwise_repr: The pairwise representation tensor.
         :param pred_atom_pos: The predicted atom positions tensor.
+        :param atom_feats: The atom features tensor.
         :param molecule_atom_indices: The molecule atom indices tensor.
         :param molecule_atom_lens: The molecule atom lengths tensor.
         :param mask: The mask tensor.
-        :param atom_feats: The atom features tensor.
         :param return_pae_logits: Whether to return the predicted aligned error (PAE) logits.
         :return: The confidence head logits.
         """
 
         pairwise_repr = pairwise_repr + self.single_inputs_to_pairwise(single_inputs_repr)
 
-        # pluck out the representative atoms for non-atomic resolution confidence head
+        # pluck out the representative atoms for non-atomic resolution confidence head outputs
 
-        is_atom_seq = pred_atom_pos.shape[-2] > single_inputs_repr.shape[-2]
+        # pred_molecule_pos = einx.get_at('b [m] c, b n -> b n c', pred_atom_pos, molecule_atom_indices)
 
-        # handle atom resolution vs not
-
-        if self.atom_resolution:
-            assert exists(
-                atom_feats
-            ), "atom_feats must be passed in if atom_resolution is turned on for ConfidenceHead"
-            assert is_atom_seq, "`pred_atom_pos` must be passed in with atomic length"
-            assert exists(molecule_atom_lens)
-
-        if is_atom_seq:
-            assert exists(
-                molecule_atom_indices
-            ), "molecule_atom_indices must be passed into ConfidenceHead if pred_atom_pos is atomic length"
-            # pred_molecule_pos = einx.get_at('b [m] c, b n -> b n c', pred_atom_pos, molecule_atom_indices)
-
-            molecule_atom_indices = repeat(
-                molecule_atom_indices, "b n -> b n c", c=pred_atom_pos.shape[-1]
-            )
-            pred_molecule_pos = pred_atom_pos.gather(1, molecule_atom_indices)
-        else:
-            pred_molecule_pos = pred_atom_pos
+        molecule_atom_indices = repeat(
+            molecule_atom_indices, "b n -> b n c", c=pred_atom_pos.shape[-1]
+        )
+        pred_molecule_pos = pred_atom_pos.gather(1, molecule_atom_indices)
 
         # interatomic distances - embed and add to pairwise
 
@@ -3760,28 +3737,18 @@ class ConfidenceHead(Module):
             single_repr=single_repr, pairwise_repr=pairwise_repr, mask=mask
         )
 
-        # handle maybe atom level resolution
+        # handle atom level resolution
 
-        if self.atom_resolution:
-            single_repr = batch_repeat_interleave(single_repr, molecule_atom_lens)
+        atom_single_repr = batch_repeat_interleave(single_repr, molecule_atom_lens)
 
-            pairwise_repr = batch_repeat_interleave_pairwise(pairwise_repr, molecule_atom_lens)
-
-            interatomic_dist = torch.cdist(pred_atom_pos, pred_atom_pos, p=2)
-
-            dist_bin_indices = distance_to_bins(interatomic_dist, self.atompair_dist_bins)
-
-            pairwise_repr = pairwise_repr + self.dist_bin_pairwise_embed(dist_bin_indices)
-
-            single_repr = single_repr + self.atom_feats_to_single(atom_feats)
-            pairwise_repr = pairwise_repr + self.atom_feats_to_pairwise(atom_feats)
+        atom_single_repr = atom_single_repr + self.atom_feats_to_single(atom_feats)
 
         # to logits
 
         pde_logits = self.to_pde_logits(symmetrize(pairwise_repr))
 
-        plddt_logits = self.to_plddt_logits(single_repr)
-        resolved_logits = self.to_resolved_logits(single_repr)
+        plddt_logits = self.to_plddt_logits(atom_single_repr)
+        resolved_logits = self.to_resolved_logits(atom_single_repr)
 
         # they only incorporate pae at some stage of training
 
@@ -5204,7 +5171,6 @@ class Alphafold3(Module):
         ),
         augment_kwargs: dict = dict(),
         stochastic_frame_average=False,
-        confidence_head_atom_resolution=False,
         distogram_atom_resolution=False,
         checkpoint_input_embedding=False,
         checkpoint_trunk_pairformer=False,
@@ -5401,8 +5367,6 @@ class Alphafold3(Module):
 
         # confidence head
 
-        self.confidence_head_atom_resolution = confidence_head_atom_resolution
-
         self.confidence_head = ConfidenceHead(
             dim_single_inputs=dim_single_inputs,
             atompair_dist_bins=distance_bins,
@@ -5411,7 +5375,6 @@ class Alphafold3(Module):
             num_plddt_bins=num_plddt_bins,
             num_pde_bins=num_pde_bins,
             num_pae_bins=num_pae_bins,
-            atom_resolution=confidence_head_atom_resolution,
             **confidence_head_kwargs,
         )
 
@@ -5550,8 +5513,8 @@ class Alphafold3(Module):
         molecule_atom_indices: Int["b n"] | None = None,  # type: ignore - the 'token centre atoms' mentioned in the paper, unsure where it is used in the architecture
         num_sample_steps: int | None = None,
         atom_pos: Float["b m 3"] | None = None,  # type: ignore
-        distance_labels: Int["b n n"] | Int["b m m"] | None = None,  # type: ignore
-        resolved_labels: Int["b n"] | Int["b m"] | None = None,  # type: ignore
+        distance_labels: Int["b n n"] | None = None,  # type: ignore
+        resolved_labels: Int["b m"] | None = None,  # type: ignore
         resolution: Float[" b"] | None = None,  # type: ignore
         return_loss_breakdown=False,
         return_loss: bool = None,
@@ -6136,23 +6099,21 @@ class Alphafold3(Module):
             # determine pae labels if possible
 
             pae_labels = None
-            ch_atom_res = self.confidence_head_atom_resolution
 
             if atom_pos_given and exists(atom_indices_for_frame):
                 denoised_molecule_pos = None
 
-                if not ch_atom_res:
-                    if not exists(molecule_pos):
-                        assert exists(
-                            distogram_atom_indices
-                        ), "`distogram_atom_indices` must be passed in for calculating non-atomic PAE labels"
+                if not exists(molecule_pos):
+                    assert exists(
+                        distogram_atom_indices
+                    ), "`distogram_atom_indices` must be passed in for calculating non-atomic PAE labels"
 
-                        distogram_atom_indices = repeat(
-                            distogram_atom_indices, "b n -> b n c", c=distogram_pos.shape[-1]
-                        )
-                        molecule_pos = atom_pos.gather(1, distogram_atom_indices)
+                    distogram_atom_indices = repeat(
+                        distogram_atom_indices, "b n -> b n c", c=distogram_pos.shape[-1]
+                    )
+                    molecule_pos = atom_pos.gather(1, distogram_atom_indices)
 
-                    denoised_molecule_pos = denoised_atom_pos.gather(1, distogram_atom_indices)
+                denoised_molecule_pos = denoised_atom_pos.gather(1, distogram_atom_indices)
 
                 # three_atoms = einx.get_at('b [m] c, b n three -> three b n c', atom_pos, atom_indices_for_frame)
                 # pred_three_atoms = einx.get_at('b [m] c, b n three -> three b n c', denoised_atom_pos, atom_indices_for_frame)
@@ -6181,16 +6142,11 @@ class Alphafold3(Module):
                     & valid_atom_indices_for_frame
                 )
 
-                if ch_atom_res:
-                    align_error_mask = batch_repeat_interleave(
-                        align_error_mask, molecule_atom_lens
-                    )
-
                 # align error
 
                 align_error = self.compute_alignment_error(
-                    denoised_atom_pos if ch_atom_res else denoised_molecule_pos,
-                    atom_pos if ch_atom_res else molecule_pos,
+                    denoised_molecule_pos,
+                    molecule_pos,
                     pred_frames,
                     frames,
                     mask=align_error_mask,
@@ -6216,27 +6172,25 @@ class Alphafold3(Module):
             if atom_pos_given:
                 denoised_molecule_pos = None
 
-                if not ch_atom_res:
-                    assert exists(
-                        molecule_atom_indices
-                    ), "`molecule_atom_indices` must be passed in for calculating non-atomic PDE labels"
-                    # molecule_pos = einx.get_at('b [m] c, b n -> b n c', atom_pos, molecule_atom_indices)
+                assert exists(
+                    molecule_atom_indices
+                ), "`molecule_atom_indices` must be passed in for calculating non-atomic PDE labels"
 
-                    mol_atom_indices = repeat(
-                        molecule_atom_indices, "b n -> b n c", c=atom_pos.shape[-1]
-                    )
+                # molecule_pos = einx.get_at('b [m] c, b n -> b n c', atom_pos, molecule_atom_indices)
 
-                    molecule_pos = atom_pos.gather(1, mol_atom_indices)
-                    denoised_molecule_pos = denoised_atom_pos.gather(1, mol_atom_indices)
+                mol_atom_indices = repeat(
+                    molecule_atom_indices, "b n -> b n c", c=atom_pos.shape[-1]
+                )
 
-                    molecule_mask = valid_molecule_atom_mask
-                else:
-                    molecule_mask = atom_mask
+                molecule_pos = atom_pos.gather(1, mol_atom_indices)
+                denoised_molecule_pos = denoised_atom_pos.gather(1, mol_atom_indices)
+
+                molecule_mask = valid_molecule_atom_mask
 
                 pde_gt_dist = torch.cdist(molecule_pos, molecule_pos, p=2)
                 pde_pred_dist = torch.cdist(
-                    denoised_atom_pos if ch_atom_res else denoised_molecule_pos,
-                    denoised_atom_pos if ch_atom_res else denoised_molecule_pos,
+                    denoised_molecule_pos,
+                    denoised_molecule_pos,
                     p=2,
                 )
 
@@ -6271,12 +6225,9 @@ class Alphafold3(Module):
                 return_pae_logits=return_pae_logits,
             )
 
-            # determine which mask to use for labels depending on atom resolution or not for confidence head
+            # determine which mask to use for confidence head labels
 
             label_mask = mask
-
-            if self.confidence_head.atom_resolution:
-                label_mask = atom_mask
 
             label_pairwise_mask = to_pairwise_mask(label_mask)
 
@@ -6323,7 +6274,7 @@ class Alphafold3(Module):
                 plddt_labels = torch.where(label_mask, plddt_labels, ignore)
                 plddt_loss = F.cross_entropy(
                     ch_logits.plddt * confidence_weight[..., None, None],
-                    plddt_labels * confidence_weight[..., None, None].long(),
+                    plddt_labels * confidence_weight[..., None].long(),
                     ignore_index=ignore,
                 )
 
@@ -6334,8 +6285,9 @@ class Alphafold3(Module):
                 )
                 resolved_labels = torch.where(label_mask, resolved_labels, ignore)
                 resolved_loss = F.cross_entropy(
-                    ch_logits.resolved * confidence_weight[..., None, None],
-                    resolved_labels * confidence_weight[..., None, None].long(),
+                    rearrange(ch_logits.resolved, "b 2 m -> b m 2")
+                    * confidence_weight[..., None, None],
+                    resolved_labels * confidence_weight[..., None].long(),
                     ignore_index=ignore,
                 )
 
