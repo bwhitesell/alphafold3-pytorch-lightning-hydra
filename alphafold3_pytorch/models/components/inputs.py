@@ -2767,6 +2767,7 @@ def pdb_input_to_molecule_input(
     atom_pos = torch.from_numpy(
         np.concatenate([mol.GetConformer().GetPositions() for mol in molecules]).astype(np.float32)
     )
+    num_atoms = atom_pos.shape[0]
 
     # create atom_parent_ids using the `Biomolecule` object, which governs in the atom
     # encoder / decoder which atom attends to which, where a design choice is made such

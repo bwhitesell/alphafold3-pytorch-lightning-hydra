@@ -535,10 +535,11 @@ def test_alphafold3(
 ):
     """Test the AlphaFold 3 model."""
     seq_len = 16
+    atom_seq_len = 32
     atoms_per_window = 27
 
-    molecule_atom_lens = torch.randint(3, 5, (2, seq_len))
-    atom_seq_len = molecule_atom_lens.sum(dim=-1).amax()
+    molecule_atom_indices = torch.randint(0, atom_seq_len, (2, seq_len)).long()
+    molecule_atom_lens = torch.full((2, seq_len), 2).long()
 
     token_bonds = torch.randint(0, 2, (2, seq_len, seq_len)).bool()
 
@@ -580,7 +581,6 @@ def test_alphafold3(
 
     atom_pos = torch.randn(2, atom_seq_len, 3)
     distogram_atom_indices = molecule_atom_lens - 1
-    molecule_atom_indices = molecule_atom_lens - 1
 
     resolved_labels = torch.randint(0, 2, (2, atom_seq_len))
 
