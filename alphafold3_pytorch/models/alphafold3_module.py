@@ -121,7 +121,12 @@ class Alphafold3LitModule(LightningModule):
         :return: A tensor of losses as well as a breakdown of the component losses.
         """
         batch_dict = self.prepare_batch_dict(batch.model_forward_dict())
-        return self.net(**batch_dict, return_loss_breakdown=True)
+        return self.net(
+            **batch_dict,
+            return_loss_breakdown=True,
+            diffusion_add_bond_loss=self.hparams.diffusion_add_bond_loss,
+            diffusion_add_smooth_lddt_loss=self.hparams.diffusion_add_smooth_lddt_loss,
+        )
 
     def on_train_start(self) -> None:
         """Lightning hook that is called when training begins."""

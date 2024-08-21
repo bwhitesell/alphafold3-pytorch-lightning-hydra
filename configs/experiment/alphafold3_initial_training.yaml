@@ -42,6 +42,8 @@ model:
   train_structure_and_distogram: true
   train_pae_head: false
   polymer_ligand_bond_loss_weight: 0.0
+  diffusion_add_smooth_lddt_loss: false
+  diffusion_add_bond_loss: false
 
 data:
   sample_type: default
