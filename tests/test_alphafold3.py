@@ -55,6 +55,8 @@ from alphafold3_pytorch.utils.utils import exists
 
 os.environ["TYPECHECK"] = "True"
 
+DATA_TEST_PDB_ID = "721p"
+
 
 def test_atom_ref_pos_to_atompair_inputs():
     """Test the function to convert atom reference positions to atom pair inputs."""
@@ -1109,7 +1111,7 @@ def test_model_selection_score():
 
 def test_unresolved_protein_rasa():
     """Test the unresolved protein relative solvent accessible surface area (RASA) calculation."""
-    mmcif_filepath = os.path.join("data", "test", "7a4d-assembly1.cif")
+    mmcif_filepath = os.path.join("data", "test", f"{DATA_TEST_PDB_ID}-assembly1.cif")
     pdb_input = PDBInput(mmcif_filepath)
 
     mol_input = pdb_input_to_molecule_input(pdb_input)
