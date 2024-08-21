@@ -53,6 +53,7 @@ data:
   spatial_weight: 0.4
   spatial_interface_weight: 0.4
   crop_size: 5120
+  max_msas_per_chain: 128
   sampling_weight_for_disorder_pdb_distillation: 0.02
   train_on_transcription_factor_distillation_sets: false
   pdb_distillation: null

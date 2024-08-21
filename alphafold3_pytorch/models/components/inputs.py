@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import glob
 import json
 import os
 from collections import defaultdict
@@ -36,6 +37,7 @@ from alphafold3_pytorch.common.biomolecule import (
 )
 from alphafold3_pytorch.data import mmcif_parsing, msa_parsing
 from alphafold3_pytorch.data.data_pipeline import (
+    FeatureDict,
     get_assembly,
     make_msa_features,
     make_msa_mask,
@@ -58,6 +60,7 @@ from alphafold3_pytorch.utils.data_utils import (
     get_pdb_input_residue_molecule_type,
     is_atomized_residue,
     is_polymer,
+    make_one_hot,
 )
 from alphafold3_pytorch.utils.model_utils import (
     exclusive_cumsum,
@@ -98,6 +101,8 @@ IS_PROTEIN, IS_RNA, IS_DNA, IS_LIGAND, IS_METAL_ION = tuple(
 MOLECULE_GAP_ID = len(HUMAN_AMINO_ACIDS) + len(RNA_NUCLEOTIDES) + len(DNA_NUCLEOTIDES)
 MOLECULE_METAL_ION_ID = MOLECULE_GAP_ID + 1
 NUM_MOLECULE_IDS = len(HUMAN_AMINO_ACIDS) + len(RNA_NUCLEOTIDES) + len(DNA_NUCLEOTIDES) + 2
+
+NUM_MSA_ONE_HOT = len(HUMAN_AMINO_ACIDS) + len(RNA_NUCLEOTIDES) + len(DNA_NUCLEOTIDES) + 1
 
 DEFAULT_NUM_MOLECULE_MODS = 4  # `mod_protein`, `mod_rna`, `mod_dna`, and `mod_unk`
 ADDITIONAL_MOLECULE_FEATS = 5
@@ -184,9 +189,10 @@ class AtomInput:
     additional_molecule_feats: Int[f"n {ADDITIONAL_MOLECULE_FEATS}"]  # type: ignore
     is_molecule_types: Bool[f"n {IS_MOLECULE_TYPES}"]  # type: ignore
     is_molecule_mod: Bool["n num_mods"] | None = None  # type: ignore
+    additional_msa_feats: Float["s n dmf"] | None = None  # type: ignore
     additional_token_feats: Float["n dtf"] | None = None  # type: ignore
     templates: Float["t n n dt"] | None = None  # type: ignore
-    msa: Float["s n dm"] | None = None  # type: ignore
+    msa: Float["s n dmi"] | None = None  # type: ignore
     token_bonds: Bool["n n"] | None = None  # type: ignore
     atom_ids: Int[" m"] | None = None  # type: ignore
     atom_parent_ids: Int[" m"] | None = None  # type: ignore
@@ -225,9 +231,10 @@ class BatchedAtomInput:
     additional_molecule_feats: Int[f"b n {ADDITIONAL_MOLECULE_FEATS}"]  # type: ignore
     is_molecule_types: Bool[f"b n {IS_MOLECULE_TYPES}"]  # type: ignore
     is_molecule_mod: Bool["b n num_mods"] | None = None  # type: ignore
+    additional_msa_feats: Float["b s n dmf"] | None = None  # type: ignore
     additional_token_feats: Float["b n dtf"] | None = None  # type: ignore
     templates: Float["b t n n dt"] | None = None  # type: ignore
-    msa: Float["b s n dm"] | None = None  # type: ignore
+    msa: Float["b s n dmi"] | None = None  # type: ignore
     token_bonds: Bool["b n n"] | None = None  # type: ignore
     atom_ids: Int["b m"] | None = None  # type: ignore
     atom_parent_ids: Int["b m"] | None = None  # type: ignore
@@ -485,9 +492,10 @@ class MoleculeInput:
     missing_atom_indices: List[Int[" _"] | None] | None = None  # type: ignore
     missing_token_indices: List[Int[" _"] | None] | None = None  # type: ignore
     atom_parent_ids: Int[" m"] | None = None  # type: ignore
+    additional_msa_feats: Float["s n dmf"] | None = None  # type: ignore
     additional_token_feats: Float["n dtf"] | None = None  # type: ignore
     templates: Float["t n n dt"] | None = None  # type: ignore
-    msa: Float["s n dm"] | None = None  # type: ignore
+    msa: Float["s n dmi"] | None = None  # type: ignore
     atom_pos: List[Float["_ 3"]] | Float["m 3"] | None = None  # type: ignore
     template_mask: Bool[" t"] | None = None  # type: ignore
     msa_mask: Bool[" s"] | None = None  # type: ignore
@@ -775,6 +783,7 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
         msa_mask=i.msa_mask,
         template_mask=i.template_mask,
         missing_atom_mask=missing_atom_mask,
+        additional_msa_feats=i.additional_msa_feats,
         additional_token_feats=i.additional_token_feats,
         additional_molecule_feats=i.additional_molecule_feats,
         is_molecule_types=i.is_molecule_types,
@@ -816,9 +825,10 @@ class MoleculeLengthMoleculeInput:
     missing_atom_indices: List[Int[" _"] | None] | None = None  # type: ignore
     missing_token_indices: List[Int[" _"] | None] | None = None  # type: ignore
     atom_parent_ids: Int[" m"] | None = None  # type: ignore
-    additional_token_feats: Float[f"n dtf"] | None = None  # type: ignore
+    additional_msa_feats: Float["s n dmf"] | None = None  # type: ignore
+    additional_token_feats: Float["n dtf"] | None = None  # type: ignore
     templates: Float["t n n dt"] | None = None  # type: ignore
-    msa: Float["s n dm"] | None = None  # type: ignore
+    msa: Float["s n dmi"] | None = None  # type: ignore
     atom_pos: List[Float["_ 3"]] | Float["m 3"] | None = None  # type: ignore
     template_mask: Bool[" t"] | None = None  # type: ignore
     msa_mask: Bool[" s"] | None = None  # type: ignore
@@ -915,6 +925,8 @@ def molecule_lengthed_molecule_input_to_atom_input(
         ),
         "n *",
     )
+
+    additional_msa_feats = repeat_interleave(i.additional_msa_feats, token_repeats, dim=1)
 
     additional_token_feats = repeat_interleave(i.additional_token_feats, token_repeats, dim=0)
     molecule_ids = repeat_interleave(i.molecule_ids, token_repeats)
@@ -1243,6 +1255,7 @@ def molecule_lengthed_molecule_input_to_atom_input(
         distogram_atom_indices=distogram_atom_indices,
         atom_indices_for_frame=atom_indices_for_frame,
         missing_atom_mask=missing_atom_mask,
+        additional_msa_feats=additional_msa_feats,
         additional_token_feats=additional_token_feats,
         additional_molecule_feats=additional_molecule_feats,
         is_molecule_mod=is_molecule_mod,
@@ -1282,9 +1295,10 @@ class Alphafold3Input:
     ds_rna: List[Int[" _"] | str] = imm_list()  # type: ignore
     atom_parent_ids: Int[" m"] | None = None  # type: ignore
     missing_atom_indices: List[List[int] | None] = imm_list()  # type: ignore
+    additional_msa_feats: Float["s n dmf"] | None = None  # type: ignore
     additional_token_feats: Float["n dtf"] | None = None  # type: ignore
     templates: Float["t n n dt"] | None = None  # type: ignore
-    msa: Float["s n dm"] | None = None  # type: ignore
+    msa: Float["s n dmi"] | None = None  # type: ignore
     atom_pos: List[Float["_ 3"]] | Float["m 3"] | None = None  # type: ignore
     template_mask: Bool[" t"] | None = None  # type: ignore
     msa_mask: Bool[" s"] | None = None  # type: ignore
@@ -1688,6 +1702,10 @@ def alphafold3_input_to_molecule_lengthed_molecule_input(
         assert len(molecules) == len(missing_atom_indices)
         assert len(missing_token_indices) == num_tokens
 
+    # handle MSAs
+
+    num_msas = len(i.msa) if exists(i.msa) else 1
+
     # create molecule input
 
     molecule_input = MoleculeLengthMoleculeInput(
@@ -1696,7 +1714,8 @@ def alphafold3_input_to_molecule_lengthed_molecule_input(
         distogram_atom_indices=distogram_atom_indices,
         molecule_ids=molecule_ids,
         additional_molecule_feats=additional_molecule_feats,
-        additional_token_feats=default(i.additional_token_feats, torch.zeros(num_tokens, 2)),
+        additional_msa_feats=default(i.additional_msa_feats, torch.zeros(num_msas, num_tokens, 2)),
+        additional_token_feats=default(i.additional_token_feats, torch.zeros(num_tokens, 33)),
         is_molecule_types=is_molecule_types,
         missing_atom_indices=missing_atom_indices,
         missing_token_indices=missing_token_indices,
@@ -1738,6 +1757,7 @@ class PDBInput:
     directed_bonds: bool = False
     training: bool = False
     resolution: float | None = None
+    max_msas_per_chain: int | None = None
     extract_atom_feats_fn: Callable[[Atom], Float["m dai"]] = default_extract_atom_feats_fn  # type: ignore
     extract_atompair_feats_fn: Callable[[Mol], Float["m m dapi"]] = default_extract_atompair_feats_fn  # type: ignore
 
@@ -2279,26 +2299,88 @@ def find_mismatched_symmetry(
 def load_msa_from_msa_dir(
     msa_dir: str | None,
     file_id: str,
+    chain_id_to_chem_types: Dict[str, List[int]],
+    max_msas_per_chain: int | None = None,
+    randomly_truncate: bool = True,
     raise_missing_exception: bool = False,
     verbose: bool = False,
-) -> Tuple[torch.Tensor | None, torch.Tensor | None]:
+) -> FeatureDict:
     """Load MSA from a directory containing MSA files."""
     if (not exists(msa_dir) or not os.path.exists(msa_dir)) and raise_missing_exception:
         raise FileNotFoundError(f"{msa_dir} does not exist.")
     elif not exists(msa_dir) or not os.path.exists(msa_dir):
         if verbose:
             logger.warning(f"{msa_dir} does not exist. Skipping MSA loading by returning `Nones`.")
-        return None, None
+        return {}
 
-    msa_fpath = os.path.join(msa_dir, f"{file_id}.a3m")
-    with open(msa_fpath, "r") as f:
-        msa = f.read()
+    msas = {}
+    for chain_id in chain_id_to_chem_types:
+        msa_fpaths = glob.glob(os.path.join(msa_dir, f"{file_id}{chain_id}_*.a3m"))
 
-    msa = msa_parsing.parse_a3m(msa)
-    features = make_msa_features([msa])
-    msa_mask = make_msa_mask(features)
+        if not msa_fpaths:
+            msas[chain_id] = None
+            continue
 
-    return features["msa"], msa_mask["msa_mask"]
+        # NOTE: A single chain-specific MSA file contains alignments for all polymer residues in the chain,
+        # but the ligand (and some "unmappable" modified polymer residues) are not included in the MSA file
+        # and therefore must be manually inserted into the MSAs as unknown amino acid residues.
+        assert len(msa_fpaths) == 1, (
+            f"{len(msa_fpaths)} MSA files found for chain {chain_id} of file {file_id}. "
+            "Please ensure that one MSA file is present for each chain."
+        )
+        msa_fpath = msa_fpaths[0]
+        msa_type = os.path.splitext(os.path.basename(msa_fpath))[0].split("_")[-1]
+
+        with open(msa_fpath, "r") as f:
+            msa = f.read()
+            msa = msa_parsing.parse_a3m(msa, msa_type)
+            msa = (
+                (
+                    msa.random_truncate(max_msas_per_chain)
+                    if randomly_truncate
+                    else msa.truncate(max_msas_per_chain)
+                )
+                if exists(max_msas_per_chain)
+                else msa
+            )
+            msas[chain_id] = msa
+
+    features = make_msa_features(msas, chain_id_to_chem_types)
+    features = make_msa_mask(features)
+
+    return features
+
+
+@typecheck
+def load_templates_from_templates_dir(
+    templates_dir: str | None,
+    file_id: str,
+    raise_missing_exception: bool = False,
+    verbose: bool = False,
+) -> FeatureDict:
+    """Load templates from a directory containing template PDB mmCIF files."""
+    if (
+        not exists(templates_dir) or not os.path.exists(templates_dir)
+    ) and raise_missing_exception:
+        raise FileNotFoundError(f"{templates_dir} does not exist.")
+    elif not exists(templates_dir) or not os.path.exists(templates_dir):
+        if verbose:
+            logger.warning(
+                f"{templates_dir} does not exist. Skipping template loading by returning `Nones`."
+            )
+        return {}
+
+    # template_fpath = os.path.join(templates_dir, f"{file_id}.pdb")
+    # with open(template_fpath, "r") as f:
+    #     template = f.read()
+
+    # template = template_parsing.parse_pdb(template)
+    # features = make_template_features([template])
+    # features = make_template_mask(features)
+
+    # return features
+
+    return {}
 
 
 @typecheck
@@ -2743,19 +2825,72 @@ def pdb_input_to_molecule_input(
     num_present_atoms = mol_total_atoms - num_missing_atom_indices
     assert num_present_atoms == int(biomol.atom_mask.sum())
 
-    # TODO: install additional token features once MSAs are available
-    # 0: f_profile
-    # 1: f_deletion_mean
+    # retrieve multiple sequence alignments (MSAs) for each chain
+    # NOTE: if they are not locally available, `Nones` will be used
+    msa_chain_ids = list(dict.fromkeys(biomol.chain_id.tolist()))
+    chain_id_to_chem_types = {
+        chain_id: biomol.chemtype[biomol.chain_id == chain_id].tolist()
+        for chain_id in msa_chain_ids
+    }
+    msa_features = load_msa_from_msa_dir(
+        i.msa_dir, file_id, chain_id_to_chem_types, max_msas_per_chain=i.max_msas_per_chain
+    )
+
+    msa = msa_features.get("msa")
+    msa_col_mask = msa_features.get("msa_mask")
+    msa_row_mask = msa_features.get("msa_row_mask")
+
+    # collect additional MSA and token features
+    # 0: has_deletion (msa)
+    # 1: deletion_value (msa)
+    # 2: profile (token)
+    # 3: deletion_mean (token)
+
+    additional_msa_feats = None
     additional_token_feats = None
 
-    # retrieve multiple sequence alignments (MSAs) for each chain
-    # NOTE: if they are not locally available, `Nones` will be returned
-    msa, msa_mask = load_msa_from_msa_dir(i.msa_dir, file_id)
+    num_msas = len(msa) if exists(msa) else 1
+
+    if exists(msa):
+        has_deletion = torch.clip(msa_features["deletion_matrix"], 0.0, 1.0)
+        deletion_value = torch.atan(msa_features["deletion_matrix"] / 3.0) * (2.0 / torch.pi)
+
+        additional_msa_feats = torch.stack(
+            [
+                has_deletion,
+                deletion_value,
+            ],
+            dim=-1,
+        )
+
+        # NOTE: assumes each aligned sequence has the same mask values
+        profile_msa_mask = torch.repeat_interleave(msa_col_mask[None, ...], len(msa), dim=0)
+        msa_sum = (profile_msa_mask[:, :, None] * make_one_hot(msa, NUM_MSA_ONE_HOT)).sum(0)
+        mask_counts = 1e-6 + profile_msa_mask.sum(0)
+
+        profile = msa_sum / mask_counts[:, None]
+        deletion_mean = torch.atan(msa_features["deletion_matrix"].mean(0) / 3.0) * (
+            2.0 / torch.pi
+        )
+
+        additional_token_feats = torch.cat(
+            [
+                profile,
+                deletion_mean[:, None],
+            ],
+            dim=-1,
+        )
+
+        # convert the MSA into a one-hot representation
+        msa = make_one_hot(msa, NUM_MSA_ONE_HOT)
+        msa_row_mask = msa_row_mask.bool()
 
     # TODO: retrieve templates for each chain
-    # templates, template_mask = load_templates_from_templates_dir(i.templates_dir)
-    # NOTE: if they are not locally available, `Nones` will be returned
-    templates, template_mask = None, None
+    # NOTE: if they are not locally available, `Nones` will be used
+    template_features = load_templates_from_templates_dir(i.templates_dir, file_id)
+
+    templates = template_features.get("templates")
+    template_mask = template_features.get("template_mask")
 
     # construct atom positions from template molecules after instantiating their 3D conformers
     atom_pos = torch.from_numpy(
@@ -2845,12 +2980,13 @@ def pdb_input_to_molecule_input(
         missing_atom_indices=missing_atom_indices,
         missing_token_indices=missing_token_indices,
         atom_parent_ids=atom_parent_ids,
-        additional_token_feats=default(additional_token_feats, torch.zeros(num_tokens, 2)),
+        additional_msa_feats=default(additional_msa_feats, torch.zeros(num_msas, num_tokens, 2)),
+        additional_token_feats=default(additional_token_feats, torch.zeros(num_tokens, 33)),
         templates=templates,
         msa=msa,
         atom_pos=atom_pos,
         template_mask=template_mask,
-        msa_mask=msa_mask,
+        msa_mask=msa_row_mask,
         resolved_labels=resolved_labels,
         resolution=resolution,
         chains=chains,

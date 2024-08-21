@@ -254,11 +254,14 @@ class PDBDataModule(LightningDataModule):
     def __init__(
         self,
         data_dir: str = os.path.join("data", "pdb_data"),
+        msa_dir: str = os.path.join("data", "pdb_data", "data_caches", "msa"),
+        templates_dir: str = os.path.join("data", "pdb_data", "data_caches", "template"),
         sample_type: Literal["default", "clustered"] = "default",
         contiguous_weight: float = 0.2,
         spatial_weight: float = 0.4,
         spatial_interface_weight: float = 0.4,
         crop_size: int = 384,
+        max_msas_per_chain: int | None = None,
         sampling_weight_for_disorder_pdb_distillation: float = 0.02,
         train_on_transcription_factor_distillation_sets: bool = False,
         pdb_distillation: bool | None = None,
@@ -361,6 +364,16 @@ class PDBDataModule(LightningDataModule):
                 )
                 setattr(
                     self,
+                    f"{split}_msa_dir",
+                    os.path.join(self.hparams.msa_dir, f"{path_split}_msas"),
+                )
+                setattr(
+                    self,
+                    f"{split}_templates_dir",
+                    os.path.join(self.hparams.templates_dir, f"{path_split}_templates"),
+                )
+                setattr(
+                    self,
                     f"{split}_chain_mapping_paths",
                     [
                         os.path.join(
@@ -405,8 +418,11 @@ class PDBDataModule(LightningDataModule):
                 spatial_weight=self.hparams.spatial_weight,
                 spatial_interface_weight=self.hparams.spatial_interface_weight,
                 crop_size=self.hparams.crop_size,
+                max_msas_per_chain=self.hparams.max_msas_per_chain,
                 training=True,
                 sample_only_pdb_ids=sample_only_pdb_ids,
+                msa_dir=self.train_msa_dir,
+                templates_dir=self.train_templates_dir,
             )
 
             # validation set
@@ -424,8 +440,11 @@ class PDBDataModule(LightningDataModule):
                 spatial_weight=self.hparams.spatial_weight,
                 spatial_interface_weight=self.hparams.spatial_interface_weight,
                 crop_size=self.hparams.crop_size,
+                max_msas_per_chain=self.hparams.max_msas_per_chain,
                 training=False,
                 sample_only_pdb_ids=sample_only_pdb_ids,
+                msa_dir=self.val_msa_dir,
+                templates_dir=self.val_templates_dir,
             )
 
             # evaluation set
@@ -443,8 +462,11 @@ class PDBDataModule(LightningDataModule):
                 spatial_weight=self.hparams.spatial_weight,
                 spatial_interface_weight=self.hparams.spatial_interface_weight,
                 crop_size=self.hparams.crop_size,
+                max_msas_per_chain=self.hparams.max_msas_per_chain,
                 training=False,
                 sample_only_pdb_ids=sample_only_pdb_ids,
+                msa_dir=self.test_msa_dir,
+                templates_dir=self.test_templates_dir,
             )
 
             # subsample dataset splits as requested
