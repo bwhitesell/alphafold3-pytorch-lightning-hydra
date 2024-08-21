@@ -43,7 +43,7 @@ class MockAtomDataset(Dataset):
 
         molecule_atom_lens = torch.randint(1, self.atoms_per_window, (seq_len,))
         additional_molecule_feats = torch.randint(0, 2, (seq_len, 5))
-        additional_token_feats = torch.randn(seq_len, 2)
+        additional_token_feats = torch.randn(seq_len, 33)
         is_molecule_types = torch.randint(0, 2, (seq_len, IS_MOLECULE_TYPES)).bool()
 
         # ensure the molecule-atom length mappings match the randomly-sampled atom sequence length
