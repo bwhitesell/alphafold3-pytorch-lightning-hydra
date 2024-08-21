@@ -481,7 +481,7 @@ class MoleculeInput:
     is_molecule_mod: Bool["n num_mods"] | Bool[" n"] | None = None  # type: ignore
     molecule_atom_indices: List[int | None] | None = None  # type: ignore
     distogram_atom_indices: List[int | None] | None = None  # type: ignore
-    atom_indices_for_frame: List[Tuple[int, int, int] | None] | None = None  # type: ignore
+    atom_indices_for_frame: Int["n 3"] | None = None  # type: ignore
     missing_atom_indices: List[Int[" _"] | None] | None = None  # type: ignore
     missing_token_indices: List[Int[" _"] | None] | None = None  # type: ignore
     atom_parent_ids: Int[" m"] | None = None  # type: ignore
@@ -759,16 +759,6 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
     if is_molecule_mod.ndim == 1:
         is_molecule_mod = rearrange(is_molecule_mod, "n -> n 1")
 
-    # handle `atom_indices_for_frame` for the PAE
-
-    atom_indices_for_frame = i.atom_indices_for_frame
-
-    if exists(atom_indices_for_frame):
-        atom_indices_for_frame = [
-            default(indices, (-1, -1, -1)) for indices in i.atom_indices_for_frame
-        ]
-        atom_indices_for_frame = tensor(atom_indices_for_frame)
-
     # atom input
 
     atom_input = AtomInput(
@@ -778,7 +768,7 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
         molecule_ids=i.molecule_ids,
         molecule_atom_indices=i.molecule_atom_indices,
         distogram_atom_indices=i.distogram_atom_indices,
-        atom_indices_for_frame=atom_indices_for_frame,
+        atom_indices_for_frame=i.atom_indices_for_frame,
         is_molecule_mod=is_molecule_mod,
         msa=i.msa,
         templates=i.templates,
@@ -2793,6 +2783,51 @@ def pdb_input_to_molecule_input(
         is_resolved_label = ((resolution >= 0.1) & (resolution <= 3.0)).item()
         resolved_labels = torch.full((num_atoms,), is_resolved_label, dtype=torch.long)
 
+    # handle `atom_indices_for_frame` for the PAE
+
+    atom_indices_for_frame = tensor(
+        [default(indices, (-1, -1, -1)) for indices in atom_indices_for_frame]
+    )
+
+    # build offsets for all indices
+
+    # derive `atom_lens` based on `one_token_per_atom`, for ligands and modified biomolecules
+    atoms_per_molecule = tensor([mol.GetNumAtoms() for mol in molecules])
+    ones = torch.ones_like(atoms_per_molecule)
+
+    # `is_molecule_mod` can either be
+    # 1. Bool['n'], in which case it will only be used for determining `one_token_per_atom`, or
+    # 2. Bool['n num_mods'], where it will be passed to Alphafold3 for molecule modification embeds
+    is_molecule_mod = tensor(is_molecule_mod)
+    is_molecule_any_mod = False
+
+    if is_molecule_mod.ndim == 2:
+        is_molecule_any_mod = is_molecule_mod[unique_chain_residue_indices].any(dim=-1)
+    else:
+        is_molecule_any_mod = is_molecule_mod[unique_chain_residue_indices]
+
+    # get `one_token_per_atom`
+    # default to what the paper did, which is ligands and any modified biomolecule
+    is_ligand = is_molecule_types[unique_chain_residue_indices][..., IS_LIGAND_INDEX]
+    one_token_per_atom = is_ligand | is_molecule_any_mod
+
+    assert len(molecules) == len(one_token_per_atom)
+
+    # derive the number of repeats needed to expand molecule lengths to token lengths
+    token_repeats = torch.where(one_token_per_atom, atoms_per_molecule, ones)
+
+    # craft offsets for all atom indices
+    atom_indices_offsets = repeat_interleave(
+        exclusive_cumsum(atoms_per_molecule), token_repeats, dim=0
+    )
+
+    # offset only positive atom indices
+    distogram_atom_indices = offset_only_positive(distogram_atom_indices, atom_indices_offsets)
+    molecule_atom_indices = offset_only_positive(molecule_atom_indices, atom_indices_offsets)
+    atom_indices_for_frame = offset_only_positive(
+        atom_indices_for_frame, atom_indices_offsets[..., None]
+    )
+
     # create molecule input
 
     molecule_input = MoleculeInput(
@@ -2803,7 +2838,7 @@ def pdb_input_to_molecule_input(
         is_molecule_types=is_molecule_types,
         src_tgt_atom_indices=src_tgt_atom_indices,
         token_bonds=token_bonds,
-        is_molecule_mod=tensor(is_molecule_mod),
+        is_molecule_mod=is_molecule_mod,
         molecule_atom_indices=molecule_atom_indices,
         distogram_atom_indices=distogram_atom_indices,
         atom_indices_for_frame=atom_indices_for_frame,
