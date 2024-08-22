@@ -11,6 +11,7 @@ from alphafold3_pytorch.data import mmcif_writing
 from alphafold3_pytorch.models.components.alphafold3 import (
     ComputeModelSelectionScore,
     LossBreakdown,
+    Sample,
 )
 from alphafold3_pytorch.models.components.inputs import BatchedAtomInput
 from alphafold3_pytorch.utils import RankedLogger
@@ -22,7 +23,6 @@ rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
 AVAILABLE_LR_SCHEDULERS = ["wcd", "plateau"]
 PHASES = Literal["train", "val", "test", "predict"]
-SAMPLE = Tuple[Float["b m 3"], Float["b pde n n"], Float["b dist n n"]]  # type: ignore
 
 log = RankedLogger(__name__, rank_zero_only=False)
 
@@ -198,16 +198,19 @@ class Alphafold3LitModule(LightningModule):
 
         # generate multiple samples per example in each batch
 
-        samples: List[SAMPLE] = []
+        samples: List[Sample] = []
 
         for _ in range(self.hparams.num_samples_per_example):
-            batch_sampled_atom_pos, ch_logits, dist_logits = self.net(
+            batch_sampled_atom_pos, logits = self.net(
                 **prepared_model_batch_dict,
                 return_loss=False,
                 return_confidence_head_logits=True,
                 return_distogram_head_logits=True,
             )
-            samples.append((batch_sampled_atom_pos, ch_logits.pde, dist_logits))
+            plddt = self.compute_model_selection_score.compute_confidence_score.compute_plddt(
+                logits.plddt
+            )
+            samples.append((batch_sampled_atom_pos, logits.pde, plddt, logits.distance))
 
         (
             model_selection_score,
@@ -220,10 +223,16 @@ class Alphafold3LitModule(LightningModule):
             # NOTE: The AF3 supplement (Section 5.7) suggests that DM did not compute validation RASA for unresolved regions
             compute_rasa=False,
         )
-        top_sample_idx, top_batch_sampled_atom_pos, top_model_selection_score = (
+        (
+            top_sample_idx,
+            top_batch_sampled_atom_pos,
+            top_sample_plddt,
+            top_model_selection_score,
+        ) = (
             top_sample[0],
             top_sample[1],
             top_sample[2],
+            top_sample[3],
         )
 
         # compute the unweighted lDDT score
@@ -239,7 +248,7 @@ class Alphafold3LitModule(LightningModule):
             return_unweighted_scores=True,
             compute_rasa=False,
         )
-        top_ranked_lddt = unweighted_top_sample[2]
+        top_ranked_lddt = unweighted_top_sample[3]
 
         # update and log metrics
 
@@ -281,6 +290,7 @@ class Alphafold3LitModule(LightningModule):
                     phase="val",
                     sample_idx=top_sample_idx,
                     filename_suffixes=filename_suffixes,
+                    b_factors=top_sample_plddt,
                 )
 
     def on_validation_epoch_end(self) -> None:
@@ -314,16 +324,19 @@ class Alphafold3LitModule(LightningModule):
 
         # generate multiple samples per example in each batch
 
-        samples: List[SAMPLE] = []
+        samples: List[Sample] = []
 
         for _ in range(self.hparams.num_samples_per_example):
-            batch_sampled_atom_pos, ch_logits, dist_logits = self.net(
+            batch_sampled_atom_pos, logits = self.net(
                 **prepared_model_batch_dict,
                 return_loss=False,
                 return_confidence_head_logits=True,
                 return_distogram_head_logits=True,
             )
-            samples.append((batch_sampled_atom_pos, ch_logits.pde, dist_logits))
+            plddt = self.compute_model_selection_score.compute_confidence_score.compute_plddt(
+                logits.plddt
+            )
+            samples.append((batch_sampled_atom_pos, logits.pde, plddt, logits.distance))
 
         (
             model_selection_score,
@@ -340,10 +353,16 @@ class Alphafold3LitModule(LightningModule):
             unresolved_cid=None,
             unresolved_residue_mask=None,
         )
-        top_sample_idx, top_batch_sampled_atom_pos, top_model_selection_score = (
+        (
+            top_sample_idx,
+            top_batch_sampled_atom_pos,
+            top_sample_plddt,
+            top_model_selection_score,
+        ) = (
             top_sample[0],
             top_sample[1],
             top_sample[2],
+            top_sample[3],
         )
 
         # compute the unweighted lDDT score
@@ -359,7 +378,7 @@ class Alphafold3LitModule(LightningModule):
             return_unweighted_scores=True,
             compute_rasa=False,
         )
-        top_ranked_lddt = unweighted_top_sample[2]
+        top_ranked_lddt = unweighted_top_sample[3]
 
         # update and log metrics
 
@@ -401,6 +420,7 @@ class Alphafold3LitModule(LightningModule):
                     phase="test",
                     sample_idx=top_sample_idx,
                     filename_suffixes=filename_suffixes,
+                    b_factors=top_sample_plddt,
                 )
 
     @typecheck
@@ -414,6 +434,7 @@ class Alphafold3LitModule(LightningModule):
         phase: PHASES,
         sample_idx: int = 1,
         filename_suffixes: List[str] | None = None,
+        b_factors: Float["b m"] | None = None,  # type: ignore
     ) -> None:
         """Visualize samples pre-generated for the examples in a batch.
 
@@ -423,6 +444,7 @@ class Alphafold3LitModule(LightningModule):
         :param phase: The phase of the current step.
         :param sample_idx: The index of the sample to visualize.
         :param filename_suffixes: The suffixes to append to the filenames.
+        :param b_factors: The B-factors or equivalent mmCIF field values to list for each atom.
         """
         samples_output_dir = os.path.join(self.trainer.default_root_dir, f"{phase}_samples")
         os.makedirs(samples_output_dir, exist_ok=True)
@@ -444,6 +466,9 @@ class Alphafold3LitModule(LightningModule):
 
             example_atom_mask = atom_mask[b]
             sampled_atom_positions = sampled_atom_pos[b][example_atom_mask].cpu().numpy()
+            example_b_factors = (
+                b_factors[b][example_atom_mask].cpu().numpy() if exists(b_factors) else None
+            )
 
             mmcif_writing.write_mmcif_from_filepath_and_id(
                 input_filepath=input_filepath,
@@ -453,6 +478,7 @@ class Alphafold3LitModule(LightningModule):
                 insert_orig_atom_names=True,
                 insert_alphafold_mmcif_metadata=True,
                 sampled_atom_positions=sampled_atom_positions,
+                b_factors=example_b_factors,
             )
 
     @typecheck

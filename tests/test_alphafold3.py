@@ -1169,6 +1169,61 @@ def test_model_selection_score():
     assert exists(gpde) and exists(weighted_lddt)
 
 
+def test_model_selection_score_end_to_end():
+    """Test the model selection score function end-to-end."""
+
+    # prepare two atom inputs for evaluating model selection
+
+    mock_atom_dataset = MockAtomDataset(10)
+
+    atom_inputs = [mock_atom_dataset[0], mock_atom_dataset[1]]
+    batched_atom_input = collate_inputs_to_batched_atom_input(atom_inputs, atoms_per_window=27)
+
+    # two models to be selected
+
+    alphafold3_kwargs = dict(
+        dim_atom_inputs=77,
+        dim_pairwise=8,
+        dim_single=8,
+        dim_token=8,
+        atoms_per_window=27,
+        dim_template_feats=44,
+        num_dist_bins=38,
+        confidence_head_kwargs=dict(pairformer_depth=1),
+        template_embedder_kwargs=dict(pairformer_stack_depth=1),
+        msa_module_kwargs=dict(
+            depth=1,
+            dim_msa=8,
+        ),
+        pairformer_stack=dict(
+            depth=1,
+            pair_bias_attn_dim_head=4,
+            pair_bias_attn_heads=2,
+        ),
+        diffusion_module_kwargs=dict(
+            atom_encoder_depth=1,
+            token_transformer_depth=1,
+            atom_decoder_depth=1,
+            atom_decoder_kwargs=dict(attn_pair_bias_kwargs=dict(dim_head=4)),
+            atom_encoder_kwargs=dict(attn_pair_bias_kwargs=dict(dim_head=4)),
+        ),
+    )
+
+    alphafold3_one = Alphafold3(**alphafold3_kwargs)
+    alphafold3_two = Alphafold3(**alphafold3_kwargs)
+
+    alphafolds = (alphafold3_one, alphafold3_two)
+
+    # evaluate
+
+    compute_model_selection_score = ComputeModelSelectionScore()
+
+    details = compute_model_selection_score(alphafolds, batched_atom_input, return_details=True)
+
+    best_alphafold_by_lddt = alphafolds[details.best_lddt_index]
+    assert isinstance(best_alphafold_by_lddt, Alphafold3)
+
+
 def test_unresolved_protein_rasa():
     """Test the unresolved protein relative solvent accessible surface area (RASA) calculation."""
     mmcif_filepath = os.path.join("data", "test", f"{DATA_TEST_PDB_ID}-assembly1.cif")
