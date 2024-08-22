@@ -5069,6 +5069,7 @@ class ComputeModelSelectionScore(Module):
         top_ranked_sample = max(
             scored_samples, key=lambda x: x[-1].mean()
         )  # rank by batch-averaged gPDE
+
         best_of_5_sample = max(
             scored_samples, key=lambda x: x[-2].mean()
         )  # rank by batch-averaged lDDT
@@ -6376,8 +6377,17 @@ class Alphafold3(Module):
 
             confidence_weight = confidence_mask.float()
 
-            def cross_entropy_with_weight(logits, labels, weight, ignore_index: int):
-                """Compute cross entropy with weight."""
+            @typecheck
+            def cross_entropy_with_weight(
+                logits: Float["b l ..."],  # type: ignore
+                labels: Int["b ..."],  # type: ignore
+                weight: Float[" b"],  # type: ignore
+                mask: Bool["b ..."],  # type: ignore
+                ignore_index: int,
+            ) -> Float[""]:  # type: ignore
+                """Compute cross entropy loss with weight and mask."""
+                labels = torch.where(mask, labels, ignore_index)
+
                 return F.cross_entropy(
                     einx.multiply("b ..., b -> b ...", logits, weight),
                     einx.multiply("b ..., b -> b ...", labels, weight.long()),
@@ -6389,9 +6399,8 @@ class Alphafold3(Module):
                     f"pae_labels shape {pae_labels.shape[-1]} does not match "
                     f"ch_logits.pae shape {ch_logits.pae.shape[-1]}"
                 )
-                pae_labels = torch.where(label_pairwise_mask, pae_labels, ignore)
                 pae_loss = cross_entropy_with_weight(
-                    ch_logits.pae, pae_labels, confidence_weight, ignore
+                    ch_logits.pae, pae_labels, confidence_weight, label_pairwise_mask, ignore
                 )
 
             if exists(pde_labels):
@@ -6399,9 +6408,8 @@ class Alphafold3(Module):
                     f"pde_labels shape {pde_labels.shape[-1]} does not match "
                     f"ch_logits.pde shape {ch_logits.pde.shape[-1]}"
                 )
-                pde_labels = torch.where(label_pairwise_mask, pde_labels, ignore)
                 pde_loss = cross_entropy_with_weight(
-                    ch_logits.pde, pde_labels, confidence_weight, ignore
+                    ch_logits.pde, pde_labels, confidence_weight, label_pairwise_mask, ignore
                 )
 
             if exists(plddt_labels):
@@ -6409,9 +6417,8 @@ class Alphafold3(Module):
                     f"plddt_labels shape {plddt_labels.shape[-1]} does not match "
                     f"ch_logits.plddt shape {ch_logits.plddt.shape[-1]}"
                 )
-                plddt_labels = torch.where(label_mask, plddt_labels, ignore)
                 plddt_loss = cross_entropy_with_weight(
-                    ch_logits.plddt, plddt_labels, confidence_weight, ignore
+                    ch_logits.plddt, plddt_labels, confidence_weight, label_mask, ignore
                 )
 
             if exists(resolved_labels):
@@ -6419,9 +6426,8 @@ class Alphafold3(Module):
                     f"resolved_labels shape {resolved_labels.shape[-1]} does not match "
                     f"ch_logits.resolved shape {ch_logits.resolved.shape[-1]}"
                 )
-                resolved_labels = torch.where(label_mask, resolved_labels, ignore)
                 resolved_loss = cross_entropy_with_weight(
-                    ch_logits.resolved, resolved_labels, confidence_weight, ignore
+                    ch_logits.resolved, resolved_labels, confidence_weight, label_mask, ignore
                 )
 
             confidence_loss = pae_loss + pde_loss + plddt_loss + resolved_loss
