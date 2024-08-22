@@ -212,17 +212,16 @@ class Alphafold3LitModule(LightningModule):
             )
             samples.append((batch_sampled_atom_pos, logits.pde, plddt, logits.distance))
 
-        (
-            model_selection_score,
-            top_sample,
-        ) = self.compute_model_selection_score.compute_model_selection_score(
+        score_details = self.compute_model_selection_score.compute_model_selection_score(
             batch,
             samples,
             is_fine_tuning=self.hparams.is_fine_tuning,
-            return_top_model=True,
+            return_details=True,
             # NOTE: The AF3 supplement (Section 5.7) suggests that DM did not compute validation RASA for unresolved regions
             compute_rasa=False,
         )
+
+        top_sample = score_details.scored_samples[score_details.best_gpde_index]
         (
             top_sample_idx,
             top_batch_sampled_atom_pos,
@@ -237,22 +236,25 @@ class Alphafold3LitModule(LightningModule):
 
         # compute the unweighted lDDT score
 
-        (
-            _,
-            unweighted_top_sample,
-        ) = self.compute_model_selection_score.compute_model_selection_score(
-            batch,
-            samples,
-            is_fine_tuning=self.hparams.is_fine_tuning,
-            return_top_model=True,
-            return_unweighted_scores=True,
-            compute_rasa=False,
+        unweighted_score_details = (
+            self.compute_model_selection_score.compute_model_selection_score(
+                batch,
+                samples,
+                is_fine_tuning=self.hparams.is_fine_tuning,
+                return_details=True,
+                return_unweighted_scores=True,
+                compute_rasa=False,
+            )
         )
+
+        unweighted_top_sample = unweighted_score_details.scored_samples[
+            unweighted_score_details.best_gpde_index
+        ]
         top_ranked_lddt = unweighted_top_sample[3]
 
         # update and log metrics
 
-        self.val_model_selection_score(model_selection_score)
+        self.val_model_selection_score(score_details.score)
         self.log(
             "val/model_selection_score",
             self.val_model_selection_score,
@@ -338,14 +340,11 @@ class Alphafold3LitModule(LightningModule):
             )
             samples.append((batch_sampled_atom_pos, logits.pde, plddt, logits.distance))
 
-        (
-            model_selection_score,
-            top_sample,
-        ) = self.compute_model_selection_score.compute_model_selection_score(
+        score_details = self.compute_model_selection_score.compute_model_selection_score(
             batch,
             samples,
             is_fine_tuning=self.hparams.is_fine_tuning,
-            return_top_model=True,
+            return_details=True,
             return_unweighted_scores=False,
             # NOTE: The AF3 supplement (Section 5.7) suggests that DM computed RASA only for the test set's unresolved regions
             # TODO: Find where to get the unresolved chain IDs and residue masks from to statically set `compute_rasa=True` to match the AF3 supplement
@@ -353,6 +352,8 @@ class Alphafold3LitModule(LightningModule):
             unresolved_cid=None,
             unresolved_residue_mask=None,
         )
+
+        top_sample = score_details.scored_samples[score_details.best_gpde_index]
         (
             top_sample_idx,
             top_batch_sampled_atom_pos,
@@ -367,22 +368,25 @@ class Alphafold3LitModule(LightningModule):
 
         # compute the unweighted lDDT score
 
-        (
-            _,
-            unweighted_top_sample,
-        ) = self.compute_model_selection_score.compute_model_selection_score(
-            batch,
-            samples,
-            is_fine_tuning=self.hparams.is_fine_tuning,
-            return_top_model=True,
-            return_unweighted_scores=True,
-            compute_rasa=False,
+        unweighted_score_details = (
+            self.compute_model_selection_score.compute_model_selection_score(
+                batch,
+                samples,
+                is_fine_tuning=self.hparams.is_fine_tuning,
+                return_details=True,
+                return_unweighted_scores=True,
+                compute_rasa=False,
+            )
         )
+
+        unweighted_top_sample = unweighted_score_details.scored_samples[
+            unweighted_score_details.best_gpde_index
+        ]
         top_ranked_lddt = unweighted_top_sample[3]
 
         # update and log metrics
 
-        self.test_model_selection_score(model_selection_score)
+        self.test_model_selection_score(score_details.score)
         self.log(
             "test/model_selection_score",
             self.test_model_selection_score,
