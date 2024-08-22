@@ -168,6 +168,41 @@ def compose(*fns: Callable):
     return inner
 
 
+# validation functions
+
+
+def hard_validate_atom_indices_ascending(
+    indices: Int["b n"] | Int["b n 3"], error_msg_field: str = "indices"  # type: ignore
+):
+    """Perform a hard validation on atom indices to ensure they are ascending. The function asserts
+    if any of the indices that are not -1 (missing) are identical or descending. This will cover
+    'distogram_atom_indices', 'molecule_atom_indices', and 'atom_indices_for_frame'.
+
+    :param indices: The indices to validate.
+    :param error_msg_field: The error message field.
+    """
+
+    if indices.ndim == 2:
+        indices = rearrange(indices, "... -> ... 1")
+
+    for sample_indices in indices:
+        all_present = (sample_indices >= 0).all(dim=-1)
+        present_indices = sample_indices[all_present]
+
+        # NOTE: this is a relaxed assumption, i.e., that if all -1 or only one molecule, then it passes the test
+
+        if present_indices.numel() <= 1:
+            continue
+
+        difference = einx.subtract(
+            "n i, n j -> n (i j)", present_indices[1:], present_indices[:-1]
+        )
+
+        assert (
+            difference >= 0
+        ).all(), f"Detected invalid {error_msg_field} for a batch: {present_indices}"
+
+
 # atom level, what Alphafold3 accepts
 
 UNCOLLATABLE_ATOM_INPUT_FIELDS = {"filepath"}

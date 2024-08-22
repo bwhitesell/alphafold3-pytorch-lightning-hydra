@@ -101,6 +101,7 @@ from alphafold3_pytorch.models.components.inputs import (
     NUM_MOLECULE_IDS,
     NUM_MSA_ONE_HOT,
     BatchedAtomInput,
+    hard_validate_atom_indices_ascending,
 )
 from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.model_utils import (
@@ -5582,6 +5583,7 @@ class Alphafold3(Module):
         detach_when_recycling: bool = None,
         min_conf_resolution: float = 0.1,
         max_conf_resolution: float = 4.0,
+        hard_validate: bool = False,
     ) -> (
         Float["b m 3"]  # type: ignore
         | Tuple[Float["b m 3"], ConfidenceHeadLogits]  # type: ignore
@@ -5634,6 +5636,7 @@ class Alphafold3(Module):
             confidence head predictions.
         :param max_conf_resolution: The maximum PDB training set resolution at which to supervise
             confidence head predictions.
+        :param hard_validate: Whether to hard validate the input tensors.
         :return: The atomic coordinates, the confidence head logits, the distogram head logits, the
             loss, or the loss breakdown.
         """
@@ -5647,6 +5650,19 @@ class Alphafold3(Module):
         assert (
             atompair_inputs.shape[-1] == self.dim_atompair_inputs
         ), f"Expected {self.dim_atompair_inputs} for atompair_inputs feature dimension, but received {atompair_inputs.shape[-1]}"
+
+        # hard validate when debug env variable is turned on
+
+        if hard_validate or IS_DEBUGGING:
+            maybe(hard_validate_atom_indices_ascending)(
+                distogram_atom_indices, "distogram_atom_indices"
+            )
+            maybe(hard_validate_atom_indices_ascending)(
+                molecule_atom_indices, "molecule_atom_indices"
+            )
+            maybe(hard_validate_atom_indices_ascending)(
+                atom_indices_for_frame, "atom_indices_for_frame"
+            )
 
         # soft validate
 
@@ -5682,8 +5698,6 @@ class Alphafold3(Module):
         assert exists(molecule_atom_lens) or exists(
             atom_mask
         ), "Either `molecule_atom_lens` or `atom_mask` must be provided."
-
-        # hard validate when debug env variable is turned on
 
         if IS_DEBUGGING:
             assert (

@@ -8,6 +8,7 @@ from alphafold3_pytorch.models.components.inputs import (
     IS_MOLECULE_TYPES,
     AtomInput,
 )
+from alphafold3_pytorch.utils.model_utils import exclusive_cumsum
 
 # mock dataset
 
@@ -42,6 +43,8 @@ class MockAtomDataset(Dataset):
         atompair_inputs = torch.randn(atom_seq_len, atom_seq_len, 5)
 
         molecule_atom_lens = torch.randint(1, self.atoms_per_window, (seq_len,))
+        atom_offsets = exclusive_cumsum(molecule_atom_lens)
+
         additional_molecule_feats = torch.randint(0, 2, (seq_len, 5))
         additional_token_feats = torch.randn(seq_len, 33)
         is_molecule_types = torch.randint(0, 2, (seq_len, IS_MOLECULE_TYPES)).bool()
@@ -83,6 +86,9 @@ class MockAtomDataset(Dataset):
         atom_pos = torch.randn(atom_seq_len, 3)
         molecule_atom_indices = molecule_atom_lens - 1
         distogram_atom_indices = molecule_atom_lens - 1
+
+        molecule_atom_indices += atom_offsets
+        distogram_atom_indices += atom_offsets
 
         distance_labels = torch.randint(0, 37, (seq_len, seq_len))
         resolved_labels = torch.randint(0, 2, (atom_seq_len,))
