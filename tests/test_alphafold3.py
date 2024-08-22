@@ -555,13 +555,13 @@ def test_alphafold3(
 ):
     """Test the AlphaFold 3 model."""
     seq_len = 16
-    atom_seq_len = 32
     atoms_per_window = 27
 
     molecule_atom_indices = torch.randint(0, 2, (2, seq_len)).long()
-    molecule_atom_lens = torch.full((2, seq_len), 2).long()
+    molecule_atom_lens = torch.full((2, seq_len), 3).long()
 
-    atom_offset = exclusive_cumsum(molecule_atom_lens)
+    atom_seq_len = molecule_atom_lens.sum(dim=-1).amax()
+    atom_offsets = exclusive_cumsum(molecule_atom_lens)
 
     token_bonds = torch.randint(0, 2, (2, seq_len, seq_len)).bool()
 
@@ -585,7 +585,7 @@ def test_alphafold3(
     atom_indices_for_frame = None
     if calculate_pae:
         atom_indices_for_frame = repeat(torch.arange(3), "c -> b n c", b=2, n=seq_len).clone()
-        atom_indices_for_frame += atom_offset[..., None]
+        atom_indices_for_frame += atom_offsets[..., None]
 
     missing_atom_mask = None
     if missing_atoms:
@@ -611,8 +611,8 @@ def test_alphafold3(
 
     # offset indices correctly
 
-    distogram_atom_indices += atom_offset
-    molecule_atom_indices += atom_offset
+    distogram_atom_indices += atom_offsets
+    molecule_atom_indices += atom_offsets
 
     # alphafold3
 
