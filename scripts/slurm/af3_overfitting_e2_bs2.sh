@@ -39,7 +39,7 @@ srun python3 alphafold3_pytorch/train.py \
     logger=wandb \
     +logger.wandb.entity=bml-lab \
     logger.wandb.group=alphafold3-overfitting-experiment \
-    +logger.wandb.name=AlphaFold3-31M-Overfit-E2-BS2-08222024 \
+    +logger.wandb.name=AlphaFold3-23M-Overfit-E2-BS2-08222024 \
     model=alphafold3 \
     model.num_samples_per_example=5 \
     model.visualize_val_samples_every_n_steps=1 \
