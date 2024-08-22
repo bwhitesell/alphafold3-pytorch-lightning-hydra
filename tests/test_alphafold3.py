@@ -990,12 +990,8 @@ def test_compute_ranking_score():
     is_modified_residue = torch.randint(0, 2, (batch_size, atom_seq_len))
 
     pae_logits = torch.randn(batch_size, 64, seq_len, seq_len)
-    pde_logits = torch.randn(batch_size, 64, seq_len, seq_len)
     plddt_logits = torch.randn(batch_size, 50, atom_seq_len)
-    resolved_logits = torch.randint(0, 2, (batch_size, 2, seq_len))
-    confidence_head_logits = ConfidenceHeadLogits(
-        pae_logits, pde_logits, plddt_logits, resolved_logits
-    )
+
     atom_level_pae_logits = torch.randn(batch_size, 64, atom_seq_len, atom_seq_len)
 
     chain_length = [random.randint(seq_len // 4, seq_len // 2) for _ in range(batch_size)]  # nosec
@@ -1014,7 +1010,8 @@ def test_compute_ranking_score():
     compute_ranking_score = ComputeRankingScore()
 
     full_complex_metric = compute_ranking_score.compute_full_complex_metric(
-        confidence_head_logits,
+        pae_logits,
+        plddt_logits,
         asym_id,
         has_frame,
         molecule_atom_lens,
@@ -1024,17 +1021,18 @@ def test_compute_ranking_score():
     )
 
     single_chain_metric = compute_ranking_score.compute_single_chain_metric(
-        confidence_head_logits,
+        pae_logits,
+        plddt_logits,
         asym_id,
         has_frame,
     )
 
     interface_metric = compute_ranking_score.compute_interface_metric(
-        confidence_head_logits, asym_id, has_frame, interface_chains=[(0, 1), (1,)]
+        pae_logits, asym_id, has_frame, interface_chains=[(0, 1), (1,)]
     )
 
     modified_residue_score = compute_ranking_score.compute_modified_residue_score(
-        confidence_head_logits, atom_mask, is_modified_residue
+        plddt_logits, atom_mask, is_modified_residue
     )
 
     residue_level_ptm_score = compute_ranking_score.compute_confidence_score.compute_ptm(

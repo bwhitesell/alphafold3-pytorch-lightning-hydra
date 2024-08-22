@@ -2474,6 +2474,7 @@ class ElucidatedAtomDiffusion(Module):
         S_noise=1.003,
         step_scale=1.5,
         augment_during_sampling=True,
+        lddt_mask_kwargs: dict = dict(),
         smooth_lddt_loss_kwargs: dict = dict(),
         weighted_rigid_align_kwargs: dict = dict(),
         centre_random_augmentation_kwargs: dict = dict(),
@@ -2958,6 +2959,8 @@ class SmoothLDDTLoss(Module):
         self.nucleic_acid_cutoff = nucleic_acid_cutoff
         self.other_cutoff = other_cutoff
 
+        self.register_buffer("lddt_thresholds", torch.tensor([0.5, 1.0, 2.0, 4.0]))
+
     @typecheck
     def forward(
         self,
@@ -2977,6 +2980,8 @@ class SmoothLDDTLoss(Module):
         :return: The output tensor.
         """
         # Compute distances between all pairs of atoms
+        device = pred_coords.device
+
         pred_dists = torch.cdist(pred_coords, pred_coords, p=2)
         true_dists = torch.cdist(true_coords, true_coords, p=2)
 
@@ -2984,12 +2989,8 @@ class SmoothLDDTLoss(Module):
         dist_diff = torch.abs(true_dists - pred_dists)
 
         # Compute epsilon values
-        eps = (
-            F.sigmoid(0.5 - dist_diff)
-            + F.sigmoid(1.0 - dist_diff)
-            + F.sigmoid(2.0 - dist_diff)
-            + F.sigmoid(4.0 - dist_diff)
-        ) / 4.0
+        eps = einx.subtract("thresholds, ... -> ... thresholds", self.lddt_thresholds, dist_diff)
+        eps = eps.sigmoid().mean(dim=-1)
 
         # Restrict to bespoke inclusion radius
         is_nucleotide = is_dna | is_rna
@@ -3002,9 +3003,7 @@ class SmoothLDDTLoss(Module):
         )
 
         # Compute mean, avoiding self term
-        mask = inclusion_radius & ~torch.eye(
-            pred_coords.shape[1], dtype=torch.bool, device=pred_coords.device
-        )
+        mask = inclusion_radius & ~torch.eye(pred_coords.shape[1], dtype=torch.bool, device=device)
 
         # Take into account variable lengthed atoms in batch
         if exists(coords_mask):
@@ -3789,7 +3788,7 @@ class ConfidenceHead(Module):
 class ConfidenceScore(NamedTuple):
     """The ConfidenceScore class."""
 
-    plddt: Float["b n"]  # type: ignore
+    plddt: Float["b m"]  # type: ignore
     ptm: Float[" b"]  # type: ignore
     iptm: Float[" b"] | None  # type: ignore
 
@@ -3832,7 +3831,8 @@ class ComputeConfidenceScore(Module):
     @typecheck
     def forward(
         self,
-        confidence_head_logits: ConfidenceHeadLogits,
+        pae_logits: Float["b pae n n"],  # type: ignore
+        plddt_logits: Float["b plddt m"],  # type: ignore
         asym_id: Int["b n"],  # type: ignore
         has_frame: Bool["b n"],  # type: ignore
         ptm_residue_weight: Float["b n"] | None = None,  # type: ignore
@@ -3841,7 +3841,8 @@ class ComputeConfidenceScore(Module):
     ) -> ConfidenceScore:
         """Main function to compute confidence score.
 
-        :param confidence_head_logits: ConfidenceHeadLogits
+        :param pae_logits: [b pae n n] PAE logits
+        :param plddt_logits: [b plddt m] plDDT logits
         :param asym_id: [b n] asym_id of each residue
         :param has_frame: [b n] has_frame of each residue
         :param ptm_residue_weight: [b n] weight of each residue
@@ -3849,11 +3850,11 @@ class ComputeConfidenceScore(Module):
         :param multimer_mode: bool
         :return: Confidence score
         """
-        plddt = self.compute_plddt(confidence_head_logits.plddt)
+        plddt = self.compute_plddt(plddt_logits)
 
         # Section 5.9.1 equation 17
         ptm = self.compute_ptm(
-            confidence_head_logits.pae,
+            pae_logits,
             asym_id,
             has_frame,
             ptm_residue_weight,
@@ -3866,7 +3867,7 @@ class ComputeConfidenceScore(Module):
         if multimer_mode:
             # Section 5.9.2 equation 18
             iptm = self.compute_ptm(
-                confidence_head_logits.pae,
+                pae_logits,
                 asym_id,
                 has_frame,
                 ptm_residue_weight,
@@ -4185,10 +4186,10 @@ class ComputeRankingScore(Module):
         disorder = ((atom_rasa > 0.581) * mask).sum(dim=-1) / (self.eps + mask.sum(dim=1))
         return disorder
 
-    @typecheck
     def compute_full_complex_metric(
         self,
-        confidence_head_logits: ConfidenceHeadLogits,
+        pae_logits: Float["b pae n n"],  # type: ignore
+        plddt_logits: Float["b plddt m"],  # type: ignore
         asym_id: Int["b n"],  # type: ignore
         has_frame: Bool["b n"],  # type: ignore
         molecule_atom_lens: Int["b n"],  # type: ignore
@@ -4199,7 +4200,8 @@ class ComputeRankingScore(Module):
     ) -> Float[" b"] | Tuple[Float[" b"], Tuple[ConfidenceScore, Bool[" b"]]]:  # type: ignore
         """Compute full complex metric.
 
-        :param confidence_head_logits: ConfidenceHeadLogits
+        :param pae_logits: [b pae n n] PAE logits
+        :param plddt_logits: [b plddt m] plDDT logits
         :param asym_id: [b n] asym_id of each residue
         :param has_frame: [b n] has_frame of each residue
         :param molecule_atom_lens: [b n] molecule atom lens
@@ -4231,7 +4233,7 @@ class ComputeRankingScore(Module):
         atom_is_molecule_types = is_molecule_types.gather(1, indices) * valid_indices[..., None]
 
         confidence_score = self.compute_confidence_score(
-            confidence_head_logits, asym_id, has_frame, multimer_mode=True
+            pae_logits, plddt_logits, asym_id, has_frame, multimer_mode=True
         )
         has_clash = self.compute_clash(
             atom_pos,
@@ -4258,13 +4260,15 @@ class ComputeRankingScore(Module):
     @typecheck
     def compute_single_chain_metric(
         self,
-        confidence_head_logits: ConfidenceHeadLogits,
+        pae_logits: Float["b pae n n"],  # type: ignore
+        plddt_logits: Float["b plddt m"],  # type: ignore
         asym_id: Int["b n"],  # type: ignore
         has_frame: Bool["b n"],  # type: ignore
     ) -> Float[" b"]:  # type: ignore
         """Compute single chain metric.
 
-        :param confidence_head_logits: ConfidenceHeadLogits
+        :param pae_logits: [b pae n n] PAE logits
+        :param plddt_logits: [b plddt m] plDDT logits
         :param asym_id: [b n] asym_id of each residue
         :param has_frame: [b n] has_frame of each residue
         :return: [b] score
@@ -4273,7 +4277,7 @@ class ComputeRankingScore(Module):
         # Section 5.9.3.2
 
         confidence_score = self.compute_confidence_score(
-            confidence_head_logits, asym_id, has_frame, multimer_mode=False
+            pae_logits, plddt_logits, asym_id, has_frame, multimer_mode=False
         )
 
         score = confidence_score.ptm
@@ -4282,14 +4286,14 @@ class ComputeRankingScore(Module):
     @typecheck
     def compute_interface_metric(
         self,
-        confidence_head_logits: ConfidenceHeadLogits,
+        pae_logits: Float["b pae m m"],  # type: ignore
         asym_id: Int["b n"],  # type: ignore
         has_frame: Bool["b n"],  # type: ignore
         interface_chains: List,
     ) -> Float[" b"]:  # type: ignore
         """Compute interface metric.
 
-        :param confidence_head_logits: ConfidenceHeadLogits
+        :param pae_logits: [b pae m m] PAE logits
         :param asym_id: [b n] asym_id of each residue
         :param has_frame: [b n] has_frame of each residue
         :param interface_chains: List
@@ -4311,7 +4315,7 @@ class ComputeRankingScore(Module):
             chain_wise_iptm_mask,
             unique_chains,
         ) = self.compute_confidence_score.compute_ptm(
-            confidence_head_logits.pae, asym_id, has_frame, compute_chain_wise_iptm=True
+            pae_logits, asym_id, has_frame, compute_chain_wise_iptm=True
         )
 
         # Section 5.9.3 equation 20
@@ -4336,13 +4340,13 @@ class ComputeRankingScore(Module):
     @typecheck
     def compute_modified_residue_score(
         self,
-        confidence_head_logits: ConfidenceHeadLogits,
+        plddt_logits: Float["b plddt m"],  # type: ignore
         atom_mask: Bool["b m"],  # type: ignore
         atom_is_modified_residue: Int["b m"],  # type: ignore
     ) -> Float[" b"]:  # type: ignore
         """Compute modified residue score.
 
-        :param confidence_head_logits: ConfidenceHeadLogits
+        :param plddt_logits: [b plddt m] plDDT logits
         :param atom_mask: [b m] atom mask
         :param atom_is_modified_residue: [b m] atom is modified residue
         :return: [b] score
@@ -4350,9 +4354,7 @@ class ComputeRankingScore(Module):
 
         # Section 5.9.3.4
 
-        plddt = self.compute_confidence_score.compute_plddt(
-            confidence_head_logits.plddt,
-        )
+        plddt = self.compute_confidence_score.compute_plddt(plddt_logits)
 
         mask = atom_is_modified_residue * atom_mask
         plddt_mean = masked_average(plddt, mask, dim=-1, eps=self.eps)
@@ -4535,6 +4537,7 @@ class ComputeModelSelectionScore(Module):
         self.weight_dict_config = weight_dict_config
 
         self.register_buffer("dist_breaks", dist_breaks)
+        self.register_buffer("lddt_thresholds", torch.tensor([0.5, 1.0, 2.0, 4.0]))
 
         self.dssp_path = dssp_path
 
@@ -4617,12 +4620,9 @@ class ComputeModelSelectionScore(Module):
 
         # Compute distance difference for all pairs of atoms
         dist_diff = torch.abs(true_dists - pred_dists)
-        lddt = (
-            ((0.5 - dist_diff) >= 0).float()
-            + ((1.0 - dist_diff) >= 0).float()
-            + ((2.0 - dist_diff) >= 0).float()
-            + ((4.0 - dist_diff) >= 0).float()
-        ) / 4.0
+
+        lddt = einx.subtract("thresholds, ... -> ... thresholds", self.lddt_thresholds, dist_diff)
+        lddt = (lddt >= 0).float().mean(dim=-1)
 
         # Restrict to bespoke inclusion radius
         is_nucleotide = is_dna | is_rna
@@ -4674,15 +4674,6 @@ class ComputeModelSelectionScore(Module):
             coords_mask = torch.ones_like(asym_mask_a)
 
         if asym_mask_a.ndim == 1:
-            args = [
-                asym_mask_a,
-                asym_mask_b,
-                pred_coords,
-                true_coords,
-                is_molecule_types,
-                coords_mask,
-            ]
-            args = [x.unsqueeze(0) for x in args]
             (
                 asym_mask_a,
                 asym_mask_b,
@@ -4690,7 +4681,17 @@ class ComputeModelSelectionScore(Module):
                 true_coords,
                 is_molecule_types,
                 coords_mask,
-            ) = args
+            ) = map(
+                lambda t: rearrange(t, "... -> 1 ..."),
+                (
+                    asym_mask_a,
+                    asym_mask_b,
+                    pred_coords,
+                    true_coords,
+                    is_molecule_types,
+                    coords_mask,
+                ),
+            )
 
         is_dna = is_molecule_types[..., IS_DNA_INDEX]
         is_rna = is_molecule_types[..., IS_RNA_INDEX]
@@ -5194,12 +5195,15 @@ class Alphafold3(Module):
             S_tmax=50,
             S_noise=1.003,
         ),
+        lddt_mask_nucleic_acid_cutoff=30.0,
+        lddt_mask_other_cutoff=15.0,
         augment_kwargs: dict = dict(),
         stochastic_frame_average=False,
         distogram_atom_resolution=False,
         checkpoint_input_embedding=False,
         checkpoint_trunk_pairformer=False,
-        checkpoint_distogram_head=True,
+        checkpoint_distogram_head=False,
+        checkpoint_confidence_head=False,
         checkpoint_diffusion_token_transformer=False,
         detach_when_recycling=True,
         pdb_training_set=True,
@@ -5353,7 +5357,13 @@ class Alphafold3(Module):
         )
 
         self.edm = ElucidatedAtomDiffusion(
-            self.diffusion_module, sigma_data=sigma_data, **edm_kwargs
+            self.diffusion_module,
+            sigma_data=sigma_data,
+            smooth_lddt_loss_kwargs=dict(
+                nucleic_acid_cutoff=lddt_mask_nucleic_acid_cutoff,
+                other_cutoff=lddt_mask_other_cutoff,
+            ),
+            **edm_kwargs,
         )
 
         self.num_rollout_steps = num_rollout_steps
@@ -5377,6 +5387,11 @@ class Alphafold3(Module):
             num_dist_bins=num_dist_bins,
             atom_resolution=distogram_atom_resolution,
         )
+
+        # lddt related
+
+        self.lddt_mask_nucleic_acid_cutoff = lddt_mask_nucleic_acid_cutoff
+        self.lddt_mask_other_cutoff = lddt_mask_other_cutoff
 
         # pae related bins and modules
 
@@ -5411,11 +5426,14 @@ class Alphafold3(Module):
             **confidence_head_kwargs,
         )
 
+        self.register_buffer("lddt_thresholds", torch.tensor([0.5, 1.0, 2.0, 4.0]))
+
         # checkpointing related
 
         self.checkpoint_trunk_pairformer = checkpoint_trunk_pairformer
         self.checkpoint_diffusion_token_transformer = checkpoint_diffusion_token_transformer
         self.checkpoint_distogram_head = checkpoint_distogram_head
+        self.checkpoint_confidence_head = checkpoint_confidence_head
 
         # loss related
 
@@ -6286,8 +6304,8 @@ class Alphafold3(Module):
 
                 inclusion_radius = torch.where(
                     is_any_nucleotide_pair,
-                    true_dists < 30.0,
-                    true_dists < 15.0,
+                    true_dists < self.lddt_mask_nucleic_acid_cutoff,
+                    true_dists < self.lddt_mask_other_cutoff,
                 )
 
                 is_token_center_atom = torch.zeros_like(atom_pos[..., 0], dtype=torch.bool)
@@ -6314,12 +6332,11 @@ class Alphafold3(Module):
                 # compute distance difference for all pairs of atoms
 
                 dist_diff = torch.abs(true_dists - pred_dists)
-                lddt = (
-                    ((0.5 - dist_diff) >= 0).float()
-                    + ((1.0 - dist_diff) >= 0).float()
-                    + ((2.0 - dist_diff) >= 0).float()
-                    + ((4.0 - dist_diff) >= 0).float()
-                ) / 4.0
+
+                lddt = einx.subtract(
+                    "thresholds, ... -> ... thresholds", self.lddt_thresholds, dist_diff
+                )
+                lddt = (lddt >= 0).float().mean(dim=-1)
 
                 # calculate masked averaging,
                 # after which we assign each value to one of 50 equally sized bins
@@ -6347,7 +6364,6 @@ class Alphafold3(Module):
             # determine which mask to use for confidence head labels
 
             label_mask = atom_mask
-
             label_pairwise_mask = to_pairwise_mask(mask)
 
             # cross entropy losses
@@ -6358,8 +6374,15 @@ class Alphafold3(Module):
                 else torch.full((batch_size,), False, device=self.device)
             )
 
-            confidence_weight = torch.full((batch_size,), 1.0, device=self.device)
-            confidence_weight = torch.where(confidence_mask, confidence_weight, 0.0)
+            confidence_weight = confidence_mask.float()
+
+            def cross_entropy_with_weight(logits, labels, weight, ignore_index: int):
+                """Compute cross entropy with weight."""
+                return F.cross_entropy(
+                    einx.multiply("b ..., b -> b ...", logits, weight),
+                    einx.multiply("b ..., b -> b ...", labels, weight.long()),
+                    ignore_index=ignore_index,
+                )
 
             if exists(pae_labels):
                 assert pae_labels.shape[-1] == ch_logits.pae.shape[-1], (
@@ -6367,10 +6390,8 @@ class Alphafold3(Module):
                     f"ch_logits.pae shape {ch_logits.pae.shape[-1]}"
                 )
                 pae_labels = torch.where(label_pairwise_mask, pae_labels, ignore)
-                pae_loss = F.cross_entropy(
-                    ch_logits.pae * confidence_weight[..., None, None, None],
-                    pae_labels * confidence_weight[..., None, None].long(),
-                    ignore_index=ignore,
+                pae_loss = cross_entropy_with_weight(
+                    ch_logits.pae, pae_labels, confidence_weight, ignore
                 )
 
             if exists(pde_labels):
@@ -6379,10 +6400,8 @@ class Alphafold3(Module):
                     f"ch_logits.pde shape {ch_logits.pde.shape[-1]}"
                 )
                 pde_labels = torch.where(label_pairwise_mask, pde_labels, ignore)
-                pde_loss = F.cross_entropy(
-                    ch_logits.pde * confidence_weight[..., None, None, None],
-                    pde_labels * confidence_weight[..., None, None].long(),
-                    ignore_index=ignore,
+                pde_loss = cross_entropy_with_weight(
+                    ch_logits.pde, pde_labels, confidence_weight, ignore
                 )
 
             if exists(plddt_labels):
@@ -6391,10 +6410,8 @@ class Alphafold3(Module):
                     f"ch_logits.plddt shape {ch_logits.plddt.shape[-1]}"
                 )
                 plddt_labels = torch.where(label_mask, plddt_labels, ignore)
-                plddt_loss = F.cross_entropy(
-                    ch_logits.plddt * confidence_weight[..., None, None],
-                    plddt_labels * confidence_weight[..., None].long(),
-                    ignore_index=ignore,
+                plddt_loss = cross_entropy_with_weight(
+                    ch_logits.plddt, plddt_labels, confidence_weight, ignore
                 )
 
             if exists(resolved_labels):
@@ -6403,10 +6420,8 @@ class Alphafold3(Module):
                     f"ch_logits.resolved shape {ch_logits.resolved.shape[-1]}"
                 )
                 resolved_labels = torch.where(label_mask, resolved_labels, ignore)
-                resolved_loss = F.cross_entropy(
-                    ch_logits.resolved * confidence_weight[..., None, None],
-                    resolved_labels * confidence_weight[..., None].long(),
-                    ignore_index=ignore,
+                resolved_loss = cross_entropy_with_weight(
+                    ch_logits.resolved, resolved_labels, confidence_weight, ignore
                 )
 
             confidence_loss = pae_loss + pde_loss + plddt_loss + resolved_loss
