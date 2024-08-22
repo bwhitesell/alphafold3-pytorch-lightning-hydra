@@ -666,6 +666,7 @@ def test_alphafold3(
         is_molecule_types=is_molecule_types,
         is_molecule_mod=is_molecule_mod,
         additional_molecule_feats=additional_molecule_feats,
+        additional_msa_feats=additional_msa_feats,
         additional_token_feats=additional_token_feats,
         msa=msa,
         templates=template_feats,
