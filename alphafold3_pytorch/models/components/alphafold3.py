@@ -76,7 +76,7 @@ from huggingface_hub import PyTorchModelHubMixin, hf_hub_download
 from taylor_series_linear_attention import TaylorSeriesLinearAttn
 from torch import Tensor
 from torch.nn import Linear, Module, ModuleList, Sequential
-from torch.utils.checkpoint import checkpoint_sequential
+from torch.utils.checkpoint import checkpoint, checkpoint_sequential
 from tqdm import tqdm
 
 from alphafold3_pytorch.common.biomolecule import get_residue_constants
@@ -141,6 +141,11 @@ SCORED_SAMPLE = Tuple[int, Float["b m 3"], Float[" b"], Float[" b"]]  # type: ig
 LinearNoBias = partial(Linear, bias=False)
 
 logger = RankedLogger(__name__, rank_zero_only=False)
+
+# always use non reentrant checkpointing
+
+checkpoint = partial(checkpoint, use_reentrant=False)
+checkpoint_sequential = partial(checkpoint_sequential, use_reentrant=False)
 
 # linear and outer sum
 # for single repr -> pairwise pattern throughout this architecture
@@ -987,9 +992,7 @@ class MSAModule(Module):
             wrapped_layers.append(msa_transition_wrapper(msa_transition))
             wrapped_layers.append(pairwise_block_wrapper(pairwise_block))
 
-        pairwise_repr, *_ = checkpoint_sequential(
-            wrapped_layers, self.checkpoint_segments, inputs, use_reentrant=False
-        )
+        pairwise_repr, *_ = checkpoint_sequential(wrapped_layers, self.checkpoint_segments, inputs)
 
         return pairwise_repr
 
@@ -1240,7 +1243,7 @@ class PairformerStack(Module):
                 wrapped_layers.append(single_transition_wrapper(single_transition))
 
         single_repr, pairwise_repr, _ = checkpoint_sequential(
-            wrapped_layers, self.checkpoint_segments, inputs, use_reentrant=False
+            wrapped_layers, self.checkpoint_segments, inputs
         )
 
         return single_repr, pairwise_repr
@@ -1475,9 +1478,7 @@ class TemplateEmbedder(Module):
         for block in self.pairformer_stack:
             wrapped_layers.append(block_wrapper(block))
 
-        templates, _ = checkpoint_sequential(
-            wrapped_layers, self.checkpoint_segments, inputs, use_reentrant=False
-        )
+        templates, _ = checkpoint_sequential(wrapped_layers, self.checkpoint_segments, inputs)
 
         return templates
 
@@ -1744,6 +1745,7 @@ class DiffusionTransformer(Module):
                     dim=dim,
                     prenorm=True,
                     gate_value_heads=True,
+                    remove_even_power_dups=True,
                     **linear_attn_kwargs,
                 )
 
@@ -1869,9 +1871,7 @@ class DiffusionTransformer(Module):
             wrapped_layers.append(attn_wrapper(attn))
             wrapped_layers.append(transition_wrapper(transition))
 
-        out = checkpoint_sequential(
-            wrapped_layers, self.checkpoint_segments, inputs, use_reentrant=False
-        )
+        out = checkpoint_sequential(wrapped_layers, self.checkpoint_segments, inputs)
 
         noised_repr, *_ = out
         return noised_repr
@@ -2392,9 +2392,7 @@ class DiffusionModule(Module):
         token_transformer = self.token_transformer
 
         if should_checkpoint(self, tokens, "checkpoint_token_transformer"):
-            from torch.utils.checkpoint import checkpoint
-
-            token_transformer = partial(checkpoint, token_transformer, use_reentrant=False)
+            token_transformer = partial(checkpoint, token_transformer)
 
         # token transformer
 
@@ -3014,9 +3012,7 @@ class SmoothLDDTLoss(Module):
             mask = mask & paired_coords_mask
 
         # Calculate masked averaging
-        lddt_sum = (eps * mask).sum(dim=(-1, -2))
-        lddt_count = mask.sum(dim=(-1, -2))
-        lddt = lddt_sum / lddt_count.clamp(min=1)
+        lddt = masked_average(eps, mask=mask, dim=(-1, -2), eps=1)
 
         return 1.0 - lddt.mean()
 
@@ -5203,6 +5199,7 @@ class Alphafold3(Module):
         distogram_atom_resolution=False,
         checkpoint_input_embedding=False,
         checkpoint_trunk_pairformer=False,
+        checkpoint_distogram_head=True,
         checkpoint_diffusion_token_transformer=False,
         detach_when_recycling=True,
         pdb_training_set=True,
@@ -5418,6 +5415,7 @@ class Alphafold3(Module):
 
         self.checkpoint_trunk_pairformer = checkpoint_trunk_pairformer
         self.checkpoint_diffusion_token_transformer = checkpoint_diffusion_token_transformer
+        self.checkpoint_distogram_head = checkpoint_distogram_head
 
         # loss related
 
@@ -5863,9 +5861,7 @@ class Alphafold3(Module):
             pairformer = self.pairformer
 
             if should_checkpoint(self, (single, pairwise), "checkpoint_trunk_pairformer"):
-                from torch.utils.checkpoint import checkpoint
-
-                pairformer = partial(checkpoint, pairformer, use_reentrant=False)
+                pairformer = partial(checkpoint, pairformer)
 
             # main attention trunk (pairformer)
 
@@ -5994,7 +5990,12 @@ class Alphafold3(Module):
 
             distance_labels = torch.where(distogram_mask, distance_labels, ignore)
 
-            distogram_logits = self.distogram_head(
+            distogram_head_fn = self.distogram_head
+
+            if should_checkpoint(self, pairwise, "checkpoint_distogram_head"):
+                distogram_head_fn = partial(checkpoint, distogram_head_fn)
+
+            distogram_logits = distogram_head_fn(
                 pairwise, molecule_atom_lens=molecule_atom_lens, atom_feats=atom_feats
             )
 
