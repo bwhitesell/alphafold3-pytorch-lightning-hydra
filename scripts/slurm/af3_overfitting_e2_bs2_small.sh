@@ -8,7 +8,7 @@
 #SBATCH --ntasks-per-node=1    # NOTE: this needs to be `1` on SLURM clusters when using Lightning's `ddp_spawn` strategy`; otherwise, set to match Lightning's quantity of `Trainer(devices=...)`
 #SBATCH --mem=59G              # NOTE: use `--mem=0` to request all memory "available" on the assigned node
 #SBATCH -t 2-00:00:00          # time limit for the job (up to 28 days: `28-00:00:00`)
-#SBATCH -J af3_overfitting_e1_bs1 # job name
+#SBATCH -J af3_overfitting_e2_bs2 # job name
 #SBATCH --output=R-%x.%j.out   # output log file
 #SBATCH --error=R-%x.%j.err    # error log file
 
@@ -32,14 +32,14 @@ conda activate alphafold3-pytorch/
 # Run training
 srun python3 alphafold3_pytorch/train.py \
     data=pdb \
-    data.batch_size=1 \
+    data.batch_size=2 \
     data.overfitting_train_examples=true \
-    data.sample_only_pdb_ids='[721p-assembly1]' \
+    data.sample_only_pdb_ids='[209d-assembly1, 721p-assembly1]' \
     experiment=alphafold3_overfitting_experiment \
     logger=wandb \
     +logger.wandb.entity=bml-lab \
     logger.wandb.group=alphafold3-overfitting-experiment \
-    +logger.wandb.name=AlphaFold3-23M-Overfit-E1-BS1-08222024 \
+    +logger.wandb.name=AlphaFold3-23M-Overfit-E2-BS2-Small-08222024 \
     model=alphafold3 \
     model.num_samples_per_example=5 \
     model.visualize_val_samples_every_n_steps=1 \
