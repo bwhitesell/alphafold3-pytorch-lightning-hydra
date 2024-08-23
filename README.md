@@ -127,7 +127,7 @@ git clone https://github.com/amorehead/alphafold3-pytorch-lightning-hydra
 cd alphafold3-pytorch-lightning-hydra
 
 # Build Docker container
-docker build -t af3 .
+docker build -t alphafold3-pytorch-lightning-hydra .
 ```
 
 Alternatively, use build arguments to rebuild the image with different software versions:
@@ -139,15 +139,17 @@ For example:
 
 ```bash
 ## Use build argument to change versions
-docker build --build-arg "PYTORCH_TAG=2.2.1-cuda12.1-cudnn8-devel" --build-arg "GIT_TAG=0.1.15" -t af3 .
+docker build --build-arg "PYTORCH_TAG=2.2.1-cuda12.1-cudnn8-devel" --build-arg "GIT_TAG=0.1.15" -t alphafold3-pytorch-lightning-hydra .
 ```
 
 Then, run the container with GPUs and mount a local volume (for training) using the following command:
 
 ```bash
 ## Run Container
-docker run -v .:/data --gpus all -it af3
+docker run -v .:/data --gpus all -it alphafold3-pytorch-lightning-hydra
 ```
+
+**NOTE:** An AMD ROCm version of the Docker image can alternatively be built using `ROCm_Dockerfile`.
 
 </details>
 
