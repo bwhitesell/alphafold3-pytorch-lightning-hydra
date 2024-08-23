@@ -5956,7 +5956,6 @@ class Alphafold3(Module):
             atom_indices_for_frame,
             resolved_labels,
         )
-        all_labels = (distance_labels, *confidence_head_labels)
 
         can_return_loss = (
             atom_pos_given
