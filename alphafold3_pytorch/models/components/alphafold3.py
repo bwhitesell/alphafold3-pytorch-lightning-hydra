@@ -23,6 +23,7 @@ dtf - additional token feats derived from msa (profile and deletion_mean)
 t - templates
 s - msa
 r - registers
+ts - diffusion timesteps
 
 additional_msa_feats: [*, 2]:
 - concatted to the msa single rep
@@ -2630,7 +2631,7 @@ class ElucidatedAtomDiffusion(Module):
         return sigmas * self.sigma_data
 
     @torch.no_grad()
-    def sample(self, atom_mask: Bool["b m"] | None = None, num_sample_steps=None, clamp=False, use_tqdm_pbar=True, tqdm_pbar_title="Sampling time step", **network_condition_kwargs):  # type: ignore
+    def sample(self, atom_mask: Bool["b m"] | None = None, num_sample_steps=None, clamp=False, use_tqdm_pbar=True, tqdm_pbar_title="Sampling time step", return_all_timesteps=False, **network_condition_kwargs) -> Float["b m 3"] | Float["ts b m 3"]:  # type: ignore
         """Sample clean atom positions.
 
         :param atom_mask: The atom mask tensor.
@@ -2639,7 +2640,8 @@ class ElucidatedAtomDiffusion(Module):
         :param network_condition_kwargs: The network condition keyword arguments.
         :param use_tqdm_pbar: Whether to use tqdm progress bar.
         :param tqdm_pbar_title: The tqdm progress bar title.
-        :return: The atom positions.
+        :param return_all_timesteps: Whether to return all timesteps.
+        :return: The clean atom positions.
         """
         step_scale, num_sample_steps = self.step_scale, default(
             num_sample_steps, self.num_sample_steps
@@ -2674,6 +2676,8 @@ class ElucidatedAtomDiffusion(Module):
         maybe_augment_fn = (
             self.centre_random_augmenter if self.augment_during_sampling else identity
         )
+
+        all_atom_pos = [atom_pos]
 
         for sigma, sigma_next, gamma in maybe_tqdm_wrapper(
             sigmas_and_gammas, desc=tqdm_pbar_title
@@ -2718,6 +2722,14 @@ class ElucidatedAtomDiffusion(Module):
                 )
 
             atom_pos = atom_pos_next
+
+            all_atom_pos.append(atom_pos)
+
+        # if returning atom positions across all timesteps for visualization
+        # then stack the `all_atom_pos`
+
+        if return_all_timesteps:
+            atom_pos = torch.stack(all_atom_pos)
 
         if clamp:
             atom_pos = atom_pos.clamp(-1.0, 1.0)
@@ -5608,6 +5620,7 @@ class Alphafold3(Module):
         resolution: Float[" b"] | None = None,  # type: ignore
         return_loss_breakdown=False,
         return_loss: bool = None,
+        return_all_diffused_atom_pos: bool = False,
         return_confidence_head_logits: bool = False,
         return_distogram_head_logits: bool = False,
         num_rollout_steps: int | None = None,
@@ -5618,7 +5631,8 @@ class Alphafold3(Module):
         hard_validate: bool = False,
     ) -> (
         Float["b m 3"]  # type: ignore
-        | Tuple[Float["b m 3"], ConfidenceHeadLogits | Alphafold3Logits]  # type: ignore
+        | Float["ts b m 3"]  # type: ignore
+        | Tuple[Float["b m 3"] | Float["ts b m 3"], ConfidenceHeadLogits | Alphafold3Logits]  # type: ignore
         | Float[""]  # type: ignore
         | Tuple[Float[""], LossBreakdown]  # type: ignore
     ):
@@ -5944,9 +5958,12 @@ class Alphafold3(Module):
         )
         all_labels = (distance_labels, *confidence_head_labels)
 
-        has_labels = any([*map(exists, all_labels)])
-
-        can_return_loss = atom_pos_given or has_labels
+        can_return_loss = (
+            atom_pos_given
+            or exists(resolved_labels)
+            or exists(distance_labels)
+            or (atom_pos_given and exists(atom_indices_for_frame))
+        )
 
         # default whether to return loss by whether labels or atom positions are given
 
@@ -5967,11 +5984,12 @@ class Alphafold3(Module):
                 pairwise_trunk=pairwise,
                 pairwise_rel_pos_feats=relative_position_encoding,
                 molecule_atom_lens=molecule_atom_lens,
+                return_all_timesteps=return_all_diffused_atom_pos,
             )
 
             if exists(atom_mask):
                 sampled_atom_pos = einx.where(
-                    "b m, b m c, -> b m c", atom_mask, sampled_atom_pos, 0.0
+                    "b m, ... b m c, -> ... b m c", atom_mask, sampled_atom_pos, 0.0
                 )
 
             if return_confidence_head_logits:
