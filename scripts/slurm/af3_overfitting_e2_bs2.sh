@@ -48,9 +48,9 @@ srun python3 alphafold3_pytorch/train.py \
     +model.net.dim_token=8 \
     +model.net.confidence_head_kwargs='{pairformer_depth: 1}' \
     +model.net.template_embedder_kwargs='{pairformer_stack_depth: 1}' \
-    +model.net.msa_module_kwargs='{depth: 1, dim_msa: 32}' \
-    +model.net.pairformer_stack='{depth: 2, pair_bias_attn_dim_head: 32, pair_bias_attn_heads: 8}' \
-    +model.net.diffusion_module_kwargs='{atom_encoder_depth: 2, atom_encoder_heads: 4, token_transformer_depth: 4, token_transformer_heads: 16, atom_decoder_depth: 2, atom_decoder_heads: 4, atom_encoder_kwargs: {attn_pair_bias_kwargs: {dim_head: 16}}, atom_decoder_kwargs: {attn_pair_bias_kwargs: {dim_head: 16}}}' \
+    +model.net.msa_module_kwargs='{depth: 1, dim_msa: 8}' \
+    +model.net.pairformer_stack='{depth: 1, pair_bias_attn_dim_head: 8, pair_bias_attn_heads: 8}' \
+    +model.net.diffusion_module_kwargs='{atom_encoder_depth: 2, atom_encoder_heads: 4, token_transformer_depth: 2, token_transformer_heads: 16, atom_decoder_depth: 2, atom_decoder_heads: 4, atom_encoder_kwargs: {attn_pair_bias_kwargs: {dim_head: 16}}, atom_decoder_kwargs: {attn_pair_bias_kwargs: {dim_head: 16}}}' \
     trainer.check_val_every_n_epoch=null \
     +trainer.val_check_interval=50 \
     +trainer.log_every_n_steps=1
