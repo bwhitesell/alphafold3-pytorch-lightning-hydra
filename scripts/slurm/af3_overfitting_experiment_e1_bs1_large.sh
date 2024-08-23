@@ -19,13 +19,13 @@ module load pawseyenv/2023.08
 module load singularity/3.11.4-slurm
 
 # Determine directory paths
-export MIOPEN_USER_DB_PATH="/scratch/director2187/gbouras/tmp/my-miopen-cache/af3_rocm"
+export MIOPEN_USER_DB_PATH="/scratch/director2187/amorehead/tmp/my-miopen-cache/af3_rocm"
 export MIOPEN_CUSTOM_CACHE_DIR=${MIOPEN_USER_DB_PATH}
 
 # Create user database path
 rm -rf ${MIOPEN_USER_DB_PATH}
 mkdir -p ${MIOPEN_USER_DB_PATH}
-export containerImage=/scratch/pawsey1018/gbouras/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.3.8_dev.sif
+export containerImage=/scratch/pawsey1018/amorehead/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.3.8_dev.sif
 
 # Run container
 singularity exec --rocm \
