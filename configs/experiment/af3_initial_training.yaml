@@ -1,0 +1,28 @@
+# @package _global_
+
+# lists the experiment parameters corresponding to "Initial training" in Table 6 of the paper
+
+# to execute this experiment run:
+# python train.py experiment=af3_initial_training
+
+defaults:
+  - override /callbacks: default
+  - override /data: pdb
+  - override /model: alphafold3
+  - override /trainer: default
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+tags: ["pdb", "alphafold3", "initial_training", "full_dataset", "batch_size_1"]
+
+seed: 12345
+
+# initial training experiment parameters:
+
+logger:
+  wandb:
+    entity: bml-lab
+    group: "af3-training"
+    tags: ${tags}
+    name: 61M-bs1-${now:%Y%m%d%H%M%S}

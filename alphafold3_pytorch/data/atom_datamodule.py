@@ -54,7 +54,7 @@ class AtomDataModule(LightningDataModule):
         train_val_test_split: Tuple[int, int, int] | None = (2, 2, 2),
         atoms_per_window: int | None = None,
         map_dataset_input_fn: Optional[Callable] = None,
-        batch_size: int = 256,
+        batch_size: int = 1,
         num_workers: int = 0,
         pin_memory: bool = False,
     ) -> None:

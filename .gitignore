@@ -180,6 +180,9 @@ configs/local/default.yaml
 !/data/test/
 /logs/
 .env
+.err
+.log
+.sif
 
 # Aim logging
 .aim

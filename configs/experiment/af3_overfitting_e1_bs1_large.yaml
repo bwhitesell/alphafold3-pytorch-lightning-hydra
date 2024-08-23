@@ -1,0 +1,61 @@
+# @package _global_
+
+# lists the experiment parameters corresponding to an "Overfitting Experiment" with a single training example and batch size of one
+
+# to execute this experiment run:
+# python train.py experiment=af3_overfitting_e1_bs1_large
+
+defaults:
+  - override /callbacks: default
+  - override /data: pdb
+  - override /model: alphafold3
+  - override /trainer: default
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+tags:
+  ["pdb", "alphafold3", "overfitting", "single_example", "721p", "batch_size_1"]
+
+seed: 12345
+
+# overfitting experiment parameters:
+
+data:
+  crop_size: 5120
+  max_msas_per_chain: 128
+  batch_size: 1
+  overfitting_train_examples: true
+  sample_only_pdb_ids: [721p-assembly1]
+
+model:
+  optimizer:
+    lr: 1e-4
+  net:
+    dim_single: 96
+    dim_pairwise: 32
+    dim_token: 192
+    pairformer_stack: "{depth: 6, pair_bias_attn_dim_head: 32, pair_bias_attn_heads: 8}"
+    msa_module_kwargs: "{depth: 2, dim_msa: 32}"
+    template_embedder_kwargs: "{pairformer_stack_depth: 1}"
+    diffusion_module_kwargs: "{atom_encoder_depth: 2, atom_encoder_heads: 4, token_transformer_depth: 8, token_transformer_heads: 16, atom_decoder_depth: 2, atom_decoder_heads: 4, atom_encoder_kwargs: {attn_pair_bias_kwargs: {dim_head: 16}}, atom_decoder_kwargs: {attn_pair_bias_kwargs: {dim_head: 16}}}"
+    confidence_head_kwargs: "{pairformer_depth: 1}"
+  diffusion_add_smooth_lddt_loss: true
+  diffusion_add_bond_loss: true
+  visualize_val_samples_every_n_steps: 1
+
+trainer:
+  min_steps: null
+  max_steps: -1
+  min_epochs: 1 # NOTE: prevents early stopping
+  max_epochs: 20000
+  check_val_every_n_epoch: null
+  val_check_interval: 50
+  log_every_n_steps: 1
+
+logger:
+  wandb:
+    entity: bml-lab
+    group: "af3-overfitting-experiments"
+    tags: ${tags}
+    name: 23M-e1-bs1-large-${now:%Y%m%d%H%M%S}
