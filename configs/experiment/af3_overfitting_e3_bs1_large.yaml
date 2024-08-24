@@ -23,7 +23,6 @@ seed: 12345
 # overfitting experiment parameters:
 
 data:
-  crop_size: 5120
   max_msas_per_chain: 128
   batch_size: 1
   overfitting_train_examples: true
