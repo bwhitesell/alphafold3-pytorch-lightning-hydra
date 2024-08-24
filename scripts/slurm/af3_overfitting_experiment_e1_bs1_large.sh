@@ -38,7 +38,7 @@ srun singularity exec --rocm \
     -B alphafold3-pytorch-lightning-hydra:/alphafold3-pytorch-lightning-hydra \
     --pwd /alphafold3-pytorch-lightning-hydra \
     "$containerImage" \
-    python3 alphafold3_pytorch/train.py experiment=af3_overfitting_e1_bs1_large
+    pip3 install wandb && python3 alphafold3_pytorch/train.py experiment=af3_overfitting_e1_bs1_large
 
 # Inform user of run completion
 echo "Run completed for job: $SLURM_JOB_NAME"
