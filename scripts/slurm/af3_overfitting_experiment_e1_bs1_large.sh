@@ -18,14 +18,14 @@
 module load pawseyenv/2023.08
 module load singularity/3.11.4-slurm
 
-# Determine directory paths
-export MIOPEN_USER_DB_PATH="/scratch/director2187/amorehead/tmp/my-miopen-cache/af3_rocm"
+# Determine cache path
+export MIOPEN_USER_DB_PATH="/scratch/pawsey1018/$USER/tmp/my-miopen-cache/af3_rocm"
 export MIOPEN_CUSTOM_CACHE_DIR=${MIOPEN_USER_DB_PATH}
 
-# Create user database path
-rm -rf ${MIOPEN_USER_DB_PATH}
-mkdir -p ${MIOPEN_USER_DB_PATH}
-export containerImage=/scratch/pawsey1018/amorehead/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.3.8_dev.sif
+# Prepare cache and container image paths
+rm -rf "${MIOPEN_USER_DB_PATH}"
+mkdir -p "${MIOPEN_USER_DB_PATH}"
+export containerImage="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.4.5_dev.sif"
 
 # Set up WandB run
 RUN_ID="fidch6u7"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
@@ -40,4 +40,4 @@ srun singularity exec --rocm \
     WANDB_RESUME=allow WANDB_RUN_ID="$RUN_ID" python3 alphafold3_pytorch/train.py experiment=af3_overfitting_e1_bs1_large
 
 # Inform user of run completion
-echo "Run completed for job: $SLURM_JOB_NAME."
+echo "Run completed for job: $SLURM_JOB_NAME"
