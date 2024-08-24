@@ -34,7 +34,7 @@ logger:
     entity: bml-lab
     group: "af3-overfitting-experiments"
     tags: ${tags}
-    name: 23M-e1-bs1-large-${now:%Y%m%d%H%M%S}
+    name: e1-bs1-large-${now:%Y%m%d%H%M%S}
 
 model:
   optimizer:

@@ -26,4 +26,4 @@ logger:
     entity: bml-lab
     group: "af3-training"
     tags: ${tags}
-    name: 61M-bs1-${now:%Y%m%d%H%M%S}
+    name: bs1-${now:%Y%m%d%H%M%S}
