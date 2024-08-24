@@ -28,7 +28,7 @@ mkdir -p "${MIOPEN_USER_DB_PATH}"
 export containerImage="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.4.5_dev.sif"
 
 # Set up WandB run
-RUN_ID="62dsczfd"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="6u12cjpc"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run container
 srun singularity exec --rocm \
