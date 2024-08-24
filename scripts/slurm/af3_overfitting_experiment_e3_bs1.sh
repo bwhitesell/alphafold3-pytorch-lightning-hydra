@@ -27,8 +27,11 @@ rm -rf "${MIOPEN_USER_DB_PATH}"
 mkdir -p "${MIOPEN_USER_DB_PATH}"
 export containerImage="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.4.5_dev.sif"
 
+# Set network interface
+export NCCL_SOCKET_IFNAME=^docker0,lo
+
 # Set up WandB run
-RUN_ID="s4emto4n"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="2fodec6k"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run container
 srun singularity exec --rocm \
