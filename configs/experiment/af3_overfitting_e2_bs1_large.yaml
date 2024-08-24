@@ -10,7 +10,7 @@ defaults:
   - override /data: pdb
   - override /logger: wandb
   - override /model: alphafold3
-  - override /trainer: default
+  - override /trainer: fsdp
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
@@ -36,10 +36,6 @@ logger:
     name: e2-bs1-large-${now:%Y%m%d%H%M%S}
 
 model:
-  net:
-    checkpoint_trunk_pairformer: true
-    checkpoint_distogram_head: true
-    checkpoint_diffusion_token_transformer: true
   diffusion_add_smooth_lddt_loss: true
   diffusion_add_bond_loss: true
   visualize_val_samples_every_n_steps: 1

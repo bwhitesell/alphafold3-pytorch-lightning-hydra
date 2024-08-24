@@ -1,5 +1,5 @@
 import importlib
-from typing import Any
+from typing import Any, List, Set
 
 from omegaconf import OmegaConf
 
@@ -144,6 +144,31 @@ def resolve_omegaconf_variable(variable_path: str) -> Any:
     return attribute
 
 
+def resolve_omegaconf_classes(module_name: str, class_names: List[str]) -> Set[Any]:
+    """Resolve an OmegaConf module name to its requested classes."""
+    try:
+        classes = set()
+        # dynamically import the module using the module name
+        try:
+            module = importlib.import_module(module_name)
+            # use the imported module to get the requested classes
+            for class_name in class_names:
+                classes.add(getattr(module, class_name))
+        except Exception:
+            module = importlib.import_module(".".join(module_name.split(".")[:-1]))
+            inner_module = ".".join(module_name.split(".")[-1:])
+            # use the imported inner module to get the requested classes alternatively
+            for class_name in class_names:
+                classes.add(getattr(getattr(module, inner_module), class_name))
+
+    except Exception as e:
+        raise ValueError(
+            f"Error: {module_name} is not a valid path to a Python module within the project."
+        ) from e
+
+    return classes
+
+
 def int_divide(x: int, y: int) -> int:
     """Perform integer division on `x` and `y`.
 
@@ -180,6 +205,10 @@ def register_custom_omegaconf_resolvers():
     """Register custom OmegaConf resolvers."""
     OmegaConf.register_new_resolver(
         "resolve_variable", lambda variable_path: resolve_omegaconf_variable(variable_path)
+    )
+    OmegaConf.register_new_resolver(
+        "resolve_classes",
+        lambda module_name, class_names: resolve_omegaconf_classes(module_name, class_names),
     )
     OmegaConf.register_new_resolver("add", lambda x, y: int(x) + int(y))
     OmegaConf.register_new_resolver("subtract", lambda x, y: int(x) - int(y))
