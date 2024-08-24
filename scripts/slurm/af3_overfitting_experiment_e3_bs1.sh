@@ -31,7 +31,7 @@ export containerImage="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3
 RUN_ID="5bgyv9bw"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run container
-srun singularity exec --rocm \
+srun -N 1 -n 1 -c 8 --gres=gpu:3 --gpus-per-task=3 --gpu-bind=closest singularity exec --rocm \
     --cleanenv \
     -H "$PWD":/home \
     -B alphafold3-pytorch-lightning-hydra:/alphafold3-pytorch-lightning-hydra \
