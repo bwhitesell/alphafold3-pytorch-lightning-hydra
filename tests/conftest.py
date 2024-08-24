@@ -1,6 +1,5 @@
 """This file prepares config fixtures for other tests."""
 
-import os
 from pathlib import Path
 
 import pytest
@@ -11,8 +10,6 @@ from hydra.core.global_hydra import GlobalHydra
 from omegaconf import DictConfig, open_dict
 
 from tests.helpers.run_if import RunIf
-
-os.environ["TYPECHECK"] = "True"
 
 
 @RunIf(min_gpus=1)

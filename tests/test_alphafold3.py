@@ -58,9 +58,6 @@ from alphafold3_pytorch.models.components.inputs import (
 from alphafold3_pytorch.utils.model_utils import exclusive_cumsum
 from alphafold3_pytorch.utils.utils import exists
 
-os.environ["TYPECHECK"] = "True"
-os.environ["DEBUG"] = "True"
-
 DATA_TEST_PDB_ID = "721p"
 
 

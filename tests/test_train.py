@@ -10,8 +10,6 @@ from omegaconf import DictConfig, open_dict
 from alphafold3_pytorch.train import train
 from tests.helpers.run_if import RunIf
 
-os.environ["TYPECHECK"] = "True"
-
 
 def test_train_fast_dev_run(cfg_train: DictConfig) -> None:
     """Run for 1 train, val and test step.

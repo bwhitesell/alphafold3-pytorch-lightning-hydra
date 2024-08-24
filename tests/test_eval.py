@@ -10,8 +10,6 @@ from omegaconf import DictConfig, open_dict
 from alphafold3_pytorch.eval import evaluate
 from alphafold3_pytorch.train import train
 
-os.environ["TYPECHECK"] = "True"
-
 
 @pytest.mark.slow
 def test_train_eval(tmp_path: Path, cfg_train: DictConfig, cfg_eval: DictConfig) -> None:

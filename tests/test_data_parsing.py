@@ -12,8 +12,6 @@ rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 from alphafold3_pytorch.common.biomolecule import _from_mmcif_object
 from alphafold3_pytorch.data import mmcif_parsing
 
-os.environ["TYPECHECK"] = "True"
-
 # constants
 
 ERRONEOUS_PDB_IDS = [

@@ -1,13 +1,9 @@
 """This file prepares unit tests for datamodules."""
 
-import os
-
 import pytest
 import torch
 
 from alphafold3_pytorch.data.atom_datamodule import AtomDataModule
-
-os.environ["TYPECHECK"] = "True"
 
 
 @pytest.mark.parametrize("batch_size", [4, 8])
