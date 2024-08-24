@@ -340,13 +340,19 @@ class Biomolecule:
             mmcif_metadata=self.mmcif_metadata,
         )
 
-    def contiguous_crop(self, n_res: int = 384) -> "Biomolecule":
+    def contiguous_crop(
+        self, n_res: int = 384
+    ) -> Tuple["Biomolecule", List[Tuple[str, int]], List[np.ndarray]]:
         """Crop a Biomolecule to only include contiguous polymer residues and/or ligand atoms for
         each chain."""
         chain_ids_and_lengths = list(collections.Counter(self.chain_id).items())
         random.shuffle(chain_ids_and_lengths)
         crop_masks = create_contiguous_crop_masks(chain_ids_and_lengths, n_res)
-        return self.crop_chains_with_masks(chain_ids_and_lengths, crop_masks)
+        return (
+            self.crop_chains_with_masks(chain_ids_and_lengths, crop_masks),
+            chain_ids_and_lengths,
+            crop_masks,
+        )
 
     def spatial_crop(
         self,
@@ -355,7 +361,7 @@ class Biomolecule:
         chain_1: Optional[str] = None,
         chain_2: Optional[str] = None,
         interface_distance_threshold: float = 15.0,
-    ) -> "Biomolecule":
+    ) -> Tuple["Biomolecule", List[Tuple[str, int]], List[np.ndarray]]:
         """Crop a Biomolecule to only include polymer residues and ligand atoms near a (random)
         reference atom within a sampled chain/interface."""
 
@@ -443,7 +449,11 @@ class Biomolecule:
             reference_atom_index,
             n_res,
         )
-        return self.crop_chains_with_masks(chain_ids_and_lengths, crop_masks)
+        return (
+            self.crop_chains_with_masks(chain_ids_and_lengths, crop_masks),
+            chain_ids_and_lengths,
+            crop_masks,
+        )
 
     def crop(
         self,
@@ -453,7 +463,7 @@ class Biomolecule:
         n_res: int = 384,
         chain_1: str | None = None,
         chain_2: str | None = None,
-    ) -> "Biomolecule":
+    ) -> Tuple["Biomolecule", List[Tuple[str, int]], List[np.ndarray]]:
         """Crop a Biomolecule using a randomly-sampled cropping function."""
         n_res = min(n_res, len(self.atom_mask))
         if exists(chain_1) and exists(chain_2):
