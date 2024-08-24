@@ -375,7 +375,7 @@ dependencies:
       - typing-extensions==4.9.0
       - url-normalize==1.4.3
       - virtualenv==20.26.2
-      - wandb==0.17.5
+      - wandb==0.17.7
       - wget==3.2
       - wrapt==1.16.0
       - xarray==2024.3.0

@@ -28,7 +28,7 @@ mkdir -p "${MIOPEN_USER_DB_PATH}"
 export containerImage="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.4.5_dev.sif"
 
 # Set up WandB run
-RUN_ID="fidch6u7"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="vpi805ec"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run container
 srun singularity exec --rocm \
@@ -37,7 +37,7 @@ srun singularity exec --rocm \
     -B alphafold3-pytorch-lightning-hydra:/alphafold3-pytorch-lightning-hydra \
     --pwd /alphafold3-pytorch-lightning-hydra \
     "$containerImage" \
-    bash -c "python3 -m pip install wandb==0.17.5 && cd /alphafold3-pytorch-lightning-hydra && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID python3 alphafold3_pytorch/train.py experiment=af3_overfitting_e1_bs1_large"
+    bash -c "python3 -m pip install wandb==0.17.7 && cd /alphafold3-pytorch-lightning-hydra && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID python3 alphafold3_pytorch/train.py experiment=af3_overfitting_e1_bs1_large"
 
 # Inform user of run completion
 echo "Run completed for job: $SLURM_JOB_NAME"
