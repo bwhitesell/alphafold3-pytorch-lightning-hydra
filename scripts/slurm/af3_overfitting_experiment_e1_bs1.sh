@@ -34,6 +34,10 @@ export PYTHONFAULTHANDLER=1
 # Set network interface
 export NCCL_SOCKET_IFNAME=^docker0,lo
 
+# Set multiprocessing environment variables
+export OMP_NUM_THREADS=1
+export MPICH_GPU_SUPPORT_ENABLED=1
+
 # Set up WandB run
 RUN_ID="b9ego5ct"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
