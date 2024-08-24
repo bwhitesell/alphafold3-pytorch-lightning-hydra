@@ -3,14 +3,14 @@
 # lists the experiment parameters corresponding to an "Overfitting Experiment" with two training examples and batch size of one
 
 # to execute this experiment run:
-# python train.py experiment=af3_overfitting_e2_bs1_large
+# python train.py experiment=af3_overfitting_e2_bs1
 
 defaults:
   - override /callbacks: default
   - override /data: pdb
   - override /logger: wandb
   - override /model: alphafold3
-  - override /trainer: fsdp
+  - override /trainer: default
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
@@ -32,7 +32,7 @@ logger:
     entity: bml-lab
     group: "af3-overfitting-experiments"
     tags: ${tags}
-    name: e2-bs1-large-${now:%Y%m%d%H%M%S}
+    name: e2-bs1-${now:%Y%m%d%H%M%S}
 
 model:
   diffusion_add_smooth_lddt_loss: true
