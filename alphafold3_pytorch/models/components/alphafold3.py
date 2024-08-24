@@ -76,6 +76,7 @@ from frame_averaging_pytorch import FrameAverage
 from huggingface_hub import PyTorchModelHubMixin, hf_hub_download
 from taylor_series_linear_attention import TaylorSeriesLinearAttn
 from torch import Tensor
+from torch.amp import autocast
 from torch.nn import Linear, Module, ModuleList, Sequential
 from torch.utils.checkpoint import checkpoint, checkpoint_sequential
 from tqdm import tqdm
@@ -3031,6 +3032,7 @@ class WeightedRigidAlign(Module):
     """Algorithm 28."""
 
     @typecheck
+    @autocast("cuda", enabled=False)
     def forward(
         self,
         pred_coords: Float["b n 3"],  # type: ignore - predicted coordinates
