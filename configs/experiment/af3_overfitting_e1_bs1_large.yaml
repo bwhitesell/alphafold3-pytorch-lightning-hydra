@@ -8,6 +8,7 @@
 defaults:
   - override /callbacks: default
   - override /data: pdb
+  - override /logger: wandb
   - override /model: alphafold3
   - override /trainer: default
 
@@ -28,16 +29,23 @@ data:
   overfitting_train_examples: true
   sample_only_pdb_ids: [721p-assembly1]
 
+logger:
+  wandb:
+    entity: bml-lab
+    group: "af3-overfitting-experiments"
+    tags: ${tags}
+    name: 23M-e1-bs1-large-${now:%Y%m%d%H%M%S}
+
 model:
   optimizer:
     lr: 1e-4
   net:
-    dim_single: 96
+    dim_single: 128
     dim_pairwise: 32
-    dim_token: 192
+    dim_token: 128
     pairformer_stack:
-      { depth: 6, pair_bias_attn_dim_head: 32, pair_bias_attn_heads: 8 }
-    msa_module_kwargs: { depth: 2, dim_msa: 32 }
+      { depth: 6, pair_bias_attn_dim_head: 16, pair_bias_attn_heads: 8 }
+    msa_module_kwargs: { depth: 1, dim_msa: 16 }
     template_embedder_kwargs: { pairformer_stack_depth: 1 }
     diffusion_module_kwargs:
       {
@@ -63,10 +71,3 @@ trainer:
   check_val_every_n_epoch: null
   val_check_interval: 50
   log_every_n_steps: 1
-
-logger:
-  wandb:
-    entity: bml-lab
-    group: "af3-overfitting-experiments"
-    tags: ${tags}
-    name: 23M-e1-bs1-large-${now:%Y%m%d%H%M%S}
