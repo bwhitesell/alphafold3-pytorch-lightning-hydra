@@ -35,14 +35,14 @@ export PYTHONFAULTHANDLER=1
 export NCCL_SOCKET_IFNAME=^docker0,lo
 
 # Set multiprocessing environment variables
-export OMP_NUM_THREADS=14
+export OMP_NUM_THREADS=1
 export MPICH_GPU_SUPPORT_ENABLED=1
 
 # Set up WandB run
-RUN_ID="lo3ge6fz"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="patzy37h"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run container
-srun -N 1 -n 1 -c 8 --gres=gpu:3 --gpus-per-task=3 --gpu-bind=closest singularity exec --rocm \
+srun -N 1 -n 1 -c 8 --gres=gpu:3 --gpus-per-task=3 singularity exec --rocm \
     --cleanenv \
     -H "$PWD":/home \
     -B alphafold3-pytorch-lightning-hydra:/alphafold3-pytorch-lightning-hydra \
