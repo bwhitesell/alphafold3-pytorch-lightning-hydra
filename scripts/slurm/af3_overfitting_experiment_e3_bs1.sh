@@ -5,7 +5,7 @@
 #SBATCH --account=pawsey1018-gpu                              # IMPORTANT: use your own project and the -gpu suffix
 #SBATCH --nodes=1                                             # NOTE: this needs to match Lightning's `Trainer(num_nodes=...)`
 #SBATCH --gres=gpu:3                                          # NOTE: requests any GPU resource(s)
-#SBATCH --ntasks-per-node=3                                   # NOTE: this needs to be `1` on SLURM clusters when using Lightning's `ddp_spawn` strategy`; otherwise, set to match Lightning's quantity of `Trainer(devices=...)`
+#SBATCH --ntasks-per-node=1                                   # NOTE: this needs to be `1` on SLURM clusters when using Lightning's `ddp_spawn` strategy`; otherwise, set to match Lightning's quantity of `Trainer(devices=...)`
 #SBATCH --time 0-24:00:00                                     # time limit for the job (up to 24 hours: `0-24:00:00`)
 #SBATCH --job-name=af3_overfitting_e3_bs1                     # job name
 #SBATCH --output=J-%x.%j.out                                  # output log file
@@ -27,15 +27,11 @@ rm -rf "${MIOPEN_USER_DB_PATH}"
 mkdir -p "${MIOPEN_USER_DB_PATH}"
 export containerImage="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.4.5_dev.sif"
 
-# Set debugging flags (optional)
-export NCCL_DEBUG=INFO
-export PYTHONFAULTHANDLER=1
-
 # Set up WandB run
 RUN_ID="nfk1w8yd"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run container
-srun -N 1 -n 1 -c 8 --gres=gpu:3 --gpus-per-task=3 --gpu-bind=closest singularity exec --rocm \
+srun -N 1 -n 1 -c 8 --gres=gpu:3 --gpus-per-task=3 singularity exec --rocm \
     --cleanenv \
     -H "$PWD":/home \
     -B alphafold3-pytorch-lightning-hydra:/alphafold3-pytorch-lightning-hydra \
