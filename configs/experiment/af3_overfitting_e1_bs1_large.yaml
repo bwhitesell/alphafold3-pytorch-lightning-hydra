@@ -35,11 +35,22 @@ model:
     dim_single: 96
     dim_pairwise: 32
     dim_token: 192
-    pairformer_stack: "{depth: 6, pair_bias_attn_dim_head: 32, pair_bias_attn_heads: 8}"
-    msa_module_kwargs: "{depth: 2, dim_msa: 32}"
-    template_embedder_kwargs: "{pairformer_stack_depth: 1}"
-    diffusion_module_kwargs: "{atom_encoder_depth: 2, atom_encoder_heads: 4, token_transformer_depth: 8, token_transformer_heads: 16, atom_decoder_depth: 2, atom_decoder_heads: 4, atom_encoder_kwargs: {attn_pair_bias_kwargs: {dim_head: 16}}, atom_decoder_kwargs: {attn_pair_bias_kwargs: {dim_head: 16}}}"
-    confidence_head_kwargs: "{pairformer_depth: 1}"
+    pairformer_stack:
+      { depth: 6, pair_bias_attn_dim_head: 32, pair_bias_attn_heads: 8 }
+    msa_module_kwargs: { depth: 2, dim_msa: 32 }
+    template_embedder_kwargs: { pairformer_stack_depth: 1 }
+    diffusion_module_kwargs:
+      {
+        atom_encoder_depth: 2,
+        atom_encoder_heads: 4,
+        token_transformer_depth: 8,
+        token_transformer_heads: 16,
+        atom_decoder_depth: 2,
+        atom_decoder_heads: 4,
+        atom_encoder_kwargs: { attn_pair_bias_kwargs: { dim_head: 16 } },
+        atom_decoder_kwargs: { attn_pair_bias_kwargs: { dim_head: 16 } },
+      }
+    confidence_head_kwargs: { pairformer_depth: 1 }
   diffusion_add_smooth_lddt_loss: true
   diffusion_add_bond_loss: true
   visualize_val_samples_every_n_steps: 1
