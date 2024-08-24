@@ -27,17 +27,6 @@ rm -rf "${MIOPEN_USER_DB_PATH}"
 mkdir -p "${MIOPEN_USER_DB_PATH}"
 export containerImage="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.4.5_dev.sif"
 
-# Set debugging flags (optional)
-export NCCL_DEBUG=INFO
-export PYTHONFAULTHANDLER=1
-
-# Set network interface
-export NCCL_SOCKET_IFNAME=^docker0,lo
-
-# Set multiprocessing environment variables
-export OMP_NUM_THREADS=1
-export MPICH_GPU_SUPPORT_ENABLED=1
-
 # Set up WandB run
 RUN_ID="50ojjhaz"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
@@ -54,6 +43,7 @@ srun singularity exec --rocm \
         WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID \
         python3 alphafold3_pytorch/train.py \
         experiment=af3_overfitting_e2_bs1 \
+        trainer.strategy=default \
         trainer.num_nodes=1 \
         trainer.devices=1
     "
