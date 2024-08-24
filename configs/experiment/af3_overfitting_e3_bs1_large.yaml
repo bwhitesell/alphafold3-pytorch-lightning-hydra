@@ -51,7 +51,7 @@ model:
       {
         atom_encoder_depth: 2,
         atom_encoder_heads: 4,
-        token_transformer_depth: 8,
+        token_transformer_depth: 4,
         token_transformer_heads: 16,
         atom_decoder_depth: 2,
         atom_decoder_heads: 4,
