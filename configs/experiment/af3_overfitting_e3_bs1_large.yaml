@@ -40,18 +40,18 @@ model:
   optimizer:
     lr: 1e-4
   net:
-    dim_single: 64
+    dim_single: 96
     dim_pairwise: 32
-    dim_token: 64
+    dim_token: 96
     pairformer_stack:
-      { depth: 5, pair_bias_attn_dim_head: 16, pair_bias_attn_heads: 8 }
+      { depth: 3, pair_bias_attn_dim_head: 16, pair_bias_attn_heads: 8 }
     msa_module_kwargs: { depth: 1, dim_msa: 16 }
     template_embedder_kwargs: { pairformer_stack_depth: 1 }
     diffusion_module_kwargs:
       {
         atom_encoder_depth: 2,
         atom_encoder_heads: 4,
-        token_transformer_depth: 4,
+        token_transformer_depth: 3,
         token_transformer_heads: 16,
         atom_decoder_depth: 2,
         atom_decoder_heads: 4,
