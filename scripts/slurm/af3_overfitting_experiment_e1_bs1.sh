@@ -15,8 +15,8 @@
 #################################################################
 
 # Load required modules
-module load pawseyenv/2023.08
-module load singularity/3.11.4-slurm
+module load pawseyenv/2024.05
+module load singularity/4.1.0-slurm
 
 # Determine cache path
 export MIOPEN_USER_DB_PATH="/scratch/pawsey1018/$USER/tmp/my-miopen-cache/af3_rocm"
@@ -26,6 +26,10 @@ export MIOPEN_CUSTOM_CACHE_DIR=${MIOPEN_USER_DB_PATH}
 rm -rf "${MIOPEN_USER_DB_PATH}"
 mkdir -p "${MIOPEN_USER_DB_PATH}"
 export containerImage="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.4.8_dev.sif"
+
+# Define environment variables
+export MPICH_GPU_SUPPORT_ENABLED=1
+export OMP_NUM_THREADS=1
 
 # Set up WandB run
 RUN_ID="703fs4fb"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
