@@ -25,24 +25,23 @@ export MIOPEN_CUSTOM_CACHE_DIR=${MIOPEN_USER_DB_PATH}
 # Prepare cache and container image paths
 rm -rf "${MIOPEN_USER_DB_PATH}"
 mkdir -p "${MIOPEN_USER_DB_PATH}"
-export containerImage="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.4.5_dev.sif"
+export containerImage="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.4.8_dev.sif"
 
 # Set up WandB run
-RUN_ID="9uvex2s3"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="703fs4fb"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run container
-srun singularity exec --rocm \
+srun -N 1 -n 1 -c 8 --gres=gpu:1 --gpus-per-task=1 singularity exec --rocm \
     --cleanenv \
     -H "$PWD":/home \
     -B alphafold3-pytorch-lightning-hydra:/alphafold3-pytorch-lightning-hydra \
     --pwd /alphafold3-pytorch-lightning-hydra \
     "$containerImage" \
     bash -c "
-        python3 -m pip install wandb==0.17.7 && \
-        cd /alphafold3-pytorch-lightning-hydra && \
         WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID \
         python3 alphafold3_pytorch/train.py \
         experiment=af3_overfitting_e1_bs1 \
+        data.batch_size=1 \
         trainer.num_nodes=1 \
         trainer.devices=1
     "

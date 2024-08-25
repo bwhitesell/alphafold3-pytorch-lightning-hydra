@@ -1,6 +1,6 @@
 [project]
 name = "alphafold3-pytorch-lightning-hydra"
-version = "0.4.7"
+version = "0.4.8"
 description = "AlphaFold 3 - Pytorch"
 authors = [
     { name = "Phil Wang", email = "lucidrains@gmail.com" },
@@ -46,7 +46,7 @@ dependencies = [
     # "comet-ml",
     # "mlflow",
     # "neptune-client",
-    # "wandb>=0.12.10",
+    "wandb>=0.17.7",
 
     # --------- others --------- #
     "adam-atan2-pytorch>=0.0.8", # optimization
