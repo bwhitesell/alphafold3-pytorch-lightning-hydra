@@ -43,7 +43,7 @@ srun singularity exec --rocm \
         WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID \
         python3 alphafold3_pytorch/train.py \
         experiment=af3_overfitting_e2_bs1 \
-        trainer.strategy=default \
+        trainer=default \
         trainer.num_nodes=1 \
         trainer.devices=1
     "
