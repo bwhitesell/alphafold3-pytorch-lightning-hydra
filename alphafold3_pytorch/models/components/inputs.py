@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import glob
 import json
+import multiprocessing
 import os
 from collections import defaultdict
 from collections.abc import Iterable
@@ -117,25 +118,29 @@ CCD_COMPONENTS_SMILES = None
 
 if os.path.exists(CCD_COMPONENTS_SMILES_FILEPATH):
     print(f"Loading CCD component SMILES strings from {CCD_COMPONENTS_SMILES_FILEPATH}.")
-    with open(CCD_COMPONENTS_SMILES_FILEPATH) as f:
-        CCD_COMPONENTS_SMILES = json.load(f)
+    lock = multiprocessing.Lock()
+    with lock:
+        with open(CCD_COMPONENTS_SMILES_FILEPATH) as f:
+            CCD_COMPONENTS_SMILES = json.load(f)
 elif os.path.exists(CCD_COMPONENTS_FILEPATH):
     print(
         f"Loading CCD components from {CCD_COMPONENTS_FILEPATH} to extract all available SMILES strings (~3 minutes, one-time only)."
     )
-    CCD_COMPONENTS = ccd_reader.read_pdb_components_file(
-        CCD_COMPONENTS_FILEPATH,
-        sanitize=False,  # Reduce loading time
-    )
-    print(
-        f"Saving CCD component SMILES strings to {CCD_COMPONENTS_SMILES_FILEPATH} (one-time only)."
-    )
-    with open(CCD_COMPONENTS_SMILES_FILEPATH, "w") as f:
-        CCD_COMPONENTS_SMILES = {
-            ccd_code: Chem.MolToSmiles(CCD_COMPONENTS[ccd_code].component.mol_no_h)
-            for ccd_code in CCD_COMPONENTS
-        }
-        json.dump(CCD_COMPONENTS_SMILES, f)
+    lock = multiprocessing.Lock()
+    with lock:
+        CCD_COMPONENTS = ccd_reader.read_pdb_components_file(
+            CCD_COMPONENTS_FILEPATH,
+            sanitize=False,  # Reduce loading time
+        )
+        print(
+            f"Saving CCD component SMILES strings to {CCD_COMPONENTS_SMILES_FILEPATH} (one-time only)."
+        )
+        with open(CCD_COMPONENTS_SMILES_FILEPATH, "w") as f:
+            CCD_COMPONENTS_SMILES = {
+                ccd_code: Chem.MolToSmiles(CCD_COMPONENTS[ccd_code].component.mol_no_h)
+                for ccd_code in CCD_COMPONENTS
+            }
+            json.dump(CCD_COMPONENTS_SMILES, f)
 
 # functions
 
