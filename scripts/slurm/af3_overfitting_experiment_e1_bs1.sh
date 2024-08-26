@@ -43,7 +43,7 @@ srun singularity exec \
     "$SINGULARITY_CONTAINER" \
     bash -c "
         WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID \
-        alphafold3_pytorch/train.py \
+        python3 alphafold3_pytorch/train.py \
         experiment=af3_overfitting_e1_bs1 \
         data.batch_size=$SLURM_GPUS \
         trainer.num_nodes=$SLURM_JOB_NUM_NODES \
