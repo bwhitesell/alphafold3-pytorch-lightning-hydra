@@ -45,9 +45,9 @@ srun singularity exec \
         WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID \
         python3 alphafold3_pytorch/train.py \
         experiment=af3_overfitting_e1_bs1 \
-        data.batch_size=$SLURM_GPUS \
+        data.batch_size=$SLURM_GPUS_PER_NODE \
         trainer.num_nodes=$SLURM_JOB_NUM_NODES \
-        trainer.devices=$SLURM_GPUS
+        trainer.devices=$SLURM_GPUS_PER_NODE
     "
 
 # Inform user of run completion
