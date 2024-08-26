@@ -28,6 +28,8 @@ mkdir -p "${MIOPEN_USER_DB_PATH}"
 # Define the container image path
 export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.4.8_dev.sif"
 
+# Set number of PyTorch (GPU) processes per node to be spawned
+NUM_PYTORCH_PROCESSES="$SLURM_GPUS_PER_NODE"
 # Set the number of threads to be generated for each PyTorch (GPU) process
 export OMP_NUM_THREADS=8
 
@@ -45,9 +47,9 @@ srun singularity exec \
         WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID \
         python3 alphafold3_pytorch/train.py \
         experiment=af3_overfitting_e1_bs1 \
-        data.batch_size=$SLURM_GPUS_PER_NODE \
+        data.batch_size=$NUM_PYTORCH_PROCESSES \
         trainer.num_nodes=$SLURM_JOB_NUM_NODES \
-        trainer.devices=$SLURM_GPUS_PER_NODE
+        trainer.devices=$NUM_PYTORCH_PROCESSES
     "
 
 # Inform user of run completion
