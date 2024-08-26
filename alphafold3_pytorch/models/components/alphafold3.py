@@ -58,7 +58,7 @@ from functools import partial, wraps
 from importlib.metadata import version
 from math import pi, sqrt
 from pathlib import Path
-from typing import Dict, List, Literal, NamedTuple, Tuple
+from typing import Any, Dict, List, Literal, NamedTuple, Tuple
 
 import Bio
 import einx
@@ -94,7 +94,9 @@ from alphafold3_pytorch.models.components.inputs import (
     IS_DNA,
     IS_DNA_INDEX,
     IS_LIGAND,
+    IS_LIGAND_INDEX,
     IS_METAL_ION,
+    IS_METAL_ION_INDEX,
     IS_MOLECULE_TYPES,
     IS_PROTEIN,
     IS_PROTEIN_INDEX,
@@ -109,6 +111,7 @@ from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.model_utils import (
     batch_repeat_interleave,
     batch_repeat_interleave_pairwise,
+    calculate_weighted_rigid_align_weights,
     compact,
     concat_previous_window,
     distance_to_bins,
@@ -2478,6 +2481,7 @@ class ElucidatedAtomDiffusion(Module):
         lddt_mask_kwargs: dict = dict(),
         smooth_lddt_loss_kwargs: dict = dict(),
         weighted_rigid_align_kwargs: dict = dict(),
+        multi_chain_permutation_alignment_kwargs: dict = dict(),
         centre_random_augmentation_kwargs: dict = dict(),
         karras_formulation=True,  # use the original EDM formulation from Karras et al. Table 1 in https://arxiv.org/abs/2206.00364 - differences are that the noise and sampling schedules are scaled by sigma data, as well as loss weight adds the sigma data instead of multiply in denominator
     ):
@@ -2513,6 +2517,12 @@ class ElucidatedAtomDiffusion(Module):
         # weighted rigid align
 
         self.weighted_rigid_align = WeightedRigidAlign(**weighted_rigid_align_kwargs)
+
+        # multi-chain permutation alignment
+
+        self.multi_chain_permutation_alignment = MultiChainPermutationAlignment(
+            **multi_chain_permutation_alignment_kwargs
+        )
 
         # smooth lddt loss
 
@@ -2778,8 +2788,11 @@ class ElucidatedAtomDiffusion(Module):
         pairwise_trunk: Float["b n n dpt"],  # type: ignore
         pairwise_rel_pos_feats: Float["b n n dpr"],  # type: ignore
         molecule_atom_lens: Int["b n"],  # type: ignore
+        molecule_atom_indices: Int["b n"],  # type: ignore
+        token_bonds: Bool["b n n"],  # type: ignore
         missing_atom_mask: Bool["b m"] | None = None,  # type: ignore
         atom_parent_ids: Int["b m"] | None = None,  # type: ignore
+        token_ids: Int["b n 3"] | None = None,  # type: ignore
         return_denoised_pos=False,
         is_molecule_types: Bool[f"b n {IS_MOLECULE_TYPES}"] | None = None,  # type: ignore
         additional_molecule_feats: Int[f"b n {ADDITIONAL_MOLECULE_FEATS}"] | None = None,  # type: ignore
@@ -2801,8 +2814,11 @@ class ElucidatedAtomDiffusion(Module):
         :param pairwise_trunk: The pairwise trunk tensor.
         :param pairwise_rel_pos_feats: The pairwise relative position features tensor.
         :param molecule_atom_lens: The molecule atom lengths tensor.
+        :param molecule_atom_indices: The molecule atom indices tensor.
+        :param token_bonds: The token bonds tensor.
         :param missing_atom_mask: The missing atom mask tensor.
         :param atom_parent_ids: The atom parent IDs tensor.
+        :param token_ids: The token IDs tensor.
         :param return_denoised_pos: Whether to return the denoised position.
         :param is_molecule_types: The molecule types tensor.
         :param additional_molecule_feats: The additional molecule features tensor.
@@ -2847,37 +2863,15 @@ class ElucidatedAtomDiffusion(Module):
 
         total_loss = 0.0
 
-        # if additional molecule feats is provided
-        # calculate the weights for mse loss (wl)
-
-        align_weights = atom_pos_ground_truth.new_ones(atom_pos_ground_truth.shape[:2])
-
-        if exists(is_molecule_types):
-            is_nucleotide_or_ligand_fields = is_molecule_types.unbind(dim=-1)
-
-            is_nucleotide_or_ligand_fields = tuple(
-                batch_repeat_interleave(t, molecule_atom_lens)
-                for t in is_nucleotide_or_ligand_fields
-            )
-            is_nucleotide_or_ligand_fields = tuple(
-                pad_or_slice_to(t, length=align_weights.shape[-1], dim=-1)
-                for t in is_nucleotide_or_ligand_fields
-            )
-
-            _, atom_is_dna, atom_is_rna, atom_is_ligand, _ = is_nucleotide_or_ligand_fields
-
-            # section 3.7.1 equation 4
-
-            # upweighting of nucleotide and ligand atoms is additive per equation 4
-
-            align_weights = torch.where(
-                atom_is_dna | atom_is_rna,
-                1 + nucleotide_loss_weight,
-                align_weights,
-            )
-            align_weights = torch.where(atom_is_ligand, 1 + ligand_loss_weight, align_weights)
-
         # section 3.7.1 equation 2 - weighted rigid aligned ground truth
+
+        align_weights = calculate_weighted_rigid_align_weights(
+            atom_pos_ground_truth=atom_pos_ground_truth,
+            molecule_atom_lens=molecule_atom_lens,
+            is_molecule_types=is_molecule_types,
+            nucleotide_loss_weight=nucleotide_loss_weight,
+            ligand_loss_weight=ligand_loss_weight,
+        )
 
         atom_pos_aligned_ground_truth = self.weighted_rigid_align(
             pred_coords=denoised_atom_pos,
@@ -2885,6 +2879,20 @@ class ElucidatedAtomDiffusion(Module):
             weights=align_weights,
             mask=atom_mask,
         )
+
+        # section 4.2 - multi-chain permutation alignment
+
+        atom_pos_aligned_ground_truth = self.multi_chain_permutation_alignment(
+            pred_coords=denoised_atom_pos,
+            true_coords=atom_pos_aligned_ground_truth,
+            molecule_atom_lens=molecule_atom_lens,
+            molecule_atom_indices=molecule_atom_indices,
+            token_bonds=token_bonds,
+            token_ids=token_ids,
+            is_molecule_types=is_molecule_types,
+            mask=atom_mask,
+        )
+
         # main diffusion mse loss
 
         losses = (
@@ -2941,6 +2949,19 @@ class ElucidatedAtomDiffusion(Module):
             assert exists(
                 is_molecule_types
             ), "The argument `is_molecule_types` must be passed in if adding the smooth lDDT loss."
+
+            is_nucleotide_or_ligand_fields = is_molecule_types.unbind(dim=-1)
+
+            is_nucleotide_or_ligand_fields = tuple(
+                batch_repeat_interleave(t, molecule_atom_lens)
+                for t in is_nucleotide_or_ligand_fields
+            )
+            is_nucleotide_or_ligand_fields = tuple(
+                pad_or_slice_to(t, length=align_weights.shape[-1], dim=-1)
+                for t in is_nucleotide_or_ligand_fields
+            )
+
+            _, atom_is_dna, atom_is_rna, _, _ = is_nucleotide_or_ligand_fields
 
             smooth_lddt_loss = self.smooth_lddt_loss(
                 denoised_atom_pos,
@@ -3035,11 +3056,11 @@ class WeightedRigidAlign(Module):
     @autocast("cuda", enabled=False)
     def forward(
         self,
-        pred_coords: Float["b n 3"],  # type: ignore - predicted coordinates
-        true_coords: Float["b n 3"],  # type: ignore - true coordinates
-        weights: Float["b n"],  # type: ignore - weights for each atom
-        mask: Bool["b n"] | None = None,  # type: ignore - mask for variable lengths
-    ) -> Float["b n 3"]:  # type: ignore
+        pred_coords: Float["b m 3"],  # type: ignore - predicted coordinates
+        true_coords: Float["b m 3"],  # type: ignore - true coordinates
+        weights: Float["b m"],  # type: ignore - weights for each atom
+        mask: Bool["b m"] | None = None,  # type: ignore - mask for variable lengths
+    ) -> Float["b m 3"]:  # type: ignore
         """Compute the weighted rigid alignment.
 
         The check for ambiguous rotation and low rank of cross-correlation between aligned point
@@ -3050,6 +3071,7 @@ class WeightedRigidAlign(Module):
         :param true_coords: True coordinates.
         :param weights: Weights for each atom.
         :param mask: The mask for variable lengths.
+        :return: The optimally aligned coordinates.
         """
 
         batch_size, num_points, dim = pred_coords.shape
@@ -3114,6 +3136,158 @@ class WeightedRigidAlign(Module):
         true_aligned_coords.detach_()
 
         return true_aligned_coords
+
+
+class MultiChainPermutationAlignment(Module):
+    """Section 4.2 of the AlphaFold 3 Supplement."""
+
+    @staticmethod
+    @typecheck
+    def split_ground_truth_labels(gt_features: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Split ground truth features according to chains.
+
+        :param gt_features: A dictionary within a PyTorch Dataset iteration, which is returned by
+            the upstream DataLoader.iter() method. In the DataLoader pipeline, all tensors
+            belonging to all the ground truth chains are concatenated. This function is needed to
+            1) detect the number of chains, i.e., unique(asym_id) and 2) split the concatenated
+            tensors back to individual ones that correspond to individual asym_ids.
+        :return: A list of feature dictionaries with only necessary ground truth features required
+            to finish multi-chain permutation, e.g., it will be a list of 5 elements if there are 5
+            chains in total.
+        """
+        _, asym_id_counts = torch.unique(gt_features["asym_id"], sorted=True, return_counts=True)
+        n_res = gt_features["asym_id"].shape[-1]
+
+        def split_dim(shape):
+            """Return the dimension index where the size is n_res."""
+            return next(iter(i for i, size in enumerate(shape) if size == n_res), None)
+
+        labels = list(
+            map(
+                dict,
+                zip(
+                    *[
+                        [
+                            (k, v)
+                            for v in torch.split(
+                                v_all, asym_id_counts.tolist(), dim=split_dim(v_all.shape)
+                            )
+                        ]
+                        for k, v_all in gt_features.items()
+                        if n_res in v_all.shape
+                    ]
+                ),
+            )
+        )
+        return labels
+
+    @typecheck
+    def forward(
+        self,
+        pred_coords: Float["b m 3"],  # type: ignore - predicted coordinates
+        true_coords: Float["b m 3"],  # type: ignore - true coordinates
+        molecule_atom_lens: Int["b n"],  # type: ignore - molecule atom lengths
+        molecule_atom_indices: Int["b n"],  # type: ignore - molecule atom indices
+        token_bonds: Bool["b n n"],  # type: ignore - token bonds
+        token_ids: Int["b n 3"] | None = None,  # type: ignore - atom parent IDs
+        is_molecule_types: Bool[f"b n {IS_MOLECULE_TYPES}"] | None = None,  # type: ignore - molecule types
+        mask: Bool["b m"] | None = None,  # type: ignore - mask for variable lengths
+    ) -> Float["b m 3"]:  # type: ignore
+        """Compute the multi-chain permutation alignment.
+
+        :param pred_coords: Predicted coordinates.
+        :param true_coords: True coordinates.
+        :param molecule_atom_lens: The molecule atom lengths.
+        :param molecule_atom_indices: The molecule atom indices.
+        :param token_bonds: The token bonds.
+        :param token_ids: The token IDs.
+        :param is_molecule_types: Molecule type of each atom.
+        :param mask: The mask for variable lengths.
+        :return: The optimally chain-permuted aligned coordinates.
+        """
+
+        if not exists(token_ids) or not exists(is_molecule_types):
+            # NOTE: If no chains or no molecule types are specified,
+            # we cannot perform multi-chain permutation alignment.
+            true_coords.detach_()
+            return true_coords
+
+        if exists(mask):
+            # Zero out all predicted and true coordinates where not an atom.
+            pred_coords = einx.where("b n, b n c, -> b n c", mask, pred_coords, 0.0)
+            true_coords = einx.where("b n, b n c, -> b n c", mask, true_coords, 0.0)
+
+        # Alignment Stage - Section 7.3.1 of the AlphaFold-Multimer Paper
+
+        token_parent_ids = token_ids[..., 0]
+
+        # 1. Ligands covalently bonded to polymer chains are to be permuted
+        # in sync with the corresponding chains by assigning them the same
+        # parent id (to group all covalently bonded components together).
+        polymer_indices = [IS_PROTEIN_INDEX, IS_RNA_INDEX, IS_DNA_INDEX]
+        ligand_indices = [IS_LIGAND_INDEX, IS_METAL_ION_INDEX]
+
+        is_polymer_types = is_molecule_types[..., polymer_indices].any(-1)
+        is_ligand_types = is_molecule_types[..., ligand_indices].any(-1)
+
+        polymer_ligand_pair_mask = is_polymer_types[..., None] & is_ligand_types[..., None, :]
+        polymer_ligand_pair_mask = polymer_ligand_pair_mask | polymer_ligand_pair_mask.transpose(
+            -1, -2
+        )
+
+        covalent_bond_mask = polymer_ligand_pair_mask & token_bonds
+
+        is_covalent_residue_mask = covalent_bond_mask.any(-1)
+        is_covalent_ligand_mask = is_ligand_types & is_covalent_residue_mask
+
+        # NOTE: Covalent ligand-polymer bond pairs may be many-to-many, so
+        # we need to group them together by assigning covalent ligands the same
+        # parent IDs as the polymer chains to which they are most frequently bonded.
+        covalent_bonded_parent_ids = torch.where(
+            covalent_bond_mask, token_parent_ids[..., None], torch.tensor(float("nan"))
+        )
+
+        mode_values, _ = covalent_bonded_parent_ids.mode(dim=-1, keepdim=False)
+        mapped_token_parent_ids = torch.where(
+            is_covalent_ligand_mask, mode_values, token_parent_ids
+        )
+
+        # 2. Choose the least ambiguous ground truth "anchor" chain.
+        # For example, in an A3B2 complex an arbitrary B chain is chosen.
+        # In the event of a tie e.g., A2B2 stoichiometry, the longest chain
+        # is chosen, with the hope that in general the longer chains are
+        # likely to have higher confidence predictions.
+
+        mol_atom_indices = repeat(molecule_atom_indices, "b m -> b m d", d=true_coords.shape[-1])
+        token_true_coords = torch.gather(true_coords, 1, mol_atom_indices)
+
+        # labels = self.split_ground_truth_labels(dict(asym_id=mapped_token_parent_ids, true_coords=token_true_coords))
+
+        # 3. Select the prediction anchor chain from the set of all prediction
+        # chains with the same sequence as the ground truth anchor chain.
+
+        # 4. Optimally align the ground truth anchor chain to the prediction
+        # anchor chain using the `WeightedRigidAlign`` algorithm.
+
+        # Assignment Stage - Section 7.3.2 of the AlphaFold-Multimer Paper
+
+        # 1. Greedily assign each of the predicted chains to their nearest
+        # neighbour of the same sequence in the ground truth. These assignments
+        # define the optimal permutation to apply to the ground truth chains.
+        # Nearest neighbours are defined as the chains with the smallest distance
+        # between the average of their token center atom coordinates.
+
+        # 2. Repeat the above alignment and assignment stages for all valid choices
+        # of the prediction anchor chain given the ground truth anchor chain.
+
+        # 3. Finally, we pick the permutation that minimizes the RMSD between the
+        # token center atom coordinate averages of the predicted and ground truth chains.
+
+        # NOTE: The above algorithm naturally generalizes to both training and inference
+        # contexts (i.e., with and without cropping).
+
+        true_coords.detach_()
+        return true_coords
 
 
 class ExpressCoordinatesInFrame(Module):
@@ -5183,7 +5357,7 @@ class Alphafold3(Module):
         num_pde_bins: int | None = None,
         sigma_data=16,
         num_rollout_steps=20,
-        diffusion_num_augmentations=4,
+        diffusion_num_augmentations=48,
         loss_confidence_weight=1e-4,
         loss_distogram_weight=1e-2,
         loss_diffusion_weight=4.0,
@@ -5243,8 +5417,12 @@ class Alphafold3(Module):
             S_tmax=50,
             S_noise=1.003,
         ),
+        weighted_rigid_align_kwargs: dict = dict(),
+        multi_chain_permutation_alignment_kwargs: dict = dict(),
         lddt_mask_nucleic_acid_cutoff=30.0,
         lddt_mask_other_cutoff=15.0,
+        nucleotide_loss_weight: float = 5.0,
+        ligand_loss_weight: float = 10.0,
         augment_kwargs: dict = dict(),
         stochastic_frame_average=False,
         distogram_atom_resolution=False,
@@ -5490,6 +5668,13 @@ class Alphafold3(Module):
         self.loss_distogram_weight = loss_distogram_weight
         self.loss_confidence_weight = loss_confidence_weight
         self.loss_diffusion_weight = loss_diffusion_weight
+        self.nucleotide_loss_weight = nucleotide_loss_weight
+        self.ligand_loss_weight = ligand_loss_weight
+
+        self.weighted_rigid_align = WeightedRigidAlign(**weighted_rigid_align_kwargs)
+        self.multi_chain_permutation_alignment = MultiChainPermutationAlignment(
+            **multi_chain_permutation_alignment_kwargs
+        )
 
         self.register_buffer("zero", torch.tensor(0.0), persistent=False)
 
@@ -6097,6 +6282,8 @@ class Alphafold3(Module):
             num_augs = self.num_augmentations + int(self.stochastic_frame_average)
             batch_size *= num_augs
 
+            token_ids = additional_molecule_feats[..., 2:].clone().long()
+
             # take care of augmentation
             # they did 48 during training, as the trunk did the heavy lifting
 
@@ -6116,6 +6303,7 @@ class Alphafold3(Module):
                     pairwise,
                     relative_position_encoding,
                     additional_molecule_feats,
+                    token_ids,
                     is_molecule_types,
                     molecule_atom_indices,
                     molecule_pos,
@@ -6123,6 +6311,7 @@ class Alphafold3(Module):
                     valid_atom_indices_for_frame,
                     atom_indices_for_frame,
                     molecule_atom_lens,
+                    token_bonds,
                     resolved_labels,
                     resolution,
                 ) = tuple(
@@ -6142,6 +6331,7 @@ class Alphafold3(Module):
                         pairwise,
                         relative_position_encoding,
                         additional_molecule_feats,
+                        token_ids,
                         is_molecule_types,
                         molecule_atom_indices,
                         molecule_pos,
@@ -6149,6 +6339,7 @@ class Alphafold3(Module):
                         valid_atom_indices_for_frame,
                         atom_indices_for_frame,
                         molecule_atom_lens,
+                        token_bonds,
                         resolved_labels,
                         resolution,
                     )
@@ -6187,6 +6378,7 @@ class Alphafold3(Module):
                 atom_feats=atom_feats,
                 atompair_feats=atompair_feats,
                 atom_parent_ids=atom_parent_ids,
+                token_ids=token_ids,
                 missing_atom_mask=missing_atom_mask,
                 atom_mask=atom_mask,
                 mask=mask,
@@ -6195,7 +6387,11 @@ class Alphafold3(Module):
                 pairwise_trunk=pairwise,
                 pairwise_rel_pos_feats=relative_position_encoding,
                 molecule_atom_lens=molecule_atom_lens,
+                molecule_atom_indices=molecule_atom_indices,
+                token_bonds=token_bonds,
                 return_denoised_pos=True,
+                nucleotide_loss_weight=self.nucleotide_loss_weight,
+                ligand_loss_weight=self.ligand_loss_weight,
             )
 
         # confidence head
@@ -6226,6 +6422,48 @@ class Alphafold3(Module):
                 use_tqdm_pbar=rollout_show_tqdm_pbar,
                 tqdm_pbar_title="Training rollout",
             )
+
+            # structurally align and chain-permute ground truth structure to optimally match predicted structure
+
+            if atom_pos_given:
+                # section 3.7.1 equation 2 - weighted rigid aligned ground truth
+
+                align_weights = calculate_weighted_rigid_align_weights(
+                    atom_pos_ground_truth=atom_pos,
+                    molecule_atom_lens=molecule_atom_lens,
+                    is_molecule_types=is_molecule_types,
+                    nucleotide_loss_weight=self.nucleotide_loss_weight,
+                    ligand_loss_weight=self.ligand_loss_weight,
+                )
+
+                atom_pos = self.weighted_rigid_align(
+                    pred_coords=denoised_atom_pos,
+                    true_coords=atom_pos,
+                    weights=align_weights,
+                    mask=atom_mask,
+                )
+
+                # section 4.2 - multi-chain permutation alignment
+
+                atom_pos = self.multi_chain_permutation_alignment(
+                    pred_coords=denoised_atom_pos,
+                    true_coords=atom_pos,
+                    molecule_atom_lens=molecule_atom_lens,
+                    molecule_atom_indices=molecule_atom_indices,
+                    token_bonds=token_bonds,
+                    token_ids=token_ids,
+                    is_molecule_types=is_molecule_types,
+                    mask=atom_mask,
+                )
+
+                assert exists(
+                    distogram_atom_indices
+                ), "`distogram_atom_indices` must be passed in for calculating aligned and chain-permuted ground truth"
+
+                distogram_atom_indices = repeat(
+                    distogram_atom_indices, "b n -> b n c", c=distogram_pos.shape[-1]
+                )
+                molecule_pos = atom_pos.gather(1, distogram_atom_indices)
 
             # determine pae labels if possible
 

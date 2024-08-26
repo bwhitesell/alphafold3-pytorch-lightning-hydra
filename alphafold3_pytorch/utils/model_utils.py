@@ -405,10 +405,9 @@ def mean_pool_fixed_windows_with_mask(
 def batch_repeat_interleave(
     feats: Float["b n ..."] | Bool["b n ..."] | Bool["b n"] | Int["b n"],  # type: ignore
     lens: Int["b n"],  # type: ignore
-    output_padding_value: float
-    | int
-    | bool
-    | None = None,  # NOTE: this value determines what the output padding value will be
+    output_padding_value: (
+        float | int | bool | None
+    ) = None,  # NOTE: this value determines what the output padding value will be
 ) -> Float["b m ..."] | Bool["b m ..."] | Bool["b m"] | Int["b m"]:  # type: ignore
     """Batch repeat and interleave a sequence of features.
 
@@ -525,6 +524,56 @@ def masked_average(
     num = (t * mask).sum(dim=dim)
     den = mask.sum(dim=dim)
     return num / den.clamp(min=eps)
+
+
+@typecheck
+def calculate_weighted_rigid_align_weights(
+    atom_pos_ground_truth: Float["b m 3"],  # type: ignore
+    molecule_atom_lens: Int["b n"],  # type: ignore
+    is_molecule_types: Bool["b n ..."] | None = None,  # type: ignore
+    nucleotide_loss_weight: float = 5.0,
+    ligand_loss_weight: float = 10.0,
+) -> Float["b m"]:  # type: ignore
+    """Calculate the weighted rigid alignment weights.
+
+    :param atom_pos_ground_truth: The ground truth atom positions.
+    :param molecule_atom_lens: The molecule atom lengths.
+    :param is_molecule_types: The molecule types.
+    :param nucleotide_loss_weight: The nucleotide loss weight.
+    :param ligand_loss_weight: The ligand loss weight.
+    :return: The weighted rigid alignment weights.
+    """
+
+    # if additional molecule feats is provided
+    # calculate the weights for mse loss (wl)
+
+    align_weights = atom_pos_ground_truth.new_ones(atom_pos_ground_truth.shape[:2])
+
+    if exists(is_molecule_types):
+        is_nucleotide_or_ligand_fields = is_molecule_types.unbind(dim=-1)
+
+        is_nucleotide_or_ligand_fields = tuple(
+            batch_repeat_interleave(t, molecule_atom_lens) for t in is_nucleotide_or_ligand_fields
+        )
+        is_nucleotide_or_ligand_fields = tuple(
+            pad_or_slice_to(t, length=align_weights.shape[-1], dim=-1)
+            for t in is_nucleotide_or_ligand_fields
+        )
+
+        _, atom_is_dna, atom_is_rna, atom_is_ligand, _ = is_nucleotide_or_ligand_fields
+
+        # section 3.7.1 equation 4
+
+        # upweighting of nucleotide and ligand atoms is additive per equation 4
+
+        align_weights = torch.where(
+            atom_is_dna | atom_is_rna,
+            1 + nucleotide_loss_weight,
+            align_weights,
+        )
+        align_weights = torch.where(atom_is_ligand, 1 + ligand_loss_weight, align_weights)
+
+    return align_weights
 
 
 # checkpointing utils
