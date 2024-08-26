@@ -4,50 +4,67 @@
 #SBATCH --partition=gpu                                       # use partition `gpu` for GPU nodes
 #SBATCH --account=pawsey1018-gpu                              # IMPORTANT: use your own project and the -gpu suffix
 #SBATCH --nodes=1                                             # NOTE: this needs to match Lightning's `Trainer(num_nodes=...)`
-#SBATCH --gres=gpu:3                                          # NOTE: requests any GPU resource(s)
 #SBATCH --ntasks-per-node=1                                   # NOTE: this needs to be `1` on SLURM clusters when using Lightning's `ddp_spawn` strategy`; otherwise, set to match Lightning's quantity of `Trainer(devices=...)`
 #SBATCH --time 0-24:00:00                                     # time limit for the job (up to 24 hours: `0-24:00:00`)
 #SBATCH --job-name=af3_overfitting_e3_bs1                     # job name
 #SBATCH --output=J-%x.%j.out                                  # output log file
 #SBATCH --error=J-%x.%j.err                                   # error log file
+#SBATCH --exclusive                                           # request exclusive node access
 #SBATCH --signal=SIGUSR1@90                                   # send SIGUSR1 90 seconds before job end to trigger job resubmission
-# NOTE: One cannot request exclusive access to a node
 #################################################################
 
 # Load required modules
-module load pawseyenv/2024.05
-module load singularity/4.1.0-slurm
+module load pytorch/2.2.0-rocm5.7.3
+# NOTE: The following module swap is needed due to a PyTorch module bug
+module load singularity/3.11.4-nohost
 
-# Determine cache path
+# Prepare cache paths
 export MIOPEN_USER_DB_PATH="/scratch/pawsey1018/$USER/tmp/my-miopen-cache/af3_rocm"
 export MIOPEN_CUSTOM_CACHE_DIR=${MIOPEN_USER_DB_PATH}
-
-# Prepare cache and container image paths
 rm -rf "${MIOPEN_USER_DB_PATH}"
 mkdir -p "${MIOPEN_USER_DB_PATH}"
-export containerImage="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.4.8_dev.sif"
 
-# Define environment variables
-export MPICH_GPU_SUPPORT_ENABLED=1
-export OMP_NUM_THREADS=1
+# Define the container image path
+export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.4.8_dev.sif"
 
-# Set up WandB run
-RUN_ID="y35qsp16"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+# Set number of PyTorch (GPU) processes per node to be spawned by torchrun - NOTE: One for each GCD
+NUM_PYTORCH_PROCESSES=3
+# Set the number of threads to be generated for each PyTorch (GPU) process
+export OMP_NUM_THREADS=8
 
-# Run container
-srun -N 1 -n 3 -c 8 --gres=gpu:3 --gpus-per-task=1 --gpu-bind=closest singularity exec --rocm \
+# Define the compute node executing the batch script
+RDZV_HOST=$(hostname)
+export RDZV_HOST
+export RDZV_PORT=29400
+
+# NOTE: The following `srun` command gives all the available resources to
+# `torchrun` which will then distribute them internally to the processes
+# it creates. Importantly, notice that processes are NOT created by srun!
+# For what `srun` is concerned, only one task is created, the `torchrun` process.
+
+# Define WandB run ID
+RUN_ID="sba8rbov"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+
+# Run Singularity container
+srun -c 64 singularity exec \
     --cleanenv \
     -H "$PWD":/home \
     -B alphafold3-pytorch-lightning-hydra:/alphafold3-pytorch-lightning-hydra \
     --pwd /alphafold3-pytorch-lightning-hydra \
-    "$containerImage" \
+    "$SINGULARITY_CONTAINER" \
     bash -c "
         WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID \
-        python3 alphafold3_pytorch/train.py \
+        torchrun \
+        --nnodes=$SLURM_JOB_NUM_NODES \
+        --nproc_per_node=$NUM_PYTORCH_PROCESSES \
+        --rdzv_id=$SLURM_JOB_ID \
+        --rdzv_backend=c10d \
+        --rdzv_endpoint=$RDZV_HOST:$RDZV_PORT \
+        alphafold3_pytorch/train.py \
         experiment=af3_overfitting_e3_bs1 \
-        data.batch_size=3 \
-        trainer.num_nodes=1 \
-        trainer.devices=3
+        data.batch_size=$NUM_PYTORCH_PROCESSES \
+        trainer.num_nodes=$SLURM_JOB_NUM_NODES \
+        trainer.devices=$NUM_PYTORCH_PROCESSES
     "
 
 # Inform user of run completion

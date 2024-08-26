@@ -11,43 +11,43 @@
 #SBATCH --output=J-%x.%j.out                                  # output log file
 #SBATCH --error=J-%x.%j.err                                   # error log file
 #SBATCH --signal=SIGUSR1@90                                   # send SIGUSR1 90 seconds before job end to trigger job resubmission
-# NOTE: One cannot request exclusive access to a node
+# NOTE: Request exclusive node access if all GPUs are needed
 #################################################################
 
 # Load required modules
-module load pawseyenv/2024.05
-module load singularity/4.1.0-slurm
+module load pytorch/2.2.0-rocm5.7.3
+# NOTE: The following module swap is needed due to a PyTorch module bug
+module load singularity/3.11.4-nohost
 
-# Determine cache path
+# Prepare cache paths
 export MIOPEN_USER_DB_PATH="/scratch/pawsey1018/$USER/tmp/my-miopen-cache/af3_rocm"
 export MIOPEN_CUSTOM_CACHE_DIR=${MIOPEN_USER_DB_PATH}
-
-# Prepare cache and container image paths
 rm -rf "${MIOPEN_USER_DB_PATH}"
 mkdir -p "${MIOPEN_USER_DB_PATH}"
-export containerImage="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.4.8_dev.sif"
 
-# Define environment variables
-export MPICH_GPU_SUPPORT_ENABLED=1
-export OMP_NUM_THREADS=1
+# Define the container image path
+export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.4.8_dev.sif"
 
-# Set up WandB run
-RUN_ID="703fs4fb"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+# Set the number of threads to be generated for each PyTorch (GPU) process
+export OMP_NUM_THREADS=8
 
-# Run container
-srun -N 1 -n 1 -c 8 --gres=gpu:1 --gpus-per-task=1 singularity exec --rocm \
+# Define WandB run ID
+RUN_ID="mhhj4ip6"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+
+# Run Singularity container
+srun singularity exec \
     --cleanenv \
     -H "$PWD":/home \
     -B alphafold3-pytorch-lightning-hydra:/alphafold3-pytorch-lightning-hydra \
     --pwd /alphafold3-pytorch-lightning-hydra \
-    "$containerImage" \
+    "$SINGULARITY_CONTAINER" \
     bash -c "
         WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID \
-        python3 alphafold3_pytorch/train.py \
+        alphafold3_pytorch/train.py \
         experiment=af3_overfitting_e1_bs1 \
-        data.batch_size=1 \
-        trainer.num_nodes=1 \
-        trainer.devices=1
+        data.batch_size=$SLURM_GPUS \
+        trainer.num_nodes=$SLURM_JOB_NUM_NODES \
+        trainer.devices=$SLURM_GPUS
     "
 
 # Inform user of run completion
