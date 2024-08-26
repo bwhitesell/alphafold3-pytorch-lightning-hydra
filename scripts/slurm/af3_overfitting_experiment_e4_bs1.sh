@@ -30,7 +30,7 @@ export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hy
 # Set number of PyTorch (GPU) processes per node to be spawned by torchrun - NOTE: One for each GCD
 NUM_PYTORCH_PROCESSES=4
 # Set the number of threads to be generated for each PyTorch (GPU) process
-export OMP_NUM_THREADS=1
+export OMP_NUM_THREADS=8
 
 # Define the compute node executing the batch script
 RDZV_HOST=$(hostname)
