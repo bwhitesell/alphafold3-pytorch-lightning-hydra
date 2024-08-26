@@ -29,7 +29,7 @@ mkdir -p "${MIOPEN_USER_DB_PATH}"
 export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.4.8_dev.sif"
 
 # Set number of PyTorch (GPU) processes per node to be spawned
-NUM_PYTORCH_PROCESSES="$SLURM_GPUS_PER_NODE"
+NUM_PYTORCH_PROCESSES=1
 # Set the number of threads to be generated for each PyTorch (GPU) process
 export OMP_NUM_THREADS=8
 
