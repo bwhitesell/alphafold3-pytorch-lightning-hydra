@@ -2893,6 +2893,7 @@ class ElucidatedAtomDiffusion(Module):
                     mask=atom_mask,
                 )
             except Exception as e:
+                # NOTE: For many (random) unit test inputs, permutation alignment can be unstable
                 logger.warning(f"Skipping multi-chain permutation alignment due to: {e}")
 
         # main diffusion mse loss
@@ -7131,6 +7132,7 @@ class Alphafold3(Module):
                             mask=atom_mask,
                         )
                     except Exception as e:
+                        # NOTE: For many (random) unit test inputs, permutation alignment can be unstable
                         logger.warning(f"Skipping multi-chain permutation alignment due to: {e}")
 
                 assert exists(
