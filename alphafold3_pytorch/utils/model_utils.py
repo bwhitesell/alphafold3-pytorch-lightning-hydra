@@ -576,15 +576,6 @@ def calculate_weighted_rigid_align_weights(
     return align_weights
 
 
-def l2norm(t: Tensor) -> Tensor:
-    """Perform an L2 normalization on a Tensor.
-
-    :param t: The Tensor.
-    :return: The L2 normalized Tensor.
-    """
-    return F.normalize(t, dim=-1)
-
-
 # checkpointing utils
 
 

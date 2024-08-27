@@ -2881,16 +2881,19 @@ class ElucidatedAtomDiffusion(Module):
         # section 4.2 - multi-chain permutation alignment
 
         if single_structure_input:
-            atom_pos_aligned_ground_truth = self.multi_chain_permutation_alignment(
-                pred_coords=denoised_atom_pos,
-                true_coords=atom_pos_aligned_ground_truth,
-                molecule_atom_lens=molecule_atom_lens,
-                molecule_atom_indices=molecule_atom_indices,
-                token_bonds=token_bonds,
-                additional_molecule_feats=additional_molecule_feats,
-                is_molecule_types=is_molecule_types,
-                mask=atom_mask,
-            )
+            try:
+                atom_pos_aligned_ground_truth = self.multi_chain_permutation_alignment(
+                    pred_coords=denoised_atom_pos,
+                    true_coords=atom_pos_aligned_ground_truth,
+                    molecule_atom_lens=molecule_atom_lens,
+                    molecule_atom_indices=molecule_atom_indices,
+                    token_bonds=token_bonds,
+                    additional_molecule_feats=additional_molecule_feats,
+                    is_molecule_types=is_molecule_types,
+                    mask=atom_mask,
+                )
+            except Exception as e:
+                logger.warning(f"Skipping multi-chain permutation alignment due to: {e}")
 
         # main diffusion mse loss
 
@@ -7116,20 +7119,33 @@ class Alphafold3(Module):
                 # section 4.2 - multi-chain permutation alignment
 
                 if single_structure_input:
-                    atom_pos = self.multi_chain_permutation_alignment(
-                        pred_coords=denoised_atom_pos,
-                        true_coords=atom_pos,
-                        molecule_atom_lens=molecule_atom_lens,
-                        molecule_atom_indices=molecule_atom_indices,
-                        token_bonds=token_bonds,
-                        additional_molecule_feats=additional_molecule_feats,
-                        is_molecule_types=is_molecule_types,
-                        mask=atom_mask,
-                    )
+                    try:
+                        atom_pos = self.multi_chain_permutation_alignment(
+                            pred_coords=denoised_atom_pos,
+                            true_coords=atom_pos,
+                            molecule_atom_lens=molecule_atom_lens,
+                            molecule_atom_indices=molecule_atom_indices,
+                            token_bonds=token_bonds,
+                            additional_molecule_feats=additional_molecule_feats,
+                            is_molecule_types=is_molecule_types,
+                            mask=atom_mask,
+                        )
+                    except Exception as e:
+                        logger.warning(f"Skipping multi-chain permutation alignment due to: {e}")
 
                 assert exists(
                     distogram_atom_indices
                 ), "`distogram_atom_indices` must be passed in for calculating aligned and chain-permuted ground truth"
+
+                distogram_pos = atom_pos
+
+                if not self.distogram_atom_resolution:
+                    # molecule_pos = einx.get_at('b [m] c, b n -> b n c', atom_pos, distogram_atom_indices)
+
+                    distogram_atom_coords_indices = repeat(
+                        distogram_atom_indices, "b n -> b n c", c=distogram_pos.shape[-1]
+                    )
+                    distogram_pos = distogram_pos.gather(1, distogram_atom_coords_indices)
 
                 distogram_atom_coords_indices = repeat(
                     distogram_atom_indices, "b n -> b n c", c=distogram_pos.shape[-1]
