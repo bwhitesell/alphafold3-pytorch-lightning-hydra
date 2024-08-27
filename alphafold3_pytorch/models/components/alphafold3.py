@@ -3233,7 +3233,7 @@ class MultiChainPermutationAlignment(Module):
 
     @staticmethod
     @typecheck
-    def get_entity_2_asym_list(features: Dict[str, Tensor]) -> Dict[int, Tensor]:
+    def get_entity_to_asym_list(features: Dict[str, Tensor]) -> Dict[int, Tensor]:
         """Generate a dictionary mapping unique entity IDs to lists of unique asymmetry IDs
         (asym_id) for each entity.
 
@@ -3244,13 +3244,13 @@ class MultiChainPermutationAlignment(Module):
         :return: A dictionary where keys are unique entity IDs, and values are tensors of unique asymmetry IDs
             associated with each entity.
         """
-        entity_2_asym_list = {}
+        entity_to_asym_list = {}
         unique_entity_ids = torch.unique(features["entity_id"])
         for cur_ent_id in unique_entity_ids:
             ent_mask = features["entity_id"] == cur_ent_id
             cur_asym_id = torch.unique(features["asym_id"][ent_mask])
-            entity_2_asym_list[int(cur_ent_id)] = cur_asym_id
-        return entity_2_asym_list
+            entity_to_asym_list[int(cur_ent_id)] = cur_asym_id
+        return entity_to_asym_list
 
     @typecheck
     def get_least_asym_entity_or_longest_length(
@@ -3271,7 +3271,7 @@ class MultiChainPermutationAlignment(Module):
         :return: Selected ground truth `asym_ids` and a list of
             integer tensors denoting of all possible pred anchor candidates.
         """
-        entity_2_asym_list = self.get_entity_2_asym_list(features=batch)
+        entity_to_asym_list = self.get_entity_to_asym_list(features=batch)
         unique_entity_ids = [i for i in torch.unique(batch["entity_id"]) if i != padding_value]
         entity_asym_count = {}
         entity_length = {}
@@ -3311,10 +3311,10 @@ class MultiChainPermutationAlignment(Module):
         ), "There should be only one entity with the least `asym_id` count."
         least_asym_entities = least_asym_entities[0]
 
-        anchor_gt_asym_id = random.choice(entity_2_asym_list[least_asym_entities])  # nosec
+        anchor_gt_asym_id = random.choice(entity_to_asym_list[least_asym_entities])  # nosec
         anchor_pred_asym_ids = [
             asym_id
-            for asym_id in entity_2_asym_list[least_asym_entities]
+            for asym_id in entity_to_asym_list[least_asym_entities]
             if asym_id in input_asym_id
         ]
 
@@ -3463,7 +3463,7 @@ class MultiChainPermutationAlignment(Module):
     def greedy_align(
         self,
         batch: Dict[str, Tensor],
-        entity_2_asym_list: Dict[int, Tensor],
+        entity_to_asym_list: Dict[int, Tensor],
         pred_pos: Float["b 3"],  # type: ignore
         pred_mask: Float["b"],  # type: ignore
         true_poses: List[Float["b 3"]],  # type: ignore
@@ -3481,7 +3481,7 @@ class MultiChainPermutationAlignment(Module):
         https://github.com/aqlaboratory/openfold/blob/main/openfold/utils/multi_chain_permutation.py
 
         :param batch: A dictionary of ground truth features.
-        :param entity_2_asym_list: A dictionary recording which asym ID(s) belong to which entity ID.
+        :param entity_to_asym_list: A dictionary recording which asym ID(s) belong to which entity ID.
         :param pred_pos: Predicted centroid positions of token center atoms from the results of model.forward().
         :param pred_mask: A boolean tensor that masks `pred_pos`.
         :param true_poses: A list of tensors, corresponding to the token center atom centroid positions of the ground truth structure.
@@ -3517,7 +3517,7 @@ class MultiChainPermutationAlignment(Module):
             best_rmsd = torch.inf
             best_idx = None
 
-            cur_asym_list = entity_2_asym_list[int(cur_entity_ids)]
+            cur_asym_list = entity_to_asym_list[int(cur_entity_ids)]
 
             cur_pred_pos = rearrange(
                 pred_pos[asym_mask],
@@ -3682,7 +3682,7 @@ class MultiChainPermutationAlignment(Module):
             batch=ground_truth,
             input_asym_id=list(unique_asym_ids),
         )
-        entity_2_asym_list = self.get_entity_2_asym_list(features=ground_truth)
+        entity_to_asym_list = self.get_entity_to_asym_list(features=ground_truth)
         labels = self.split_ground_truth_labels(gt_features=ground_truth)
         anchor_gt_idx = int(anchor_gt_asym)
 
@@ -3732,7 +3732,7 @@ class MultiChainPermutationAlignment(Module):
 
             alignments = self.greedy_align(
                 batch=features,
-                entity_2_asym_list=entity_2_asym_list,
+                entity_to_asym_list=entity_to_asym_list,
                 pred_pos=pred_centroid_pos,
                 pred_mask=pred_centroid_mask,
                 true_poses=aligned_true_poses,
