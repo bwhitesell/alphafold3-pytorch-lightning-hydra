@@ -33,11 +33,11 @@ A visualization of the molecules of life used in the repository can be seen and 
 
 ## Appreciation
 
+- <a href="https://github.com/lucidrains">Phil</a> for spearheading the development of the `Alphafold3` module and losses as well as the `Input` classes!
+
 - <a href="https://github.com/joseph-c-kim">Joseph</a> for contributing the Relative Positional Encoding and the Smooth LDDT Loss!
 
 - <a href="https://github.com/engelberger">Felipe</a> for contributing Weighted Rigid Align, Express Coordinates In Frame, Compute Alignment Error, and Centre Random Augmentation modules!
-
-- <a href="https://github.com/amorehead">Alex</a> for fixing various issues in the transcribed algorithms
 
 - <a href="https://github.com/gitabtion">Heng</a> for pointing out inconsistencies with the paper and pull requesting the solutions
 
@@ -45,11 +45,7 @@ A visualization of the molecules of life used in the repository can be seen and 
 
 - <a href="https://github.com/luwei0917">Wei Lu</a> for catching a few erroneous hyperparameters
 
-- <a href="https://github.com/amorehead">Alex</a> for the PDB dataset preparation script!
-
 - <a href="https://github.com/milot-mirdita">Milot</a> for optimizing the PDB dataset clustering script!
-
-- <a href="https://github.com/amorehead">Alex</a> for basically writing the entire gargantuan flow from parsing the PDB all the way to the molecule and atomic inputs for training
 
 - <a href="https://github.com/vandrw">Andrei</a> for working on the weighted PDB dataset sampling!
 
