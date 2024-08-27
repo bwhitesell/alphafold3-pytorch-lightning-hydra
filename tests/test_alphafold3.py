@@ -27,6 +27,7 @@ from alphafold3_pytorch import (
     ExpressCoordinatesInFrame,
     InputFeatureEmbedder,
     MSAModule,
+    MultiChainPermutationAlignment,
     PairformerStack,
     RelativePositionEncoding,
     RigidFrom3Points,
@@ -177,6 +178,37 @@ def test_weighted_rigid_align_with_mask():
     # both ways should come out with about the same results
 
     assert torch.allclose(aligned_coords[mask], aligned_coords_without_mask, atol=1e-5)
+
+
+def test_multi_chain_permutation_alignment():
+    """Test the multi-chain permutation alignment function with masking."""
+    pred_coords = torch.randn(2, 100, 3)
+    true_coords = torch.randn(2, 100, 3)
+    weights = torch.rand(2, 100)
+    mask = torch.randint(0, 2, (2, 100)).bool()
+
+    molecule_atom_lens = torch.full((2, 16), 6).long()
+    molecule_atom_indices = torch.randint(0, 100, (2, 16)).long()
+    token_bonds = torch.randint(0, 2, (2, 16, 16)).bool()
+    additional_molecule_feats = torch.randint(0, 2, (2, 16, 5))
+    is_molecule_types = torch.randint(0, 2, (2, 16, IS_MOLECULE_TYPES)).bool()
+
+    align_fn = WeightedRigidAlign()
+    permute_fn = MultiChainPermutationAlignment(weighted_rigid_align=align_fn)
+
+    aligned_true_coords = align_fn(pred_coords, true_coords, weights, mask=mask)
+    permuted_aligned_true_coords = permute_fn(
+        pred_coords=pred_coords,
+        true_coords=aligned_true_coords,
+        molecule_atom_lens=molecule_atom_lens,
+        molecule_atom_indices=molecule_atom_indices,
+        token_bonds=token_bonds,
+        additional_molecule_feats=additional_molecule_feats,
+        is_molecule_types=is_molecule_types,
+        mask=mask,
+    )
+
+    assert permuted_aligned_true_coords.shape == aligned_true_coords.shape
 
 
 def test_express_coordinates_in_frame():

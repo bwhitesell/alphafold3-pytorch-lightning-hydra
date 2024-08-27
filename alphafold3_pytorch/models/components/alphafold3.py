@@ -3233,7 +3233,9 @@ class MultiChainPermutationAlignment(Module):
 
     @staticmethod
     @typecheck
-    def get_entity_to_asym_list(features: Dict[str, Tensor]) -> Dict[int, Tensor]:
+    def get_entity_to_asym_list(
+        features: Dict[str, Tensor], no_gaps: bool = False
+    ) -> Dict[int, Tensor]:
         """Generate a dictionary mapping unique entity IDs to lists of unique asymmetry IDs
         (asym_id) for each entity.
 
@@ -3241,15 +3243,31 @@ class MultiChainPermutationAlignment(Module):
         https://github.com/aqlaboratory/openfold/blob/main/openfold/utils/multi_chain_permutation.py
 
         :param features: A dictionary containing data features, including `entity_id` and `asym_id` tensors.
+        :param no_gaps: Whether to remove gaps in the `asym_id` values.
         :return: A dictionary where keys are unique entity IDs, and values are tensors of unique asymmetry IDs
             associated with each entity.
         """
         entity_to_asym_list = {}
         unique_entity_ids = torch.unique(features["entity_id"])
+
+        # First pass: Collect all unique `cur_asym_id` values across all entities
+        all_asym_ids = set()
         for cur_ent_id in unique_entity_ids:
             ent_mask = features["entity_id"] == cur_ent_id
             cur_asym_id = torch.unique(features["asym_id"][ent_mask])
             entity_to_asym_list[int(cur_ent_id)] = cur_asym_id
+            all_asym_ids.update(cur_asym_id.tolist())
+
+        # Second pass: Remap `asym_id` values to remove any gaps
+        if no_gaps:
+            sorted_asym_ids = sorted(all_asym_ids)
+            remap_dict = {old_id: new_id for new_id, old_id in enumerate(sorted_asym_ids)}
+
+            for cur_ent_id in entity_to_asym_list:
+                cur_asym_id = entity_to_asym_list[cur_ent_id]
+                remapped_asym_id = torch.tensor([remap_dict[id.item()] for id in cur_asym_id])
+                entity_to_asym_list[cur_ent_id] = remapped_asym_id
+
         return entity_to_asym_list
 
     @typecheck
@@ -3276,8 +3294,12 @@ class MultiChainPermutationAlignment(Module):
         entity_asym_count = {}
         entity_length = {}
 
+        all_asym_ids = set()
+
         for entity_id in unique_entity_ids:
             asym_ids = torch.unique(batch["asym_id"][batch["entity_id"] == entity_id])
+
+            all_asym_ids.update(asym_ids.tolist())
 
             # Make sure some asym IDs associated with ground truth entity ID exist in cropped prediction
             asym_ids_in_pred = [a for a in asym_ids if a in input_asym_id]
@@ -3318,7 +3340,14 @@ class MultiChainPermutationAlignment(Module):
             if asym_id in input_asym_id
         ]
 
-        return anchor_gt_asym_id, anchor_pred_asym_ids
+        # Remap `asym_id` values to remove any gaps in the ground truth asym IDs,
+        # but leave the prediction asym IDs as is since they are used for masking
+        sorted_asym_ids = sorted(all_asym_ids)
+        remap_dict = {old_id: new_id for new_id, old_id in enumerate(sorted_asym_ids)}
+
+        remapped_anchor_gt_asym_id = torch.tensor([remap_dict[anchor_gt_asym_id.item()]])
+
+        return remapped_anchor_gt_asym_id, anchor_pred_asym_ids
 
     @staticmethod
     @typecheck
@@ -3702,7 +3731,7 @@ class MultiChainPermutationAlignment(Module):
             batch=ground_truth,
             input_asym_id=list(unique_asym_ids),
         )
-        entity_to_asym_list = self.get_entity_to_asym_list(features=ground_truth)
+        entity_to_asym_list = self.get_entity_to_asym_list(features=ground_truth, no_gaps=True)
         labels = self.split_ground_truth_labels(gt_features=ground_truth)
         anchor_gt_idx = int(anchor_gt_asym)
 
@@ -3782,6 +3811,7 @@ class MultiChainPermutationAlignment(Module):
         # contexts (i.e., with and without cropping) by, where applicable, pre-applying
         # cropping to the (ground truth) input coordinates and features.
 
+        assert exists(best_alignments), "Best alignments must be found."
         return best_alignments
 
     @typecheck
@@ -6859,10 +6889,12 @@ class Alphafold3(Module):
             if not self.distogram_atom_resolution:
                 # molecule_pos = einx.get_at('b [m] c, b n -> b n c', atom_pos, distogram_atom_indices)
 
-                distogram_atom_indices = repeat(
+                distogram_atom_coords_indices = repeat(
                     distogram_atom_indices, "b n -> b n c", c=distogram_pos.shape[-1]
                 )
-                molecule_pos = distogram_pos = distogram_pos.gather(1, distogram_atom_indices)
+                molecule_pos = distogram_pos = distogram_pos.gather(
+                    1, distogram_atom_coords_indices
+                )
                 distogram_mask = valid_distogram_mask
             else:
                 distogram_mask = atom_mask
