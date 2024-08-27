@@ -212,20 +212,32 @@ def hard_validate_atom_indices_ascending(
 @typecheck
 def get_indices_three_closest_atom_pos(
     atom_pos: Float["... n d"],  # type: ignore
+    mask: Bool["... n"] | None = None,  # type: ignore
 ) -> Int["... 3"]:  # type: ignore
     """Get the indices of the three closest atoms to a given center atom.
 
     :param atom_pos: The atom positions.
+    :param mask: The mask to apply.
     :return: The indices of the three closest atoms.
     """
     prec_dims, device = atom_pos.shape[:-2], atom_pos.device
     num_atoms, has_batch = atom_pos.shape[-2], atom_pos.ndim == 3
 
-    if num_atoms < 3:
+    if not exists(mask) and num_atoms < 3:
         return atom_pos.new_full((*prec_dims, 3), -1).long()
 
     if not has_batch:
         atom_pos = rearrange(atom_pos, "... -> 1 ...")
+
+        if exists(mask):
+            mask = rearrange(mask, "... -> 1 ...")
+
+    # figure out which set of atoms are less than 3 for masking out later
+
+    if exists(mask):
+        insufficient_atom_mask = mask.sum(dim=-1) < 3
+
+    # get distances between all atoms
 
     atom_dist = torch.cdist(atom_pos, atom_pos)
 
@@ -233,22 +245,24 @@ def get_indices_three_closest_atom_pos(
 
     eye = torch.eye(num_atoms, device=device, dtype=torch.bool)
 
-    atom_dist.masked_fill_(eye, 1e4)
+    mask_value = 1e4
+    atom_dist.masked_fill_(eye, mask_value)
+
+    # take care of padding
+
+    if exists(mask):
+        pair_mask = einx.logical_and("... i, ... j -> ... i j", mask, mask)
+        atom_dist.masked_fill_(~pair_mask, mask_value)
 
     # will use topk on the negative of the distance
 
     neg_distance, two_closest_atom_indices = (-atom_dist).topk(2, dim=-1)
-
     mean_neg_distance = neg_distance.mean(dim=-1)
-
     best_atom_pair_index = mean_neg_distance.argmax(dim=-1)
-
     best_two_atom_neighbors = einx.get_at(
         "... [m] c, ... -> ... c", two_closest_atom_indices, best_atom_pair_index
     )
-
     # place the chosen atom at the center
-
     three_atom_indices, _ = pack(
         (
             best_two_atom_neighbors[..., 0],
@@ -257,6 +271,13 @@ def get_indices_three_closest_atom_pos(
         ),
         "b *",
     )
+
+    # mask out
+
+    if exists(mask):
+        three_atom_indices = einx.where(
+            "..., ... three, -> ... three", ~insufficient_atom_mask, three_atom_indices, -1
+        )
 
     if not has_batch:
         three_atom_indices = rearrange(three_atom_indices, "1 ... -> ...")
@@ -282,6 +303,7 @@ def get_angle_between_edges(
 @typecheck
 def get_frames_from_atom_pos(
     atom_pos: Float["... n d"],  # type: ignore
+    mask: Bool["... n"] | None = None,  # type: ignore
     filter_colinear_pos: bool = False,
     is_colinear_angle_thres: float = 25.0,  # NOTE: DM uses 25 degrees as a way of filtering out invalid frames
 ) -> Int["... 3"]:  # type: ignore
@@ -292,7 +314,7 @@ def get_frames_from_atom_pos(
     :param is_colinear_angle_thres: The colinear angle threshold.
     :return: The frames for the ligands.
     """
-    frames = get_indices_three_closest_atom_pos(atom_pos)
+    frames = get_indices_three_closest_atom_pos(atom_pos, mask=mask)
 
     if not filter_colinear_pos:
         return frames
