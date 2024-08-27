@@ -3430,7 +3430,7 @@ class MultiChainPermutationAlignment(Module):
     def batch_compute_rmsd(
         true_pos: Float["b a 3"],  # type: ignore
         pred_pos: Float["b a 3"],  # type: ignore
-        mask: Float["b a"] | None = None,  # type: ignore
+        mask: Bool["b a"] | None = None,  # type: ignore
         eps: float = 1e-6,
     ) -> Float["b"]:  # type: ignore
         """Calculate the root-mean-square deviation (RMSD) between predicted and ground truth
@@ -3464,10 +3464,10 @@ class MultiChainPermutationAlignment(Module):
         self,
         batch: Dict[str, Tensor],
         entity_to_asym_list: Dict[int, Tensor],
-        pred_pos: Float["b 3"],  # type: ignore
-        pred_mask: Float["b"],  # type: ignore
-        true_poses: List[Float["b 3"]],  # type: ignore
-        true_masks: List[Float["b"]],  # type: ignore
+        pred_pos: Float["b n 3"],  # type: ignore
+        pred_mask: Float["b n"],  # type: ignore
+        true_poses: List[Float["b ... 3"]],  # type: ignore
+        true_masks: List[Int["b ..."]],  # type: ignore
         padding_value: int = -1,
     ) -> List[Tuple[int, int]]:
         """
@@ -3482,11 +3482,11 @@ class MultiChainPermutationAlignment(Module):
 
         :param batch: A dictionary of ground truth features.
         :param entity_to_asym_list: A dictionary recording which asym ID(s) belong to which entity ID.
-        :param pred_pos: Predicted centroid positions of token center atoms from the results of model.forward().
+        :param pred_pos: Predicted positions of token center atoms from the results of model.forward().
         :param pred_mask: A boolean tensor that masks `pred_pos`.
-        :param true_poses: A list of tensors, corresponding to the token center atom centroid positions of the ground truth structure.
+        :param true_poses: A list of tensors, corresponding to the token center atom positions of the ground truth structure.
             E.g., if there are 5 chains, this list will have a length of 5.
-        :param true_masks: A list of tensors, corresponding to the masks of the token center atom centroid positions of the ground truth structure.
+        :param true_masks: A list of tensors, corresponding to the masks of the token center atom positions of the ground truth structure.
             E.g., if there are 5 chains, this list will have a length of 5.
         :param padding_value: The padding value used in the input features.
         :return: A list of tuple(int, int) that provides instructions for how the ground truth chains should be permuted.
@@ -3498,8 +3498,10 @@ class MultiChainPermutationAlignment(Module):
         batch_size = pred_pos.shape[0]
 
         used = [
-            False for _ in range(len(true_poses))
-        ]  # NOTE: This is a list the keeps a record of whether a ground truth chain has been used
+            # NOTE: This is a list the keeps a record of whether a ground truth chain has been used.
+            False
+            for _ in range(len(true_poses))
+        ]
         alignments = []
 
         unique_asym_ids = [i for i in torch.unique(batch["asym_id"]) if i != padding_value]
@@ -3514,44 +3516,70 @@ class MultiChainPermutationAlignment(Module):
                 b=batch_size,
             )
 
-            best_rmsd = torch.inf
-            best_idx = None
+            # NOTE: Here, we assume there can be multiple unique entity IDs associated
+            # with a given asym ID. This is a valid assumption when the original batch
+            # contains a single unique structure that has one or more chains spread
+            # across multiple entities (e.g., in the case of ligands residing in
+            # a protein-majority chain).
 
-            cur_asym_list = entity_to_asym_list[int(cur_entity_ids)]
+            unique_cur_entity_ids = torch.unique(cur_entity_ids, dim=-1).unbind(dim=-1)
 
-            cur_pred_pos = rearrange(
-                pred_pos[asym_mask],
-                "(b a) ... -> b a ...",
-                b=batch_size,
-            )
-            cur_pred_mask = rearrange(
-                pred_mask[asym_mask],
-                "(b a) -> b a",
-                b=batch_size,
-            )
+            for batch_cur_entity_id in unique_cur_entity_ids:
+                cur_pred_pos = rearrange(
+                    pred_pos[asym_mask],
+                    "(b a) ... -> b a ...",
+                    b=batch_size,
+                )
+                cur_pred_mask = rearrange(
+                    pred_mask[asym_mask],
+                    "(b a) -> b a",
+                    b=batch_size,
+                )
 
-            for next_asym_id in cur_asym_list:
-                j = int(next_asym_id)
+                best_rmsd = torch.inf
+                best_idx = None
 
-                if not used[j]:  # NOTE: This is a possible candidate
-                    cropped_pos = true_poses[j]
-                    mask = true_masks[j]
+                # NOTE: Here, we assume there is only one unique entity ID per batch,
+                # which is a valid assumption only when the original batch size is 1
+                # (meaning only a single unique structure is represented in the batch).
 
-                    rmsd = self.batch_compute_rmsd(
-                        true_pos=cropped_pos,
-                        pred_pos=cur_pred_pos,
-                        mask=(cur_pred_mask * mask),
-                    ).mean()
+                unique_cur_entity_id = torch.unique(batch_cur_entity_id)
+                assert (
+                    len(unique_cur_entity_id) == 1
+                ), "There should be only one unique entity ID per batch."
+                cur_asym_list = entity_to_asym_list[int(unique_cur_entity_id)]
 
-                    if exists(rmsd) and rmsd < best_rmsd:
-                        # NOTE: We choose the permutation that minimizes the batch-wise RMSD
-                        best_rmsd = rmsd
-                        best_idx = j
+                for next_asym_id in cur_asym_list:
+                    j = int(next_asym_id)
 
-            assert exists(best_idx), "There should be a best index."
-            used[best_idx] = True
-            alignments.append((i, best_idx))
+                    if not used[j]:  # NOTE: This is a possible candidate.
+                        cropped_pos = true_poses[j]
+                        mask = true_masks[j]
 
+                        rmsd = self.batch_compute_rmsd(
+                            true_pos=cropped_pos.mean(1, keepdim=True),
+                            pred_pos=cur_pred_pos.mean(1, keepdim=True),
+                            mask=(
+                                cur_pred_mask.any(-1, keepdim=True) * mask.any(-1, keepdim=True)
+                            ),
+                        ).mean()
+
+                        if rmsd < best_rmsd:
+                            # NOTE: We choose the permutation that minimizes the batch-wise
+                            # average RMSD of the predicted token center atom centroid coordinates
+                            # with respect to the ground truth token center atom centroid coordinates.
+                            best_rmsd = rmsd
+                            best_idx = j
+
+                if exists(best_idx):
+                    # NOTE: E.g., for ligands within a protein-majority chain, we may have
+                    # multiple unique entity IDs associated with a given asym ID. In this case,
+                    # we need to ensure that we do not reuse a chain that has already been used
+                    # in the permutation alignment process.
+                    used[best_idx] = True
+                    alignments.append((i, best_idx))
+
+        assert all(used), "All chains should be used in the permutation alignment process."
         return alignments
 
     @staticmethod
@@ -3576,10 +3604,10 @@ class MultiChainPermutationAlignment(Module):
     @typecheck
     def merge_labels(
         self,
-        per_asym_token_index: Dict[int, Int["b ..."]],  # type: ignore
         labels: List[Dict[str, Tensor]],
         alignments: List[Tuple[int, int]],
         original_num_tokens: int,
+        dimension_to_merge: int = 1,
     ) -> Dict[str, Tensor]:
         """Merge ground truth labels according to permutation results.
 
@@ -3588,33 +3616,26 @@ class MultiChainPermutationAlignment(Module):
         and
         https://github.com/aqlaboratory/openfold/blob/main/openfold/utils/multi_chain_permutation.py
 
-        :param per_asym_token_index: A dictionary recording which tokens belong to which asym ID.
         :param labels: A list of original ground truth feats. E.g., if there are 5 chains,
             `labels` will have a length of 5.
         :param alignments: A list of tuples, each entry specifying the corresponding label of the asym ID.
         :param original_num_tokens: An integer corresponding to the number of tokens specified
             by one's (e.g., training-time) crop size.
+        :param dimension_to_merge: The dimension along which to merge the labels.
         :return: A new dictionary of permuted ground truth features.
         """
         outs = {}
-        for k, v in labels[0].items():
+        for k in labels[0].keys():
             cur_out = {}
             for i, j in alignments:
                 label = labels[j][k]
-
-                # Convert to 1-based indices
-                cur_residue_index = per_asym_token_index[i + 1]
-                if len(v.shape) <= 1 or "template" in k or "row_mask" in k:
-                    continue
-                else:
-                    dimension_to_merge = 1
-                    cur_out[i] = label.index_select(dimension_to_merge, cur_residue_index)
+                cur_out[i] = label
 
             cur_out = [x[1] for x in sorted(cur_out.items())]
             if len(cur_out) > 0:
                 new_v = torch.concat(cur_out, dim=dimension_to_merge)
 
-                # Check whether padding is needed
+                # Check whether padding is needed.
                 if new_v.shape[dimension_to_merge] != original_num_tokens:
                     num_tokens_pad = original_num_tokens - new_v.shape[dimension_to_merge]
                     new_v = self.pad_features(new_v, num_tokens_pad, pad_dim=dimension_to_merge)
@@ -3630,7 +3651,7 @@ class MultiChainPermutationAlignment(Module):
         features: Dict[str, Tensor],
         ground_truth: Dict[str, Tensor],
         padding_value: int = -1,
-    ) -> Tuple[List[Tuple[int, int]], Dict[int, List[int]]]:
+    ) -> List[Tuple[int, int]]:
         """A method that permutes chains in ground truth before calculating the loss because the
         mapping between the predicted and ground truth will become arbitrary. The model cannot be
         assumed to predict chains in the same order as the ground truth. Thus, this function picks
@@ -3649,8 +3670,7 @@ class MultiChainPermutationAlignment(Module):
         :param ground_truth: A list of dictionaries of features corresponding to chains in ground truth structure.
             E.g., it will be a length of 5 if there are 5 chains in ground truth structure.
         :param padding_value: The padding value used in the input features.
-        :return: A list of tuple(int, int) that instructs how ground truth chains should be permutated and
-            a dictionary recording which tokens belong to which asymmetric ID (asym_id).
+        :return: A list of tuple(int, int) that instructs how ground truth chains should be permutated.
         """
         num_tokens = features["token_index"].shape[-1]
 
@@ -3664,7 +3684,7 @@ class MultiChainPermutationAlignment(Module):
 
         if is_monomer:
             best_alignments = list(enumerate(range(len(per_asym_token_index))))
-            return best_alignments, per_asym_token_index
+            return best_alignments
 
         best_rmsd = torch.inf
         best_alignments = None
@@ -3723,24 +3743,19 @@ class MultiChainPermutationAlignment(Module):
 
             # Apply transforms.
             aligned_true_poses = [
-                self.apply_transform(pose.to(r.dtype), r, x).mean(1) for pose in true_poses
+                self.apply_transform(pose.to(r.dtype), r, x) for pose in true_poses
             ]
-
-            pred_centroid_pos = pred_pos.mean(1)
-            pred_centroid_mask = pred_mask.any(1).float()
-            true_centroid_masks = [mask.any(1).float() for mask in true_masks]
 
             alignments = self.greedy_align(
                 batch=features,
                 entity_to_asym_list=entity_to_asym_list,
-                pred_pos=pred_centroid_pos,
-                pred_mask=pred_centroid_mask,
+                pred_pos=pred_pos,
+                pred_mask=pred_mask,
                 true_poses=aligned_true_poses,
-                true_masks=true_centroid_masks,
+                true_masks=true_masks,
             )
 
             merged_labels = self.merge_labels(
-                per_asym_token_index=per_asym_token_index,
                 labels=labels,
                 alignments=alignments,
                 original_num_tokens=num_tokens,
@@ -3751,18 +3766,23 @@ class MultiChainPermutationAlignment(Module):
             rmsd = self.batch_compute_rmsd(
                 true_pos=aligned_true_pos.mean(1, keepdim=True),
                 pred_pos=pred_pos.mean(1, keepdim=True),
-                mask=(pred_mask * merged_labels["mask"]),
+                mask=(
+                    pred_mask.any(-1, keepdim=True) * merged_labels["mask"].any(-1, keepdim=True)
+                ),
             ).mean()
 
             if rmsd < best_rmsd:
-                # NOTE: We choose the permutation that minimizes the batch-wise average RMSD
+                # NOTE: We choose the permutation that minimizes the batch-wise
+                # average RMSD of the predicted token center atom centroid coordinates
+                # with respect to the ground truth token center atom centroid coordinates.
                 best_rmsd = rmsd
                 best_alignments = alignments
 
         # NOTE: The above algorithm naturally generalizes to both training and inference
-        # contexts (i.e., with and without cropping).
+        # contexts (i.e., with and without cropping) by, where applicable, pre-applying
+        # cropping to the (ground truth) input coordinates and features.
 
-        return best_alignments, per_asym_token_index
+        return best_alignments
 
     @typecheck
     def forward(
@@ -3780,7 +3800,7 @@ class MultiChainPermutationAlignment(Module):
 
         NOTE: This function assumes that the ground truth features are batched yet only contain
         features for the same structure. This is the case after performing data augmentation
-        with a batch size of one in the `Alphafold3` module's forward pass. If the batched
+        with a batch size of 1 in the `Alphafold3` module's forward pass. If the batched
         ground truth features represent multiple different structures, this function will not
         return correct results.
 
@@ -3793,7 +3813,7 @@ class MultiChainPermutationAlignment(Module):
         :param mask: The mask for variable lengths.
         :return: The optimally chain-permuted aligned coordinates.
         """
-        num_tokens = molecule_atom_indices.shape[1]
+        num_atoms = pred_coords.shape[1]
 
         if not exists(additional_molecule_feats) or not exists(is_molecule_types):
             # NOTE: If no chains or no molecule types are specified,
@@ -3841,6 +3861,18 @@ class MultiChainPermutationAlignment(Module):
 
         mode_values, _ = covalent_bonded_asym_id.mode(dim=-1, keepdim=False)
         mapped_token_asym_id = torch.where(is_covalent_ligand_mask, mode_values, token_asym_id)
+        mapped_atom_asym_id = batch_repeat_interleave(mapped_token_asym_id, molecule_atom_lens)
+
+        # Move ligand coordinates to be adjacent to their covalently bonded polymer chains.
+        _, mapped_atom_sorted_indices = torch.sort(mapped_atom_asym_id, dim=1)
+        mapped_atom_true_coords = torch.gather(
+            true_coords, dim=1, index=mapped_atom_sorted_indices.unsqueeze(-1).expand(-1, -1, 3)
+        )
+
+        # Segment the ground truth coordinates into chains.
+        labels = self.split_ground_truth_labels(
+            dict(asym_id=mapped_atom_asym_id, true_coords=mapped_atom_true_coords)
+        )
 
         # Pool atom-level features into token-level features.
         mol_atom_indices = repeat(molecule_atom_indices, "b m -> b m d", d=true_coords.shape[-1])
@@ -3848,11 +3880,6 @@ class MultiChainPermutationAlignment(Module):
         token_pred_coords = torch.gather(pred_coords, 1, mol_atom_indices)
         token_true_coords = torch.gather(true_coords, 1, mol_atom_indices)
         token_mask = torch.gather(mask, 1, molecule_atom_indices)
-
-        # Segment the ground truth coordinates into chains.
-        labels = self.split_ground_truth_labels(
-            dict(asym_id=mapped_token_asym_id, true_coords=token_true_coords)
-        )
 
         # Permute ground truth chains.
         out = {"pred_coords": token_pred_coords, "mask": token_mask}
@@ -3868,7 +3895,7 @@ class MultiChainPermutationAlignment(Module):
             "entity_id": token_entity_id,
         }
 
-        alignments, per_asym_token_index = self.compute_permutation_alignment(
+        alignments = self.compute_permutation_alignment(
             out=out,
             features=features,
             ground_truth=ground_truth,
@@ -3876,10 +3903,9 @@ class MultiChainPermutationAlignment(Module):
 
         # Reorder ground truth coordinates according to permutation results.
         labels = self.merge_labels(
-            per_asym_token_index=per_asym_token_index,
             labels=labels,
             alignments=alignments,
-            original_num_tokens=num_tokens,
+            original_num_tokens=num_atoms,
         )
 
         permuted_true_coords = labels["true_coords"].detach()
@@ -7052,10 +7078,10 @@ class Alphafold3(Module):
                     distogram_atom_indices
                 ), "`distogram_atom_indices` must be passed in for calculating aligned and chain-permuted ground truth"
 
-                distogram_atom_indices = repeat(
+                distogram_atom_coords_indices = repeat(
                     distogram_atom_indices, "b n -> b n c", c=distogram_pos.shape[-1]
                 )
-                molecule_pos = atom_pos.gather(1, distogram_atom_indices)
+                molecule_pos = atom_pos.gather(1, distogram_atom_coords_indices)
 
             # determine pae labels if possible
 
@@ -7069,12 +7095,12 @@ class Alphafold3(Module):
                         distogram_atom_indices
                     ), "`distogram_atom_indices` must be passed in for calculating non-atomic PAE labels"
 
-                    distogram_atom_indices = repeat(
+                    distogram_atom_coords_indices = repeat(
                         distogram_atom_indices, "b n -> b n c", c=distogram_pos.shape[-1]
                     )
-                    molecule_pos = atom_pos.gather(1, distogram_atom_indices)
+                    molecule_pos = atom_pos.gather(1, distogram_atom_coords_indices)
 
-                denoised_molecule_pos = denoised_atom_pos.gather(1, distogram_atom_indices)
+                denoised_molecule_pos = denoised_atom_pos.gather(1, distogram_atom_coords_indices)
 
                 # three_atoms = einx.get_at('b [m] c, b n three -> three b n c', atom_pos, atom_indices_for_frame)
                 # pred_three_atoms = einx.get_at('b [m] c, b n three -> three b n c', denoised_atom_pos, atom_indices_for_frame)
@@ -7138,12 +7164,12 @@ class Alphafold3(Module):
 
                 # molecule_pos = einx.get_at('b [m] c, b n -> b n c', atom_pos, molecule_atom_indices)
 
-                mol_atom_indices = repeat(
+                molecule_atom_coords_indices = repeat(
                     molecule_atom_indices, "b n -> b n c", c=atom_pos.shape[-1]
                 )
 
-                molecule_pos = atom_pos.gather(1, mol_atom_indices)
-                denoised_molecule_pos = denoised_atom_pos.gather(1, mol_atom_indices)
+                molecule_pos = atom_pos.gather(1, molecule_atom_coords_indices)
+                denoised_molecule_pos = denoised_atom_pos.gather(1, molecule_atom_coords_indices)
 
                 molecule_mask = valid_molecule_atom_mask
 
