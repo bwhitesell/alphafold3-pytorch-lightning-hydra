@@ -183,16 +183,26 @@ def test_weighted_rigid_align_with_mask():
 
 def test_multi_chain_permutation_alignment():
     """Test the multi-chain permutation alignment function with masking."""
-    pred_coords = torch.randn(2, 100, 3)
-    true_coords = torch.randn(2, 100, 3)
-    weights = torch.rand(2, 100)
-    mask = torch.randint(0, 2, (2, 100)).bool()
+    seq_len = 16
+    atom_seq_len = 32
 
-    molecule_atom_lens = torch.full((2, 16), 6).long()
-    molecule_atom_indices = torch.randint(0, 100, (2, 16)).long()
-    token_bonds = torch.randint(0, 2, (2, 16, 16)).bool()
-    additional_molecule_feats = torch.randint(0, 2, (2, 16, 5))
-    is_molecule_types = torch.randint(0, 2, (2, 16, IS_MOLECULE_TYPES)).bool()
+    molecule_atom_indices = torch.randint(0, 2, (2, seq_len)).long()
+    molecule_atom_lens = torch.full((2, seq_len), 2).long()
+
+    atom_offsets = exclusive_cumsum(molecule_atom_lens)
+
+    pred_coords = torch.randn(2, atom_seq_len, 3)
+    true_coords = torch.randn(2, atom_seq_len, 3)
+    weights = torch.rand(2, atom_seq_len)
+    mask = torch.randint(0, 2, (2, atom_seq_len)).bool()
+
+    token_bonds = torch.randint(0, 2, (2, seq_len, seq_len)).bool()
+    additional_molecule_feats = torch.randint(0, 2, (2, seq_len, 5))
+    is_molecule_types = torch.randint(0, 2, (2, seq_len, IS_MOLECULE_TYPES)).bool()
+
+    # offset indices correctly
+
+    molecule_atom_indices += atom_offsets
 
     align_fn = WeightedRigidAlign()
     permute_fn = MultiChainPermutationAlignment(weighted_rigid_align=align_fn)
