@@ -393,7 +393,12 @@ def test_diffusion_module(karras_formulation):
     seq_len = 16
     atom_seq_len = 32
 
+    molecule_atom_indices = torch.randint(0, 2, (2, seq_len)).long()
     molecule_atom_lens = torch.full((2, seq_len), 2).long()
+
+    atom_offsets = exclusive_cumsum(molecule_atom_lens)
+
+    token_bonds = torch.randint(0, 2, (2, seq_len, seq_len)).bool()
 
     noised_atom_pos = torch.randn(2, atom_seq_len, 3)
     atom_feats = torch.randn(2, atom_seq_len, 128)
@@ -409,6 +414,10 @@ def test_diffusion_module(karras_formulation):
 
     pairwise_trunk = torch.randn(2, seq_len, seq_len, 128)
     pairwise_rel_pos_feats = torch.randn(2, seq_len, seq_len, 12)
+
+    # offset indices correctly
+
+    molecule_atom_indices += atom_offsets
 
     diffusion_module = DiffusionModule(
         atoms_per_window=27,
@@ -452,6 +461,8 @@ def test_diffusion_module(karras_formulation):
         pairwise_trunk=pairwise_trunk,
         pairwise_rel_pos_feats=pairwise_rel_pos_feats,
         molecule_atom_lens=molecule_atom_lens,
+        molecule_atom_indices=molecule_atom_indices,
+        token_bonds=token_bonds,
         add_bond_loss=True,
     )
 
@@ -1353,6 +1364,8 @@ def test_readme1():
     molecule_atom_indices = molecule_atom_lens - 1  # last atom, as an example
     molecule_atom_indices += molecule_atom_lens.cumsum(dim=-1) - molecule_atom_lens
 
+    distogram_atom_indices = molecule_atom_lens - 1
+
     distance_labels = torch.randint(0, 37, (2, seq_len, seq_len))
     resolved_labels = torch.randint(0, 2, (2, atom_seq_len))
 
@@ -1374,6 +1387,7 @@ def test_readme1():
         templates=template_feats,
         template_mask=template_mask,
         atom_pos=atom_pos,
+        distogram_atom_indices=distogram_atom_indices,
         molecule_atom_indices=molecule_atom_indices,
         distance_labels=distance_labels,
         resolved_labels=resolved_labels,
