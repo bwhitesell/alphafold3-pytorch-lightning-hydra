@@ -2798,6 +2798,7 @@ class ElucidatedAtomDiffusion(Module):
         nucleotide_loss_weight=5.0,
         ligand_loss_weight=10.0,
         return_loss_breakdown=False,
+        single_structure_input=False,
     ) -> ElucidatedAtomDiffusionReturn:
         """Perform the forward pass.
 
@@ -2823,6 +2824,7 @@ class ElucidatedAtomDiffusion(Module):
         :param nucleotide_loss_weight: The nucleotide loss weight.
         :param ligand_loss_weight: The ligand loss weight.
         :param return_loss_breakdown: Whether to return the loss breakdown.
+        :param single_structure_input: Whether to the input(s) represent a single structure.
         :return: The output tensor.
         """
 
@@ -2878,16 +2880,17 @@ class ElucidatedAtomDiffusion(Module):
 
         # section 4.2 - multi-chain permutation alignment
 
-        atom_pos_aligned_ground_truth = self.multi_chain_permutation_alignment(
-            pred_coords=denoised_atom_pos,
-            true_coords=atom_pos_aligned_ground_truth,
-            molecule_atom_lens=molecule_atom_lens,
-            molecule_atom_indices=molecule_atom_indices,
-            token_bonds=token_bonds,
-            additional_molecule_feats=additional_molecule_feats,
-            is_molecule_types=is_molecule_types,
-            mask=atom_mask,
-        )
+        if single_structure_input:
+            atom_pos_aligned_ground_truth = self.multi_chain_permutation_alignment(
+                pred_coords=denoised_atom_pos,
+                true_coords=atom_pos_aligned_ground_truth,
+                molecule_atom_lens=molecule_atom_lens,
+                molecule_atom_indices=molecule_atom_indices,
+                token_bonds=token_bonds,
+                additional_molecule_feats=additional_molecule_feats,
+                is_molecule_types=is_molecule_types,
+                mask=atom_mask,
+            )
 
         # main diffusion mse loss
 
@@ -6541,6 +6544,7 @@ class Alphafold3(Module):
             loss, or the loss breakdown.
         """
         atom_seq_len = atom_inputs.shape[-2]
+        single_structure_input = atom_inputs.shape[0] == 1
 
         # validate atom and atompair input dimensions
 
@@ -7057,6 +7061,7 @@ class Alphafold3(Module):
                 return_denoised_pos=True,
                 nucleotide_loss_weight=self.nucleotide_loss_weight,
                 ligand_loss_weight=self.ligand_loss_weight,
+                single_structure_input=single_structure_input,
             )
 
         # confidence head
@@ -7110,16 +7115,17 @@ class Alphafold3(Module):
 
                 # section 4.2 - multi-chain permutation alignment
 
-                atom_pos = self.multi_chain_permutation_alignment(
-                    pred_coords=denoised_atom_pos,
-                    true_coords=atom_pos,
-                    molecule_atom_lens=molecule_atom_lens,
-                    molecule_atom_indices=molecule_atom_indices,
-                    token_bonds=token_bonds,
-                    additional_molecule_feats=additional_molecule_feats,
-                    is_molecule_types=is_molecule_types,
-                    mask=atom_mask,
-                )
+                if single_structure_input:
+                    atom_pos = self.multi_chain_permutation_alignment(
+                        pred_coords=denoised_atom_pos,
+                        true_coords=atom_pos,
+                        molecule_atom_lens=molecule_atom_lens,
+                        molecule_atom_indices=molecule_atom_indices,
+                        token_bonds=token_bonds,
+                        additional_molecule_feats=additional_molecule_feats,
+                        is_molecule_types=is_molecule_types,
+                        mask=atom_mask,
+                    )
 
                 assert exists(
                     distogram_atom_indices
