@@ -39,9 +39,7 @@ A visualization of the molecules of life used in the repository can be seen and 
 
 - <a href="https://github.com/engelberger">Felipe</a> for contributing Weighted Rigid Align, Express Coordinates In Frame, Compute Alignment Error, and Centre Random Augmentation modules!
 
-- <a href="https://github.com/gitabtion">Heng</a> for pointing out inconsistencies with the paper and pull requesting the solutions
-
-- <a href="https://github.com/gitabtion">Heng</a> for finding an issue with the molecular atom indices for the distogram loss
+- <a href="https://github.com/gitabtion">Heng</a> for pointing out inconsistencies with the paper and pull requesting the solutions (e.g., finding an issue with the molecular atom indices for the distogram loss)
 
 - <a href="https://github.com/luwei0917">Wei Lu</a> for catching a few erroneous hyperparameters
 
@@ -51,11 +49,9 @@ A visualization of the molecules of life used in the repository can be seen and 
 
 - <a href="https://github.com/tanjimin">Jimin</a> for submitting a small fix to an issue with the coordinates being passed into `WeightedRigidAlign`
 
-- <a href="https://github.com/xluo233">@xluo233</a> for contributing the confidence measures, clash penalty ranking, and sample ranking logic!
+- <a href="https://github.com/xluo233">@xluo233</a> for contributing the confidence measures, clash penalty ranking, sample ranking logic, as well as the logic for computing the model selection score and unresolved RASA!
 
 - <a href="https://github.com/sj900">sj900</a> for integrating and testing the `WeightedPDBSampler` within the `PDBDataset` and for adding initial support for MSA parsing!
-
-- <a href="https://github.com/xluo233">@xluo233</a> again for contributing the logic for computing the model selection score as well as the unresolved RASA!
 
 - <a href="https://github.com/wufandi">Fandi</a> for discovering a few inconsistencies in the elucidated atom diffusion module with the supplementary
 
