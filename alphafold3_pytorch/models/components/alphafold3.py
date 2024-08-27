@@ -3174,7 +3174,7 @@ class MultiChainPermutationAlignment(Module):
             1) detect the number of chains, i.e., unique(asym_id) and 2) split the concatenated
             tensors back to individual ones that correspond to individual asym_ids.
         :return: A list of feature dictionaries with only necessary ground truth features required
-            to finish multi-chain permutation, e.g., it will be a list of 5 elements if there are 5
+            to finish multi-chain permutation. E.g., it will be a list of 5 elements if there are 5
             chains in total.
         """
         _, asym_id_counts = torch.unique(
@@ -3237,8 +3237,8 @@ class MultiChainPermutationAlignment(Module):
         Adapted from:
         https://github.com/aqlaboratory/openfold/blob/main/openfold/utils/multi_chain_permutation.py
 
-        :param features: A dictionary containing data features, including "entity_id" and "asym_id" tensors.
-        :return A dictionary where keys are unique entity IDs, and values are tensors of unique asymmetry IDs
+        :param features: A dictionary containing data features, including `entity_id` and `asym_id` tensors.
+        :return: A dictionary where keys are unique entity IDs, and values are tensors of unique asymmetry IDs
             associated with each entity.
         """
         entity_2_asym_list = {}
@@ -3262,11 +3262,11 @@ class MultiChainPermutationAlignment(Module):
         Adapted from:
         https://github.com/aqlaboratory/openfold/blob/main/openfold/utils/multi_chain_permutation.py
 
-        :param batch: In this function, `batch` is the full ground truth features
-        :param input_asym_id: A list of `asym_ids` that are in the cropped input features
-        :param padding_value: The padding value used in the input features
-        :return: Tensor(int) selected ground truth `asym_ids` and a list of
-            integer tensors denoting of all possible pred anchor candidates
+        :param batch: In this function, `batch` is the full ground truth features.
+        :param input_asym_id: A list of `asym_ids` that are in the cropped input features.
+        :param padding_value: The padding value used in the input features.
+        :return: Selected ground truth `asym_ids` and a list of
+            integer tensors denoting of all possible pred anchor candidates.
         """
         entity_2_asym_list = self.get_entity_2_asym_list(features=batch)
         unique_entity_ids = [i for i in torch.unique(batch["entity_id"]) if i != padding_value]
@@ -3327,8 +3327,8 @@ class MultiChainPermutationAlignment(Module):
     ) -> Bool["b a"]:  # type: ignore
         """Calculate an input mask for downstream optimal transformation computation.
 
-        :param true_masks: list of masks from the ground truth chains. E.g., it will be a length of
-            5 if there are 5 chains in ground truth structure.
+        :param true_masks: A list of masks from the ground truth chains. E.g., it will be a length
+            of 5 if there are 5 chains in ground truth structure.
         :param anchor_gt_idx: A tensor with one integer in it (i.e., the index of selected ground
             truth anchor).
         :param asym_mask: A boolean tensor with which to mask out other elements in a tensor if
@@ -3443,7 +3443,8 @@ class MultiChainPermutationAlignment(Module):
         :param true_pos: The ground truth coordinates.
         :param pred_pos: The predicted coordinates.
         :param mask: The mask tensor.
-        :param eps: A small value to prevent division by zero. :return The RMSD.
+        :param eps: A small value to prevent division by zero.
+        :return: The RMSD.
         """
         # Apply mask if provided
         if exists(mask):
@@ -3474,7 +3475,7 @@ class MultiChainPermutationAlignment(Module):
         padding_value: int = -1,
     ) -> List[Tuple[int, int]]:
         """
-        Implement Algorithm 4 in the Supplementary Information of AlphaFold-Multimer paper:
+        Implement Algorithm 4 in the Supplementary Information of the AlphaFold-Multimer paper:
             Evans, R et al., 2022 Protein complex prediction with AlphaFold-Multimer,
             bioRxiv 2021.10.04.463034; doi: https://doi.org/10.1101/2021.10.04.463034
 
@@ -3492,7 +3493,7 @@ class MultiChainPermutationAlignment(Module):
         :param true_masks: A list of tensors, corresponding to the masks of the token center atom centroid positions of the ground truth structure.
             E.g., if there are 5 chains, this list will have a length of 5.
         :param padding_value: The padding value used in the input features.
-        :return A list of tuple(int, int) that provides instructions for how the ground truth chains should be permuted.
+        :return: A list of tuple(int, int) that provides instructions for how the ground truth chains should be permuted.
             E.g., if 3 chains in the input structure have the same sequences, an example return value would be:
             `[(0, 2), (1, 1), (2, 0)]`, meaning the first chain in the predicted structure should be aligned
             to the third chain in the ground truth and the second chain in the predicted structure is fine
@@ -3569,7 +3570,7 @@ class MultiChainPermutationAlignment(Module):
         :param feature_tensor: A feature tensor to pad.
         :param num_tokens_pad: The number of tokens to pad.
         :param pad_dim: Along which dimension of `feature_tensor` to pad.
-        :return A padded feature tensor.
+        :return: A padded feature tensor.
         """
         pad_shape = list(feature_tensor.shape)
         pad_shape[pad_dim] = num_tokens_pad
@@ -3647,13 +3648,13 @@ class MultiChainPermutationAlignment(Module):
         Adapted from:
         https://github.com/aqlaboratory/openfold/blob/main/openfold/utils/multi_chain_permutation.py
 
-        :param out: a dictionary of output tensors from model.forward()
-        :param features: a dictionary of feature tensors that are used as input for model.forward()
-        :param ground_truth: a list of dictionaries of features corresponding to chains in ground truth structure,
-            e.g., it will be a length of 5 if there are 5 chains in ground truth structure
-        :param padding_value: the padding value used in the input features
-        :return a list of tuple(int, int) that instructs how ground truth chains should be permutated and
-            a dictionary recording which tokens belong to which asymmetric ID (asym_id)
+        :param out: A dictionary of output tensors from model.forward().
+        :param features: A dictionary of feature tensors that are used as input for model.forward().
+        :param ground_truth: A list of dictionaries of features corresponding to chains in ground truth structure.
+            E.g., it will be a length of 5 if there are 5 chains in ground truth structure.
+        :param padding_value: The padding value used in the input features.
+        :return: A list of tuple(int, int) that instructs how ground truth chains should be permutated and
+            a dictionary recording which tokens belong to which asymmetric ID (asym_id).
         """
         num_tokens = features["token_index"].shape[-1]
 
