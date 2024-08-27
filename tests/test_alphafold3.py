@@ -58,10 +58,7 @@ from alphafold3_pytorch.models.components.inputs import (
     pdb_input_to_molecule_input,
 )
 from alphafold3_pytorch.utils.model_utils import exclusive_cumsum
-from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.utils import exists
-
-logger = RankedLogger(__name__, rank_zero_only=False)
 
 DATA_TEST_PDB_ID = "721p"
 
@@ -204,13 +201,12 @@ def test_multi_chain_permutation_alignment():
     additional_molecule_feats = torch.randint(0, 2, (batch_size, seq_len, 5))
     is_molecule_types = torch.randint(0, 2, (batch_size, seq_len, IS_MOLECULE_TYPES)).bool()
 
-    # ensure each unique asymmetric ID has at least one molecule type associated with it
+    # ensure the asymmetric and entity IDs are consistently ordered and compatible with one another
 
-    asym_id = additional_molecule_feats[..., 2]
-    unique_asym_id = asym_id.unique()
-    for asym in unique_asym_id:
-        if any(not row.any() for row in is_molecule_types[asym_id == asym]):
-            is_molecule_types[asym_id == asym] = True
+    additional_molecule_feats[..., : additional_molecule_feats.shape[1] // 2, 2] = 0
+    additional_molecule_feats[..., additional_molecule_feats.shape[1] // 2 :, 2] = 1
+
+    additional_molecule_feats[..., : additional_molecule_feats.shape[1] // 2, 3] = 0
 
     # offset indices correctly
 
@@ -220,21 +216,16 @@ def test_multi_chain_permutation_alignment():
     permute_fn = MultiChainPermutationAlignment(weighted_rigid_align=align_fn)
 
     aligned_true_coords = align_fn(pred_coords, true_coords, weights, mask=mask)
-    try:
-        permuted_aligned_true_coords = permute_fn(
-            pred_coords=pred_coords,
-            true_coords=aligned_true_coords,
-            molecule_atom_lens=molecule_atom_lens,
-            molecule_atom_indices=molecule_atom_indices,
-            token_bonds=token_bonds,
-            additional_molecule_feats=additional_molecule_feats,
-            is_molecule_types=is_molecule_types,
-            mask=mask,
-        )
-    except Exception as e:
-        # NOTE: For many (random) unit test inputs, weighted rigid alignment can be unstable
-        logger.warning(f"Multi-chain permutation alignment failed with the following error: {e}")
-        permuted_aligned_true_coords = aligned_true_coords.clone()
+    permuted_aligned_true_coords = permute_fn(
+        pred_coords=pred_coords,
+        true_coords=aligned_true_coords,
+        molecule_atom_lens=molecule_atom_lens,
+        molecule_atom_indices=molecule_atom_indices,
+        token_bonds=token_bonds,
+        additional_molecule_feats=additional_molecule_feats,
+        is_molecule_types=is_molecule_types,
+        mask=mask,
+    )
 
     assert permuted_aligned_true_coords.shape == aligned_true_coords.shape
 
@@ -709,6 +700,13 @@ def test_alphafold3(
     distogram_atom_indices = molecule_atom_lens - 1
 
     resolved_labels = torch.randint(0, 2, (2, atom_seq_len))
+
+    # ensure the asymmetric and entity IDs are consistently ordered and compatible with one another
+
+    additional_molecule_feats[..., : additional_molecule_feats.shape[1] // 2, 2] = 0
+    additional_molecule_feats[..., additional_molecule_feats.shape[1] // 2 :, 2] = 1
+
+    additional_molecule_feats[..., : additional_molecule_feats.shape[1] // 2, 3] = 0
 
     # offset indices correctly
 
