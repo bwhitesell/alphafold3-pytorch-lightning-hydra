@@ -594,3 +594,14 @@ Refer to [pre-commit's documentation](https://pre-commit.com/) for more details.
     year    = {2023}
 }
 ```
+
+```bibtex
+@article{Ash2019OnTD,
+    title   = {On the Difficulty of Warm-Starting Neural Network Training},
+    author  = {Jordan T. Ash and Ryan P. Adams},
+    journal = {ArXiv},
+    year    = {2019},
+    volume  = {abs/1910.08475},
+    url     = {https://api.semanticscholar.org/CorpusID:204788802}
+}
+```

@@ -395,11 +395,8 @@ class TriangleMultiplication(Module):
         super().__init__()
 
         dim_hidden = default(dim_hidden, dim)
-        self.norm = nn.LayerNorm(dim)
 
         self.left_right_proj = nn.Sequential(LinearNoBias(dim, dim_hidden * 4), nn.GLU(dim=-1))
-
-        self.left_right_gate = LinearNoBias(dim, dim_hidden * 2)
 
         self.out_gate = LinearNoBias(dim, dim_hidden)
 
@@ -430,8 +427,6 @@ class TriangleMultiplication(Module):
         if exists(mask):
             mask = to_pairwise_mask(mask)
             mask = rearrange(mask, "... -> ... 1")
-
-        x = self.norm(x)
 
         left, right = self.left_right_proj(x).chunk(2, dim=-1)
 
@@ -6422,6 +6417,26 @@ class Alphafold3(Module):
 
         alphafold3.load(path)
         return alphafold3
+
+    @typecheck
+    def shrink_and_perturb_(
+        self, shrink_factor: float = 0.5, perturb_factor: float = 0.01
+    ) -> "Alphafold3":
+        """
+        Implement Shrink & Perturb.
+        By: Ash et al. (https://arxiv.org/abs/1910.08475)
+
+        :param shrink_factor: The shrink factor.
+        :param perturb_factor: The perturb factor.
+        :return: The perturbed model.
+        """
+        assert 0.0 <= shrink_factor <= 1.0, "Shrink factor must be between 0 and 1."
+
+        for p in self.parameters():
+            noise = torch.randn_like(p.data)
+            p.data.mul_(1.0 - shrink_factor).add_(noise * perturb_factor)
+
+        return self
 
     @typecheck
     def forward(

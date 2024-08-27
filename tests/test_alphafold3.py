@@ -53,6 +53,7 @@ from alphafold3_pytorch.models.components.inputs import (
     Alphafold3Input,
     PDBInput,
     atom_ref_pos_to_atompair_inputs,
+    get_frames_from_atom_pos,
     molecule_to_atom_input,
     pdb_input_to_molecule_input,
 )
@@ -241,6 +242,27 @@ def test_rigid_from_three_points():
     points = torch.randn(7, 11, 23, 3)
     rotation, _ = rigid_from_3_points((points, points, points))
     assert rotation.shape == (7, 11, 23, 3, 3)
+
+
+def test_deriving_frames_for_ligands():
+    """Test the function to derive frames for ligands."""
+    points = torch.tensor(
+        [
+            [1.0, 1.0, 1.0],
+            [-99, -99, -99],
+            [0, 0, 0],
+            [100, 100, 100],
+            [-1.0, -1.0, -1.0],
+        ]
+    )
+
+    frames = get_frames_from_atom_pos(points, filter_colinear_pos=True)
+
+    assert torch.allclose(frames, torch.tensor([-1, -1, -1]))
+
+    frames = get_frames_from_atom_pos(points, filter_colinear_pos=False)
+
+    assert torch.allclose(frames, torch.tensor([0, 2, 4]))
 
 
 def test_compute_alignment_error():
