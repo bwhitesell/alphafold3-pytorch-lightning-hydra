@@ -35,7 +35,7 @@ from alphafold3_pytorch.common.biomolecule import (
     _from_mmcif_object,
     get_residue_constants,
 )
-from alphafold3_pytorch.data import mmcif_parsing, msa_parsing
+from alphafold3_pytorch.data import mmcif_parsing, msa_parsing, template_parsing
 from alphafold3_pytorch.data.data_pipeline import (
     FeatureDict,
     get_assembly,
@@ -1935,6 +1935,7 @@ class PDBInput:
     training: bool = False
     resolution: float | None = None
     max_msas_per_chain: int | None = None
+    max_templates_per_chain: int | None = None
     extract_atom_feats_fn: Callable[[Atom], Float["m dai"]] = default_extract_atom_feats_fn  # type: ignore
     extract_atompair_feats_fn: Callable[[Mol], Float["m m dapi"]] = default_extract_atompair_feats_fn  # type: ignore
 
@@ -2531,7 +2532,10 @@ def load_msa_from_msa_dir(
 @typecheck
 def load_templates_from_templates_dir(
     templates_dir: str | None,
+    mmcif_dir: str | None,
     file_id: str,
+    chain_id_to_residue: Dict[str, Dict[str, List[int]]],
+    max_templates_per_chain: int | None = None,
     raise_missing_exception: bool = False,
     verbose: bool = False,
 ) -> FeatureDict:
@@ -2547,17 +2551,44 @@ def load_templates_from_templates_dir(
             )
         return {}
 
-    # template_fpath = os.path.join(templates_dir, f"{file_id}.pdb")
-    # with open(template_fpath, "r") as f:
-    #     template = f.read()
+    if (not exists(mmcif_dir) or not os.path.exists(mmcif_dir)) and raise_missing_exception:
+        raise FileNotFoundError(f"{mmcif_dir} does not exist.")
+    elif not exists(mmcif_dir) or not os.path.exists(mmcif_dir):
+        if verbose:
+            logger.warning(
+                f"{mmcif_dir} does not exist. Skipping template loading by returning `Nones`."
+            )
+        return {}
 
-    # template = template_parsing.parse_pdb(template)
-    # features = make_template_features([template])
+    templates = defaultdict(list)
+    for chain_id in chain_id_to_residue:
+        template_fpaths = glob.glob(os.path.join(templates_dir, f"{file_id}{chain_id}_*.m8"))
+
+        if not template_fpaths:
+            templates[chain_id] = None
+            continue
+
+        # NOTE: A single chain-specific template file contains a template for all polymer residues in the chain,
+        # but the chain's ligands are not included in the template file and therefore must be manually inserted
+        # into the templates as unknown amino acid residues.
+        assert len(template_fpaths) == 1, (
+            f"{len(template_fpaths)} template files found for chain {chain_id} of file {file_id}. "
+            "Please ensure that one template file is present for each chain."
+        )
+        template_fpath = template_fpaths[0]
+        query_id = file_id.split("-assembly1")[0]
+
+        template_biomols = template_parsing.parse_m8(
+            template_fpath, query_id, mmcif_dir, max_templates=max_templates_per_chain
+        )
+        templates[chain_id].extend(template_biomols)
+
+    features = {}
+
+    # features = make_template_features(templates, chain_id_to_residue)
     # features = make_template_mask(features)
 
-    # return features
-
-    return {}
+    return features
 
 
 @typecheck
@@ -2705,7 +2736,14 @@ def pdb_input_to_molecule_input(
 
     # TODO: retrieve templates for each chain
     # NOTE: if they are not locally available, `Nones` will be used
-    template_features = load_templates_from_templates_dir(i.templates_dir, file_id)
+    mmcif_dir = str(Path(i.mmcif_filepath).parent.parent)
+    template_features = load_templates_from_templates_dir(
+        i.templates_dir,
+        mmcif_dir,
+        file_id,
+        chain_id_to_residue,
+        max_templates_per_chain=i.max_templates_per_chain,
+    )
 
     templates = template_features.get("templates")
     template_mask = template_features.get("template_mask")
