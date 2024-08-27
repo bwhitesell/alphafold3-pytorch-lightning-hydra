@@ -3143,7 +3143,10 @@ class WeightedRigidAlign(Module):
         true_aligned_coords.detach_()
 
         if return_transforms:
-            return true_aligned_coords, rot_matrix, pred_centroid
+            translation = true_centroid - einsum(
+                rot_matrix, pred_centroid, "b i j, b ... j -> b ... i"
+            )
+            return true_aligned_coords, rot_matrix, translation
 
         return true_aligned_coords
 
@@ -3409,23 +3412,16 @@ class MultiChainPermutationAlignment(Module):
 
     @staticmethod
     @typecheck
-    def apply_transform(pose: Float["b a 3"], mask: Float["b a"], r: Float["b 3 3"], x: Float["b 1 3"]) -> Float["b a 3"]:  # type: ignore
+    def apply_transform(pose: Float["b a 3"], r: Float["b 3 3"], x: Float["b 1 3"]) -> Float["b a 3"]:  # type: ignore
         """Apply the optimal transformation to the predicted token center atom positions.
 
         :param pose: A tensor of predicted token center atom positions.
-        :param mask: A boolean tensor corresponding to the mask with which to mask the predicted features.
         :param r: A rotation matrix that records the optimal rotation that will best align the selected anchor prediction to the
             selected anchor truth.
         :param x: A matrix that records how the atoms should be shifted after applying `r`.
         :return: A tensor of predicted token center atom positions after applying the optimal transformation.
         """
-        mask = rearrange(mask, "b a -> b a 1")
-
-        pose_centroid = (pose * mask).sum(dim=1, keepdim=True) / mask.sum(dim=1, keepdim=True)
-        pose_centered = pose - pose_centroid
-
-        aligned_pose = einsum(r, pose_centered, "b i j, b n j -> b n i") + x
-
+        aligned_pose = einsum(r, pose, "b i j, b n j -> b n i") + x
         aligned_pose.detach_()
         return aligned_pose
 
@@ -3727,8 +3723,7 @@ class MultiChainPermutationAlignment(Module):
 
             # Apply transforms.
             aligned_true_poses = [
-                self.apply_transform(pose.to(r.dtype), mask.to(r.dtype), r, x).mean(1)
-                for (pose, mask) in zip(true_poses, true_masks)
+                self.apply_transform(pose.to(r.dtype), r, x).mean(1) for pose in true_poses
             ]
 
             pred_centroid_pos = pred_pos.mean(1)
@@ -3751,9 +3746,7 @@ class MultiChainPermutationAlignment(Module):
                 original_num_tokens=num_tokens,
             )
 
-            aligned_true_pos = self.apply_transform(
-                merged_labels["true_coords"].to(r.dtype), merged_labels["mask"].to(r.dtype), r, x
-            )
+            aligned_true_pos = self.apply_transform(merged_labels["true_coords"].to(r.dtype), r, x)
 
             rmsd = self.batch_compute_rmsd(
                 true_pos=aligned_true_pos.mean(1, keepdim=True),
