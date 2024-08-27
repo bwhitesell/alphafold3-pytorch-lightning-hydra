@@ -323,6 +323,11 @@ class PDBDataModule(LightningDataModule):
         """
         # Divide batch size by the number of devices.
         if self.trainer is not None:
+            if self.hparams.batch_size > 1:
+                raise RuntimeError(
+                    "Only a `batch_size` of 1 is supported for now "
+                    "due to the input requirements of the `MultiChainPermutationAlignment` algorithm."
+                )
             if self.hparams.batch_size % self.trainer.world_size != 0:
                 raise RuntimeError(
                     f"Batch size ({self.hparams.batch_size}) is not divisible by the number of devices ({self.trainer.world_size})."
