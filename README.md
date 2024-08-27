@@ -45,7 +45,7 @@ A visualization of the molecules of life used in the repository can be seen and 
 
 - <a href="https://github.com/luwei0917">Wei Lu</a> for catching a few erroneous hyperparameters
 
-- <a href="https://github.com/milot-mirdita">Milot</a> for optimizing the PDB dataset clustering script!
+- <a href="https://github.com/milot-mirdita">Milot</a> for generating MSA and template inputs as well as optimizing the PDB dataset clustering script!
 
 - <a href="https://github.com/vandrw">Andrei</a> for working on the weighted PDB dataset sampling!
 
