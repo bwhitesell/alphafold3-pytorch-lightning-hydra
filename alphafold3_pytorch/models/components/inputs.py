@@ -8,6 +8,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from contextlib import redirect_stderr
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timedelta
 from functools import partial
 from io import StringIO
 from itertools import groupby
@@ -1934,6 +1935,7 @@ class PDBInput:
     add_atompair_ids: bool = False
     directed_bonds: bool = False
     training: bool = False
+    distillation: bool = False
     resolution: float | None = None
     max_msas_per_chain: int | None = None
     max_templates_per_chain: int | None = None
@@ -2539,6 +2541,7 @@ def load_templates_from_templates_dir(
     chain_id_to_residue: Dict[str, Dict[str, List[int]]],
     max_templates_per_chain: int | None = None,
     num_templates_per_chain: int | None = None,
+    template_cutoff_date: datetime | None = None,
     randomly_sample_num_templates: bool = False,
     raise_missing_exception: bool = False,
     verbose: bool = False,
@@ -2591,6 +2594,7 @@ def load_templates_from_templates_dir(
             mmcif_dir,
             max_templates=max_templates_per_chain,
             num_templates=num_templates_per_chain,
+            template_cutoff_date=template_cutoff_date,
             randomly_sample_num_templates=randomly_sample_num_templates,
         )
         templates[chain_id].extend(template_biomols)
@@ -2629,6 +2633,7 @@ def pdb_input_to_molecule_input(
             file_id=file_id,
         )
         mmcif_resolution = extract_mmcif_metadata_field(mmcif_object, "resolution")
+        mmcif_release_date = extract_mmcif_metadata_field(mmcif_object, "release_date")
         biomol = (
             _from_mmcif_object(mmcif_object)
             if "assembly" in file_id
@@ -2685,7 +2690,7 @@ def pdb_input_to_molecule_input(
     }
 
     msa_features = load_msa_from_msa_dir(
-        # NOTE: if MSAs are not locally available, `Nones` will be used
+        # NOTE: if MSAs are not locally available, no MSA features will be used
         i.msa_dir,
         file_id,
         chain_id_to_residue,
@@ -2745,16 +2750,31 @@ def pdb_input_to_molecule_input(
         msa = make_one_hot(msa, NUM_MSA_ONE_HOT)
         msa_row_mask = msa_row_mask.bool()
 
-    # TODO: retrieve templates for each chain
-    # NOTE: if they are not locally available, `Nones` will be used
+    # retrieve templates for each chain
+
     mmcif_dir = str(Path(i.mmcif_filepath).parent.parent)
+    template_cutoff_date = datetime.strptime(mmcif_release_date, "%Y-%m-%d")
+
+    # use the template cutoff dates listed in the AF3 supplement's Section 2.4
+    if i.training:
+        template_cutoff_date = (
+            datetime.strptime("2018-04-30", "%Y-%m-%d")
+            if i.distillation
+            else (template_cutoff_date - timedelta(days=60))
+        )
+    else:
+        # NOTE: this is the template cutoff date for all inference tasks
+        template_cutoff_date = datetime.strptime("2021-09-30", "%Y-%m-%d")
+
     template_features = load_templates_from_templates_dir(
+        # NOTE: if templates are not locally available, no template features will be used
         i.templates_dir,
         mmcif_dir,
         file_id,
         chain_id_to_residue,
         max_templates_per_chain=i.max_templates_per_chain,
         num_templates_per_chain=i.num_templates_per_chain,
+        template_cutoff_date=template_cutoff_date,
         randomly_sample_num_templates=i.training,
     )
 

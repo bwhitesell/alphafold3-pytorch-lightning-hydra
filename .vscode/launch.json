@@ -24,8 +24,8 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "--mmcif_assembly_dir", "data/pdb_data/unfiltered_assembly_dev_mmcifs",
-                "--mmcif_asym_dir", "data/pdb_data/unfiltered_asym_dev_mmcifs",
+                "--mmcif_assembly_dir", "data/pdb_data/unfiltered_assembly_mmcifs",
+                "--mmcif_asym_dir", "data/pdb_data/unfiltered_asym_mmcifs",
                 "--output_dir", "data/pdb_data/dev_train_mmcifs",
                 // "--min_cutoff_date", "1971-01-01",
                 // "--max_cutoff_date", "2021-09-30",

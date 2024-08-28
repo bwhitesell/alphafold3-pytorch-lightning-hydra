@@ -209,7 +209,7 @@ def make_template_features(
     num_templates: int | None = None,
     num_distogram_bins: int = 39,
     unknown_restype: int = 20,
-    num_classes: int = 32,
+    num_restype_classes: int = 32,
     raise_missing_exception: bool = False,
 ) -> FeatureDict:
     """Construct a feature dictionary of template features.
@@ -220,7 +220,7 @@ def make_template_features(
     :param num_templates: The (optional) number of templates to return per chain.
     :param num_distogram_bins: The number of bins in the distogram features.
     :param unknown_restype: The unknown residue type index.
-    :param num_classes: The number of classes in the residue type classification.
+    :param num_restype_classes: The number of classes in the residue type classification.
     :param raise_missing_exception: Whether to raise an exception if no templates are provided.
     :return: The template feature dictionary.
     """
@@ -260,7 +260,7 @@ def make_template_features(
                 template_restype_list.append(
                     F.one_hot(
                         torch.full((max_templates, num_res), unknown_restype, dtype=torch.long),
-                        num_classes=num_classes,
+                        num_classes=num_restype_classes,
                     )
                 )
                 template_pseudo_beta_mask_list.append(
