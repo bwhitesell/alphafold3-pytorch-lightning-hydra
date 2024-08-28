@@ -67,14 +67,15 @@ def parse_m8(
         return []
 
     # Filter the DataFrame to only include rows where
-    # (1) the template ID does not contain any part of the query ID,
-    # (2) the identity is less than 1.0,
-    # (3) the alignment length is greater than 0, and
-    # (4) the number of templates is less than the (optional) maximum number of templates.
+    # (1) the template ID does not contain any part of the query ID;
+    # (2) the template's identity is between 0.1 and 0.95, exclusively;
+    # (3) the alignment length is greater than 0;
+    # (4) the template's length is at least 10; and
+    # (5) the number of templates is less than the (optional) maximum number of templates.
     df = df.filter(~pl.col("Template ID").str.contains(query_id))
-    df = df.filter(pl.col("Identity") < 1.0)
+    df = df.filter((pl.col("Identity") > 0.1) & (pl.col("Identity") < 0.95))
     df = df.filter(pl.col("Alignment Length") > 0)
-
+    df = df.filter((pl.col("Template End") - pl.col("Template Start")) >= 10)
     if exists(max_templates):
         df = df.head(max_templates)
 
