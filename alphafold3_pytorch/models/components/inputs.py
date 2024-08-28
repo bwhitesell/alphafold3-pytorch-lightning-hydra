@@ -1940,6 +1940,7 @@ class PDBInput:
     max_msas_per_chain: int | None = None
     max_templates_per_chain: int | None = None
     num_templates_per_chain: int | None = None
+    kalign_binary_path: str | None = None
     extract_atom_feats_fn: Callable[[Atom], Float["m dai"]] = default_extract_atom_feats_fn  # type: ignore
     extract_atompair_feats_fn: Callable[[Mol], Float["m m dapi"]] = default_extract_atompair_feats_fn  # type: ignore
 
@@ -2541,6 +2542,7 @@ def load_templates_from_templates_dir(
     chain_id_to_residue: Dict[str, Dict[str, List[int]]],
     max_templates_per_chain: int | None = None,
     num_templates_per_chain: int | None = None,
+    kalign_binary_path: str | None = None,
     template_cutoff_date: datetime | None = None,
     randomly_sample_num_templates: bool = False,
     raise_missing_exception: bool = False,
@@ -2600,7 +2602,10 @@ def load_templates_from_templates_dir(
         templates[chain_id].extend(template_biomols)
 
     features = make_template_features(
-        templates, chain_id_to_residue, num_templates=num_templates_per_chain
+        templates,
+        chain_id_to_residue,
+        num_templates=num_templates_per_chain,
+        kalign_binary_path=kalign_binary_path,
     )
 
     return features
@@ -2684,6 +2689,7 @@ def pdb_input_to_molecule_input(
     chain_id_to_residue = {
         chain_id: {
             "chemtype": biomol.chemtype[biomol.chain_id == chain_id].tolist(),
+            "restype": biomol.restype[biomol.chain_id == chain_id].tolist(),
             "residue_index": residue_index[biomol.chain_id == chain_id].tolist(),
         }
         for chain_id in biomol_chain_ids
@@ -2774,6 +2780,7 @@ def pdb_input_to_molecule_input(
         chain_id_to_residue,
         max_templates_per_chain=i.max_templates_per_chain,
         num_templates_per_chain=i.num_templates_per_chain,
+        kalign_binary_path=i.kalign_binary_path,
         template_cutoff_date=template_cutoff_date,
         randomly_sample_num_templates=i.training,
     )
