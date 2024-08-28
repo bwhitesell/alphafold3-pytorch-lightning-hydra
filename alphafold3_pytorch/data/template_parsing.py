@@ -75,7 +75,7 @@ def parse_m8(
     df = df.filter(~pl.col("Template ID").str.contains(query_id))
     df = df.filter((pl.col("Identity") > 0.1) & (pl.col("Identity") < 0.95))
     df = df.filter(pl.col("Alignment Length") > 0)
-    df = df.filter((pl.col("Template End") - pl.col("Template Start")) >= 10)
+    df = df.filter((pl.col("Template End") - pl.col("Template Start")) >= 9)
     if exists(max_templates):
         df = df.head(max_templates)
 
