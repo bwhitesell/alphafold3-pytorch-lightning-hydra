@@ -20,6 +20,7 @@ from alphafold3_pytorch.data.life import (
     RNA_NUCLEOTIDES,
 )
 from alphafold3_pytorch.utils.data_utils import extract_mmcif_metadata_field
+from alphafold3_pytorch.utils.model_utils import distance_to_bins
 from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import typecheck
 from alphafold3_pytorch.utils.utils import exists
@@ -139,6 +140,8 @@ def _extract_template_features(
     query_sequence: str,
     query_chemtype: List[str],
     num_restype_classes: int = 32,
+    num_distogram_bins: int = 39,
+    distance_bins: List[float] = torch.linspace(3.25, 50.75, 38).float(),
 ) -> Dict[str, Any]:
     """Parse atom positions in the target structure and align with the query.
 
@@ -158,6 +161,9 @@ def _extract_template_features(
     :param query_chemtype: List of strings describing the chemical type of each
         residue in the query sequence.
     :param num_restype_classes: The total number of residue types.
+    :param num_dist_bins: The total number of distance bins.
+    :param distance_bins: List of floats representing the bins for the distance
+        histogram (i.e., distogram).
 
     :return: A dictionary containing the extra features derived from the template
         structure.
@@ -165,6 +171,10 @@ def _extract_template_features(
     assert len(mapping) == len(query_sequence) == len(query_chemtype), (
         f"Mapping length {len(mapping)} must match query sequence length {len(query_sequence)} "
         f"and query chemtype length {len(query_chemtype)}."
+    )
+    assert num_distogram_bins == len(distance_bins) + 1, (
+        f"Number of distance bins {num_distogram_bins} must match the length of distance bins "
+        f"{len(distance_bins)} plus one."
     )
 
     all_atom_positions = template_biomol.atom_positions
@@ -244,9 +254,25 @@ def _extract_template_features(
     ).all(-1)
 
     # Construct distogram.
-    template_distogram = torch.zeros(
-        (len(template_restype), len(template_restype), 39), dtype=torch.float32
+    template_distogram_atom_positions = torch.gather(
+        template_all_atom_positions,
+        1,
+        template_distogram_atom_indices[..., None, None].expand(-1, -1, 3),
+    ).squeeze(1)
+    template_distogram_dist = torch.cdist(
+        template_distogram_atom_positions, template_distogram_atom_positions, p=2
     )
+    template_distogram_dist_binned = distance_to_bins(template_distogram_dist, distance_bins)
+
+    template_distogram_dist_binned[
+        # NOTE: This assigns the last bin to distances greater than the maximum bin (e.g., > 50.75 Å).
+        template_distogram_dist
+        > distance_bins.max()
+    ] = (num_distogram_bins - 1)
+
+    template_distogram = F.one_hot(
+        template_distogram_dist_binned, num_classes=num_distogram_bins
+    ).float()
 
     # Construct unit vectors.
     template_unit_vector = torch.zeros(

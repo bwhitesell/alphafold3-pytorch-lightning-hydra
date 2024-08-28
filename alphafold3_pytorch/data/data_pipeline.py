@@ -362,6 +362,7 @@ def make_template_features(
                     query_sequence=query_sequence,
                     query_chemtype=chain_chemtype,
                     num_restype_classes=num_restype_classes,
+                    num_distogram_bins=num_distogram_bins,
                 )
 
                 template_restypes.append(template_features["template_restype"])
