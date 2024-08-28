@@ -2,6 +2,7 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Mapping, Tuple
 
+import numpy as np
 import polars as pl
 import torch
 import torch.nn.functional as F
@@ -12,6 +13,7 @@ from alphafold3_pytorch.common.biomolecule import (
     get_residue_constants,
 )
 from alphafold3_pytorch.data import mmcif_parsing
+from alphafold3_pytorch.data.data_pipeline import GAP_ID
 from alphafold3_pytorch.utils.data_utils import extract_mmcif_metadata_field
 from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import typecheck
@@ -155,11 +157,16 @@ def _extract_template_features(
     :return: A dictionary containing the extra features derived from the template
         structure.
     """
+    assert len(mapping) == len(query_sequence) == len(query_chemtype), (
+        f"Mapping length {len(mapping)} must match query sequence length {len(query_sequence)} "
+        f"and query chemtype length {len(query_chemtype)}."
+    )
+
     all_atom_positions = template_biomol.atom_positions
     all_atom_mask = template_biomol.atom_mask
 
-    all_atom_positions = torch.split(all_atom_positions, all_atom_positions.shape[0])
-    all_atom_masks = torch.split(all_atom_mask, all_atom_mask.shape[0])
+    all_atom_positions = np.split(all_atom_positions, all_atom_positions.shape[0])
+    all_atom_masks = np.split(all_atom_mask, all_atom_mask.shape[0])
 
     template_restype = []
     template_all_atom_mask = []
@@ -169,16 +176,21 @@ def _extract_template_features(
         # Handle residues in `query_sequence` that are not in `template_sequence`.
         query_chem_residue_constants = get_residue_constants(res_chem_index=chemtype)
 
-        template_restype.append(query_chem_residue_constants.restype_num)
+        template_restype.append(GAP_ID)
         template_all_atom_mask.append(
-            torch.zeros(query_chem_residue_constants.atom_type_num, dtype=torch.bool)
+            np.zeros(query_chem_residue_constants.atom_type_num, dtype=bool)
         )
         template_all_atom_positions.append(
-            torch.zeros((query_chem_residue_constants.atom_type_num, 3), dtype=torch.float32)
+            np.zeros((query_chem_residue_constants.atom_type_num, 3), dtype=np.float32)
         )
 
     for query_index, template_index in mapping.items():
-        query_chem_residue_constants = query_chemtype[query_index]
+        # NOTE: Here, we assume that the query sequence's chemical types are the same as the
+        # template sequence's chemical types. This is a reasonable assumption since the template
+        # sequences are chemical type-specific search results for the query sequences.
+        query_chem_residue_constants = get_residue_constants(
+            res_chem_index=query_chemtype[query_index]
+        )
 
         template_restype[query_index] = query_chem_residue_constants.MSA_CHAR_TO_ID.get(
             template_sequence[template_index], query_chem_residue_constants.restype_num
@@ -187,8 +199,8 @@ def _extract_template_features(
         template_all_atom_positions[query_index] = all_atom_positions[template_index][0]
 
     template_restype = torch.tensor(template_restype)
-    template_all_atom_mask = torch.stack(template_all_atom_mask)
-    template_all_atom_positions = torch.stack(template_all_atom_positions)
+    template_all_atom_mask = torch.from_numpy(np.stack(template_all_atom_mask))
+    template_all_atom_positions = torch.from_numpy(np.stack(template_all_atom_positions))
 
     return {
         "template_restype": F.one_hot(template_restype, num_classes=num_restype_classes).float(),

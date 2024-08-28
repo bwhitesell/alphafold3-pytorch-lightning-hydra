@@ -360,7 +360,6 @@ def make_template_features(
                     mapping=realigned_mapping,
                     template_sequence=realigned_template_sequence,
                     query_sequence=query_sequence,
-                    template_chemtype=template_chain_chemtype,
                     query_chemtype=chain_chemtype,
                     num_restype_classes=num_restype_classes,
                 )
