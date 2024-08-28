@@ -13,7 +13,6 @@ from alphafold3_pytorch.common.biomolecule import (
     get_residue_constants,
 )
 from alphafold3_pytorch.data import mmcif_parsing
-from alphafold3_pytorch.data.data_pipeline import GAP_ID
 from alphafold3_pytorch.utils.data_utils import extract_mmcif_metadata_field
 from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import typecheck
@@ -176,7 +175,7 @@ def _extract_template_features(
         # Handle residues in `query_sequence` that are not in `template_sequence`.
         query_chem_residue_constants = get_residue_constants(res_chem_index=chemtype)
 
-        template_restype.append(GAP_ID)
+        template_restype.append(query_chem_residue_constants.MSA_CHAR_TO_ID["-"])
         template_all_atom_mask.append(
             np.zeros(query_chem_residue_constants.atom_type_num, dtype=bool)
         )
