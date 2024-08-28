@@ -13,6 +13,12 @@ from alphafold3_pytorch.common.biomolecule import (
     get_residue_constants,
 )
 from alphafold3_pytorch.data import mmcif_parsing
+from alphafold3_pytorch.data.life import (
+    DNA_NUCLEOTIDES,
+    HUMAN_AMINO_ACIDS,
+    LIGANDS,
+    RNA_NUCLEOTIDES,
+)
 from alphafold3_pytorch.utils.data_utils import extract_mmcif_metadata_field
 from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import typecheck
@@ -133,7 +139,7 @@ def _extract_template_features(
     query_sequence: str,
     query_chemtype: List[str],
     num_restype_classes: int = 32,
-) -> Tuple[Dict[str, Any], str | None]:
+) -> Dict[str, Any]:
     """Parse atom positions in the target structure and align with the query.
 
     Atoms for each residue in the template structure are indexed to coincide
@@ -171,6 +177,9 @@ def _extract_template_features(
     template_all_atom_mask = []
     template_all_atom_positions = []
 
+    template_distogram_atom_indices = []
+    template_three_atom_indices_for_frame = []
+
     for _, chemtype in zip(query_sequence, query_chemtype):
         # Handle residues in `query_sequence` that are not in `template_sequence`.
         query_chem_residue_constants = get_residue_constants(res_chem_index=chemtype)
@@ -187,26 +196,69 @@ def _extract_template_features(
         # NOTE: Here, we assume that the query sequence's chemical types are the same as the
         # template sequence's chemical types. This is a reasonable assumption since the template
         # sequences are chemical type-specific search results for the query sequences.
-        query_chem_residue_constants = get_residue_constants(
-            res_chem_index=query_chemtype[query_index]
-        )
+        chemtype = query_chemtype[query_index]
+        query_chem_residue_constants = get_residue_constants(res_chem_index=chemtype)
+
+        if chemtype == 0:
+            seq_mapping = HUMAN_AMINO_ACIDS
+        elif chemtype == 1:
+            seq_mapping = RNA_NUCLEOTIDES
+        elif chemtype == 2:
+            seq_mapping = DNA_NUCLEOTIDES
+        elif chemtype == 3:
+            # TODO: Handle ligand frames properly.
+            seq_mapping = LIGANDS
+        else:
+            raise ValueError(f"Unrecognized chain chemical type: {chemtype}")
+
+        template_residue = template_sequence[template_index]
+        template_res = seq_mapping.get(template_residue, seq_mapping["X"])
 
         template_restype[query_index] = query_chem_residue_constants.MSA_CHAR_TO_ID.get(
-            template_sequence[template_index], query_chem_residue_constants.restype_num
+            template_residue, query_chem_residue_constants.restype_num
         )
         template_all_atom_mask[query_index] = all_atom_masks[template_index][0]
         template_all_atom_positions[query_index] = all_atom_positions[template_index][0]
 
-    template_restype = torch.tensor(template_restype)
+        template_distogram_atom_indices.append(template_res["distogram_atom_idx"])
+        template_three_atom_indices_for_frame.append(template_res["three_atom_indices_for_frame"])
+
+    # Assemble the template features.
+    template_restype = F.one_hot(torch.tensor(template_restype), num_classes=num_restype_classes)
     template_all_atom_mask = torch.from_numpy(np.stack(template_all_atom_mask))
     template_all_atom_positions = torch.from_numpy(np.stack(template_all_atom_positions))
 
+    template_distogram_atom_indices = torch.tensor(template_distogram_atom_indices)
+    template_three_atom_indices_for_frame = torch.tensor(template_three_atom_indices_for_frame)
+
+    # Construct pseudo beta mask.
+    template_pseudo_beta_mask = torch.gather(
+        template_all_atom_mask, 1, template_distogram_atom_indices.unsqueeze(-1)
+    ).squeeze(-1)
+
+    # Construct backbone frame mask.
+    template_backbone_frame_mask = torch.gather(
+        template_all_atom_mask,
+        1,
+        template_three_atom_indices_for_frame,
+    ).all(-1)
+
+    # Construct distogram.
+    template_distogram = torch.zeros(
+        (len(template_restype), len(template_restype), 39), dtype=torch.float32
+    )
+
+    # Construct unit vectors.
+    template_unit_vector = torch.zeros(
+        (len(template_restype), len(template_restype), 3), dtype=torch.float32
+    )
+
     return {
-        "template_restype": F.one_hot(template_restype, num_classes=num_restype_classes).float(),
-        # "template_pseudo_beta_mask": torch.tensor(template_pseudo_beta_mask),
-        # "template_backbone_frame_mask": torch.tensor(template_backbone_frame_mask),
-        # "template_distogram": torch.tensor(template_distogram),
-        # "template_unit_vector": torch.tensor(template_unit_vector),
+        "template_restype": template_restype.float(),
+        "template_pseudo_beta_mask": template_pseudo_beta_mask.bool(),
+        "template_backbone_frame_mask": template_backbone_frame_mask,
+        "template_distogram": template_distogram,
+        "template_unit_vector": template_unit_vector,
     }
 
 
