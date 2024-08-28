@@ -19,7 +19,10 @@ import tempfile
 from typing import Mapping, Sequence, Tuple
 
 from alphafold3_pytorch.data import msa_parsing
-from alphafold3_pytorch.data.template_parsing import TEMPLATE_TYPE
+from alphafold3_pytorch.data.template_parsing import (
+    TEMPLATE_TYPE,
+    QueryToTemplateAlignError,
+)
 from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.utils import exists
 
@@ -140,10 +143,6 @@ def _realign_pdb_template_to_query(
     template_sequence = template_sequence.replace("-", "")
 
     return template_sequence, new_query_to_template_mapping
-
-
-class QueryToTemplateAlignError(Exception):
-    """An error indicating that the query can't be aligned to the template."""
 
 
 class Kalign:

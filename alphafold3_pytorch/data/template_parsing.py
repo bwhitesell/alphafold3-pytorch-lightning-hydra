@@ -1,10 +1,16 @@
 import os
 from datetime import datetime
-from typing import List, Literal, Tuple
+from typing import Any, Dict, List, Literal, Mapping, Tuple
 
 import polars as pl
+import torch
+import torch.nn.functional as F
 
-from alphafold3_pytorch.common.biomolecule import Biomolecule, _from_mmcif_object
+from alphafold3_pytorch.common.biomolecule import (
+    Biomolecule,
+    _from_mmcif_object,
+    get_residue_constants,
+)
 from alphafold3_pytorch.data import mmcif_parsing
 from alphafold3_pytorch.utils.data_utils import extract_mmcif_metadata_field
 from alphafold3_pytorch.utils.pylogger import RankedLogger
@@ -117,3 +123,81 @@ def parse_m8(
             logger.warning(f"Skipping loading template {template_id} due to: {e}")
 
     return template_biomols
+
+
+def _extract_template_features(
+    template_biomol: Biomolecule,
+    mapping: Mapping[int, int],
+    template_sequence: str,
+    query_sequence: str,
+    query_chemtype: List[str],
+    num_restype_classes: int = 32,
+) -> Tuple[Dict[str, Any], str | None]:
+    """Parse atom positions in the target structure and align with the query.
+
+    Atoms for each residue in the template structure are indexed to coincide
+    with their corresponding residue in the query sequence, according to the
+    alignment mapping provided.
+
+    Adapted from:
+    https://github.com/aqlaboratory/openfold/blob/main/openfold/data/templates.py
+
+    :param template_biomol: `Biomolecule` representing the template.
+    :param mapping: Dictionary mapping indices in the query sequence to indices in
+        the template sequence.
+    :param template_sequence: String describing the residue sequence for the
+        template.
+    :param query_sequence: String describing the residue sequence for the query.
+    :param query_chemtype: List of strings describing the chemical type of each
+        residue in the query sequence.
+    :param num_restype_classes: The total number of residue types.
+
+    :return: A dictionary containing the extra features derived from the template
+        structure.
+    """
+    all_atom_positions = template_biomol.atom_positions
+    all_atom_mask = template_biomol.atom_mask
+
+    all_atom_positions = torch.split(all_atom_positions, all_atom_positions.shape[0])
+    all_atom_masks = torch.split(all_atom_mask, all_atom_mask.shape[0])
+
+    template_restype = []
+    template_all_atom_mask = []
+    template_all_atom_positions = []
+
+    for _, chemtype in zip(query_sequence, query_chemtype):
+        # Handle residues in `query_sequence` that are not in `template_sequence`.
+        query_chem_residue_constants = get_residue_constants(res_chem_index=chemtype)
+
+        template_restype.append(query_chem_residue_constants.restype_num)
+        template_all_atom_mask.append(
+            torch.zeros(query_chem_residue_constants.atom_type_num, dtype=torch.bool)
+        )
+        template_all_atom_positions.append(
+            torch.zeros((query_chem_residue_constants.atom_type_num, 3), dtype=torch.float32)
+        )
+
+    for query_index, template_index in mapping.items():
+        query_chem_residue_constants = query_chemtype[query_index]
+
+        template_restype[query_index] = query_chem_residue_constants.MSA_CHAR_TO_ID.get(
+            template_sequence[template_index], query_chem_residue_constants.restype_num
+        )
+        template_all_atom_mask[query_index] = all_atom_masks[template_index][0]
+        template_all_atom_positions[query_index] = all_atom_positions[template_index][0]
+
+    template_restype = torch.tensor(template_restype)
+    template_all_atom_mask = torch.stack(template_all_atom_mask)
+    template_all_atom_positions = torch.stack(template_all_atom_positions)
+
+    return {
+        "template_restype": F.one_hot(template_restype, num_classes=num_restype_classes).float(),
+        # "template_pseudo_beta_mask": torch.tensor(template_pseudo_beta_mask),
+        # "template_backbone_frame_mask": torch.tensor(template_backbone_frame_mask),
+        # "template_distogram": torch.tensor(template_distogram),
+        # "template_unit_vector": torch.tensor(template_unit_vector),
+    }
+
+
+class QueryToTemplateAlignError(Exception):
+    """An error indicating that the query can't be aligned to the template."""

@@ -16,7 +16,10 @@ from alphafold3_pytorch.common.biomolecule import (
 )
 from alphafold3_pytorch.data import mmcif_parsing, msa_parsing
 from alphafold3_pytorch.data.kalign import _realign_pdb_template_to_query
-from alphafold3_pytorch.data.template_parsing import TEMPLATE_TYPE
+from alphafold3_pytorch.data.template_parsing import (
+    TEMPLATE_TYPE,
+    _extract_template_features,
+)
 from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import typecheck
 from alphafold3_pytorch.utils.utils import exists
@@ -338,22 +341,77 @@ def make_template_features(
                 )
             template_sequence = "".join(template_sequence)
 
-            # Use Kalign to align the query and target sequences.
-            mapping = {x: x for x, curr_char in enumerate(query_sequence) if curr_char.isalnum()}
-            _, realigned_mapping = _realign_pdb_template_to_query(
-                query_sequence=query_sequence,
-                template_sequence=template_sequence,
-                old_mapping=mapping,
-                kalign_binary_path=kalign_binary_path,
-                template_type=template_type,
-            )
+            try:
+                # Use Kalign to align the query and target sequences.
+                mapping = {
+                    x: x for x, curr_char in enumerate(query_sequence) if curr_char.isalnum()
+                }
+                realigned_template_sequence, realigned_mapping = _realign_pdb_template_to_query(
+                    query_sequence=query_sequence,
+                    template_sequence=template_sequence,
+                    old_mapping=mapping,
+                    kalign_binary_path=kalign_binary_path,
+                    template_type=template_type,
+                )
+
+                # Extract features from aligned template.
+                template_features = _extract_template_features(
+                    template_biomol=template_biomol,
+                    mapping=realigned_mapping,
+                    template_sequence=realigned_template_sequence,
+                    query_sequence=query_sequence,
+                    template_chemtype=template_chain_chemtype,
+                    query_chemtype=chain_chemtype,
+                    num_restype_classes=num_restype_classes,
+                )
+
+                template_restypes.append(template_features["template_restype"])
+                template_pseudo_beta_masks.append(template_features["template_pseudo_beta_mask"])
+                template_backbone_frame_masks.append(
+                    template_features["template_backbone_frame_mask"]
+                )
+                template_distograms.append(template_features["template_distogram"])
+                template_unit_vectors.append(template_features["template_unit_vector"])
+
+            except Exception as e:
+                log.warning(
+                    f"Skipping extraction of template features for chain {chain_id} due to: {e}."
+                )
+
+                template_restypes.append(
+                    F.one_hot(
+                        torch.full((num_res,), unknown_restype, dtype=torch.long),
+                        num_classes=num_restype_classes,
+                    )
+                )
+                template_pseudo_beta_masks.append(torch.zeros(num_res, dtype=torch.bool))
+                template_backbone_frame_masks.append(torch.zeros(num_res, dtype=torch.bool))
+                template_distograms.append(
+                    torch.zeros((num_res, num_res, num_distogram_bins), dtype=torch.float32)
+                )
+                template_unit_vectors.append(
+                    torch.zeros((num_res, num_res, 3), dtype=torch.float32)
+                )
+
+    # NOTE: This is an improvised solution to handle template residue masks and pairwise features succinctly.
+    template_mask = torch.cat(template_pseudo_beta_mask_list, dim=1) & torch.cat(
+        template_backbone_frame_mask_list, dim=1
+    )
+
+    templates_pairwise = torch.cat(
+        (
+            # NOTE: Following AF3 Supplement, Section 2.4, the pairwise distogram and
+            # unit vector features do not contain inter-chain interaction information.
+            torch.block_diag(*template_distogram_list),
+            torch.block_diag(*template_unit_vector_list),
+        ),
+        dim=-1,
+    )
 
     features = {
-        "template_restype": torch.cat(template_restype_list, dim=1),
-        "template_pseudo_beta_mask": torch.cat(template_pseudo_beta_mask_list, dim=1),
-        "template_backbone_frame_mask": torch.cat(template_backbone_frame_mask_list, dim=1),
-        "template_distogram": torch.block_diag(*template_distogram_list),
-        "template_unit_vector": torch.block_diag(*template_unit_vector_list),
+        "templates": torch.cat(template_restype_list, dim=1).float(),
+        "template_mask": template_mask,
+        "templates_pairwise": templates_pairwise,
     }
     return features
 
