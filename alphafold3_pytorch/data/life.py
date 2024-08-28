@@ -331,7 +331,7 @@ LIGANDS = dict(
         last_atom_idx=0,
         distogram_atom_idx=0,
         token_center_atom_idx=0,
-        three_atom_indices_for_frame=(0, 0, 0),
+        three_atom_indices_for_frame=None,
     )
 )
 

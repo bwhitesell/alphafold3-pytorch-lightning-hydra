@@ -19,6 +19,7 @@ from alphafold3_pytorch.data.life import (
     LIGANDS,
     RNA_NUCLEOTIDES,
 )
+from alphafold3_pytorch.models.components.inputs import get_frames_from_atom_pos
 from alphafold3_pytorch.utils.data_utils import extract_mmcif_metadata_field
 from alphafold3_pytorch.utils.model_utils import distance_to_bins
 from alphafold3_pytorch.utils.pylogger import RankedLogger
@@ -188,6 +189,7 @@ def _extract_template_features(
     template_all_atom_positions = []
 
     template_distogram_atom_indices = []
+    template_token_center_atom_indices = []
     template_three_atom_indices_for_frame = []
 
     for _, chemtype in zip(query_sequence, query_chemtype):
@@ -221,8 +223,36 @@ def _extract_template_features(
         else:
             raise ValueError(f"Unrecognized chain chemical type: {chemtype}")
 
+        if template_index < 0 or template_index >= len(template_sequence):
+            raise Exception(
+                f"Template index {template_index} does not align with template sequence {template_sequence}."
+            )
+
         template_residue = template_sequence[template_index]
-        template_res = seq_mapping.get(template_residue, seq_mapping["X"])
+        template_res = seq_mapping.get(template_residue)
+
+        # Handle modified polymer residues.
+        is_polymer_res = chemtype < 3
+        is_ligand_res = not is_polymer_res
+        is_modified_polymer_res = is_polymer_res and (
+            template_residue == "X"
+            or template_res not in query_chem_residue_constants.restype_1to3
+        )
+        if is_modified_polymer_res:
+            template_res = LIGANDS.get("X")
+
+        # Extract residue metadata.
+        distogram_atom_idx = template_res["distogram_atom_idx"]
+        token_center_atom_idx = template_res["token_center_atom_idx"]
+        three_atom_indices_for_frame = template_res["three_atom_indices_for_frame"]
+
+        if is_ligand_res or is_modified_polymer_res:
+            # NOTE: Ligand and modified polymer residue representative atoms are located at
+            # arbitrary indices, so we must use the atom mask to dynamically retrieve them.
+            distogram_atom_idx = token_center_atom_idx = np.where(
+                all_atom_masks[template_index][0]
+            )[0]
+            three_atom_indices_for_frame = tuple(token_center_atom_idx for _ in range(3))
 
         template_restype[query_index] = query_chem_residue_constants.MSA_CHAR_TO_ID.get(
             template_residue, query_chem_residue_constants.restype_num
@@ -230,14 +260,74 @@ def _extract_template_features(
         template_all_atom_mask[query_index] = all_atom_masks[template_index][0]
         template_all_atom_positions[query_index] = all_atom_positions[template_index][0]
 
-        template_distogram_atom_indices.append(template_res["distogram_atom_idx"])
-        template_three_atom_indices_for_frame.append(template_res["three_atom_indices_for_frame"])
+        template_distogram_atom_indices.append(distogram_atom_idx)
+        template_token_center_atom_indices.append(token_center_atom_idx)
+        template_three_atom_indices_for_frame.append(three_atom_indices_for_frame)
 
-    # Assemble the template features.
+    # Assemble the template features tensors.
     template_restype = F.one_hot(torch.tensor(template_restype), num_classes=num_restype_classes)
     template_all_atom_mask = torch.from_numpy(np.stack(template_all_atom_mask))
     template_all_atom_positions = torch.from_numpy(np.stack(template_all_atom_positions))
 
+    # Handle ligand and modified polymer residue frames.
+    ligand_frames_present = not all(template_three_atom_indices_for_frame)
+    template_backbone_frame_atom_mask = torch.ones(len(template_restype), dtype=torch.bool)
+    if ligand_frames_present:
+        template_token_center_atom_indices = torch.tensor(template_token_center_atom_indices)
+        template_token_center_atom_positions = torch.gather(
+            template_all_atom_positions,
+            1,
+            template_token_center_atom_indices.unsqueeze(-1).expand(-1, -1, 3),
+        )
+        template_token_center_atom_mask = torch.gather(
+            template_all_atom_mask, 1, template_token_center_atom_indices
+        )
+        new_frame_token_indices = get_frames_from_atom_pos(
+            atom_pos=template_token_center_atom_positions,
+            mask=template_token_center_atom_mask,
+            filter_colinear_pos=True,
+        )
+        for token_index, frame_token_indices in enumerate(template_three_atom_indices_for_frame):
+            if not exists(frame_token_indices):
+                # Track invalid ligand frames.
+                if (new_frame_token_indices[token_index] == -1).any():
+                    template_backbone_frame_atom_mask[token_index] = False
+                    continue
+
+                # Collect the (token center) atom positions of the ligand frame atoms.
+                new_frame_atom_positions = []
+                new_frame_atom_mask = []
+                for new_frame_token_index in new_frame_token_indices[token_index]:
+                    new_frame_token_center_atom_index = template_token_center_atom_indices[
+                        new_frame_token_index
+                    ]
+                    new_frame_atom_positions.append(
+                        template_all_atom_positions[
+                            new_frame_token_index, new_frame_token_center_atom_index
+                        ].clone()
+                    )
+                    new_frame_atom_mask.append(
+                        template_all_atom_mask[
+                            new_frame_token_index, new_frame_token_center_atom_index
+                        ].clone()
+                    )
+
+                # Move the ligand frame atoms to the first three positions of the
+                # ligand residue's atom positions tensor.
+                for local_new_frame_atom_index in range(len(new_frame_token_indices[token_index])):
+                    template_all_atom_positions[
+                        token_index, local_new_frame_atom_index
+                    ] = new_frame_atom_positions[local_new_frame_atom_index]
+                    template_all_atom_mask[
+                        token_index, local_new_frame_atom_index
+                    ] = new_frame_atom_mask[local_new_frame_atom_index]
+
+                # Update ligand metadata after moving the frame atoms.
+                template_distogram_atom_indices[token_index] = 1
+                template_token_center_atom_indices[token_index] = 1
+                template_three_atom_indices_for_frame[token_index] = (0, 1, 2)
+
+    # Assemble the distogram and frame atom index tensors.
     template_distogram_atom_indices = torch.tensor(template_distogram_atom_indices)
     template_three_atom_indices_for_frame = torch.tensor(template_three_atom_indices_for_frame)
 
@@ -247,7 +337,7 @@ def _extract_template_features(
     ).squeeze(-1)
 
     # Construct backbone frame mask.
-    template_backbone_frame_mask = torch.gather(
+    template_backbone_frame_mask = template_backbone_frame_atom_mask & torch.gather(
         template_all_atom_mask,
         1,
         template_three_atom_indices_for_frame,
