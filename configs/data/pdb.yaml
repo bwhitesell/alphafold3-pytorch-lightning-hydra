@@ -9,6 +9,7 @@ spatial_interface_weight: 0.4
 crop_size: 384 # NOTE: must be one of (initial_training: 384, fine_tuning_1: 640, fine_tuning_2: 768, fine_tuning_3: 768), proceeding from left to right following Table 6 in the paper
 max_msas_per_chain: null # if specified, the maximum number of MSA sequences to include per chain (e.g., for throughput concerns)
 max_templates_per_chain: null # if specified, the maximum number of templates to include per chain (e.g., for throughput concerns)
+num_templates_per_chain: null # if specified, the effective number number of templates to include per chain (e.g., for throughput concerns)
 sampling_weight_for_disorder_pdb_distillation: 0.02 # NOTE: must be one of (initial_training: 0.02, fine_tuning_1: 0.01, fine_tuning_2: 0.02, fine_tuning_3: 0.02), proceeding from left to right following Table 6 in the paper
 train_on_transcription_factor_distillation_sets: false # NOTE: must be one of (initial_training: False, fine_tuning_1: False, fine_tuning_2: True, fine_tuning_3: True), proceeding from left to right following Table 6 in the paper
 pdb_distillation: null # NOTE: does not appear to be used in Table 6 of the paper

@@ -5,6 +5,7 @@ from typing import Dict, List, MutableMapping, Optional, Tuple
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from torch import Tensor
 
 from alphafold3_pytorch.common.biomolecule import (
@@ -14,6 +15,7 @@ from alphafold3_pytorch.common.biomolecule import (
     to_mmcif,
 )
 from alphafold3_pytorch.data import mmcif_parsing, msa_parsing
+from alphafold3_pytorch.data.template_parsing import TEMPLATE_TYPE
 from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import typecheck
 from alphafold3_pytorch.utils.utils import exists
@@ -197,6 +199,101 @@ def make_msa_features(
         "msa_species_identifiers": np.stack(species_ids_list),
         "num_alignments": max_alignments,
     }
+    return features
+
+
+@typecheck
+def make_template_features(
+    templates: Dict[str, List[Tuple[Biomolecule, TEMPLATE_TYPE]]],
+    chain_id_to_residue: Dict[str, Dict[str, List[int]]],
+    num_templates: int | None = None,
+    num_distogram_bins: int = 39,
+    unknown_restype: int = 20,
+    num_classes: int = 32,
+    raise_missing_exception: bool = False,
+) -> FeatureDict:
+    """Construct a feature dictionary of template features.
+
+    :param templates: The mapping of chain IDs to lists of template Biomolecule objects and their
+        template types.
+    :param chain_id_to_residue: The mapping of chain IDs to residue information.
+    :param num_templates: The (optional) number of templates to return per chain.
+    :param num_distogram_bins: The number of bins in the distogram features.
+    :param unknown_restype: The unknown residue type index.
+    :param num_classes: The number of classes in the residue type classification.
+    :param raise_missing_exception: Whether to raise an exception if no templates are provided.
+    :return: The template feature dictionary.
+    """
+
+    if exists(num_templates) and num_templates < 1:
+        raise ValueError("The requested number of templates must be greater than zero.")
+
+    # Infer template metadata.
+    max_templates = num_templates if exists(num_templates) else 1
+    for template in templates.values():
+        if exists(template) and len(template):
+            max_templates = max(max_templates, len(template))
+
+    # Collect templates.
+    template_restype_list = []
+    template_pseudo_beta_mask_list = []
+    template_backbone_frame_mask_list = []
+    template_distogram_list = []
+    template_unit_vector_list = []
+
+    for chain_id, template in templates.items():
+        chain_chemtype = chain_id_to_residue[chain_id]["chemtype"]
+        chain_residue_index = chain_id_to_residue[chain_id]["residue_index"]
+
+        num_res = len(chain_chemtype)
+        assert num_res == len(chain_residue_index), (
+            f"Residue features count mismatch for chain {chain_id}: "
+            f"{num_res} != {len(chain_residue_index)}"
+        )
+
+        if not templates[chain_id]:
+            if raise_missing_exception:
+                raise ValueError(
+                    f"Templates for chain {chain_id} must contain at least one template."
+                )
+            else:
+                template_restype_list.append(
+                    F.one_hot(
+                        torch.full((max_templates, num_res), unknown_restype, dtype=torch.long),
+                        num_classes=num_classes,
+                    )
+                )
+                template_pseudo_beta_mask_list.append(
+                    torch.zeros((max_templates, num_res), dtype=torch.bool)
+                )
+                template_backbone_frame_mask_list.append(
+                    torch.zeros((max_templates, num_res), dtype=torch.bool)
+                )
+                template_distogram_list.append(
+                    torch.zeros(
+                        (max_templates, num_res, num_res, num_distogram_bins), dtype=torch.float32
+                    )
+                )
+                template_unit_vector_list.append(
+                    torch.zeros((max_templates, num_res, num_res, 3), dtype=torch.float32)
+                )
+            continue
+
+        for template_biomol, template_type in template:
+            template_residue_constants = (
+                get_residue_constants(template_type.replace("protein", "peptide"))
+                if exists(template_biomol)
+                else None
+            )
+
+    features = {}
+    # features = {
+    #     "template_restype": torch.cat(template_restype_list, dim=1),
+    #     "template_pseudo_beta_mask": torch.cat(template_pseudo_beta_mask_list, dim=1),
+    #     "template_backbone_frame_mask": torch.cat(template_backbone_frame_mask_list, dim=1),
+    #     "template_distogram": torch.cat(template_distogram_list, dim=1),
+    #     "template_unit_vector": torch.cat(template_unit_vector_list, dim=1),
+    # }
     return features
 
 

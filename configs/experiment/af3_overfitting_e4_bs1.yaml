@@ -33,7 +33,8 @@ seed: 12345
 
 data:
   max_msas_per_chain: 128
-  max_templates_per_chain: 8
+  max_templates_per_chain: 20
+  num_templates_per_chain: 4
   batch_size: 1
   overfitting_train_examples: true
   sample_only_pdb_ids:

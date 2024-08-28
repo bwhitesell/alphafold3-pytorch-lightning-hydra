@@ -41,6 +41,7 @@ from alphafold3_pytorch.data.data_pipeline import (
     get_assembly,
     make_msa_features,
     make_msa_mask,
+    make_template_features,
 )
 from alphafold3_pytorch.data.life import (
     ATOM_BONDS,
@@ -1936,6 +1937,7 @@ class PDBInput:
     resolution: float | None = None
     max_msas_per_chain: int | None = None
     max_templates_per_chain: int | None = None
+    num_templates_per_chain: int | None = None
     extract_atom_feats_fn: Callable[[Atom], Float["m dai"]] = default_extract_atom_feats_fn  # type: ignore
     extract_atompair_feats_fn: Callable[[Mol], Float["m m dapi"]] = default_extract_atompair_feats_fn  # type: ignore
 
@@ -2536,6 +2538,8 @@ def load_templates_from_templates_dir(
     file_id: str,
     chain_id_to_residue: Dict[str, Dict[str, List[int]]],
     max_templates_per_chain: int | None = None,
+    num_templates_per_chain: int | None = None,
+    randomly_sample_num_templates: bool = False,
     raise_missing_exception: bool = False,
     verbose: bool = False,
 ) -> FeatureDict:
@@ -2578,15 +2582,22 @@ def load_templates_from_templates_dir(
         template_fpath = template_fpaths[0]
         query_id = file_id.split("-assembly1")[0]
 
+        template_type = os.path.splitext(os.path.basename(template_fpath))[0].split("_")[1]
+
         template_biomols = template_parsing.parse_m8(
-            template_fpath, query_id, mmcif_dir, max_templates=max_templates_per_chain
+            template_fpath,
+            template_type,
+            query_id,
+            mmcif_dir,
+            max_templates=max_templates_per_chain,
+            num_templates=num_templates_per_chain,
+            randomly_sample_num_templates=randomly_sample_num_templates,
         )
         templates[chain_id].extend(template_biomols)
 
-    features = {}
-
-    # features = make_template_features(templates, chain_id_to_residue)
-    # features = make_template_mask(features)
+    features = make_template_features(
+        templates, chain_id_to_residue, num_templates=num_templates_per_chain
+    )
 
     return features
 
@@ -2743,6 +2754,8 @@ def pdb_input_to_molecule_input(
         file_id,
         chain_id_to_residue,
         max_templates_per_chain=i.max_templates_per_chain,
+        num_templates_per_chain=i.num_templates_per_chain,
+        randomly_sample_num_templates=i.training,
     )
 
     templates = template_features.get("templates")
