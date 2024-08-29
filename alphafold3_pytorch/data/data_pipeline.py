@@ -247,13 +247,7 @@ def make_template_features(
     template_distogram_list = []
     template_unit_vector_list = []
 
-    for chain_id, template in templates.items():
-        template_restypes = []
-        template_pseudo_beta_masks = []
-        template_backbone_frame_masks = []
-        template_distograms = []
-        template_unit_vectors = []
-
+    for chain_index, (chain_id, template) in enumerate(templates.items()):
         chain_chemtype = chain_id_to_residue[chain_id]["chemtype"]
         chain_restype = chain_id_to_residue[chain_id]["restype"]
         chain_residue_index = chain_id_to_residue[chain_id]["residue_index"]
@@ -278,36 +272,36 @@ def make_template_features(
             f"{num_res} != {len(chain_residue_index)}"
         )
 
+        template_restype_list.append(
+            F.one_hot(
+                torch.full((max_templates, num_res), unknown_restype, dtype=torch.long),
+                num_classes=num_restype_classes,
+            )
+        )
+        template_pseudo_beta_mask_list.append(
+            torch.zeros((max_templates, num_res), dtype=torch.bool)
+        )
+        template_backbone_frame_mask_list.append(
+            torch.zeros((max_templates, num_res), dtype=torch.bool)
+        )
+        template_distogram_list.append(
+            torch.zeros(
+                (max_templates, num_res, num_res, num_distogram_bins),
+                dtype=torch.float32,
+            )
+        )
+        template_unit_vector_list.append(
+            torch.zeros((max_templates, num_res, num_res, 3), dtype=torch.float32)
+        )
+
         if not templates[chain_id] or not exists(kalign_binary_path):
             if raise_missing_exception:
                 raise ValueError(
                     f"Templates for chain {chain_id} must contain at least one template and must be aligned with Kalign2."
                 )
-            else:
-                template_restype_list.append(
-                    F.one_hot(
-                        torch.full((max_templates, num_res), unknown_restype, dtype=torch.long),
-                        num_classes=num_restype_classes,
-                    )
-                )
-                template_pseudo_beta_mask_list.append(
-                    torch.zeros((max_templates, num_res), dtype=torch.bool)
-                )
-                template_backbone_frame_mask_list.append(
-                    torch.zeros((max_templates, num_res), dtype=torch.bool)
-                )
-                template_distogram_list.append(
-                    torch.zeros(
-                        (max_templates, num_res, num_res, num_distogram_bins),
-                        dtype=torch.float32,
-                    )
-                )
-                template_unit_vector_list.append(
-                    torch.zeros((max_templates, num_res, num_res, 3), dtype=torch.float32)
-                )
             continue
 
-        for template_biomol, template_type in template:
+        for template_index, (template_biomol, template_type) in enumerate(template):
             template_chain_ids = list(
                 dict.fromkeys(template_biomol.chain_id.tolist())
             )  # NOTE: we must maintain the order of unique chain IDs
@@ -365,32 +359,42 @@ def make_template_features(
                     num_distogram_bins=num_distogram_bins,
                 )
 
-                template_restypes.append(template_features["template_restype"])
-                template_pseudo_beta_masks.append(template_features["template_pseudo_beta_mask"])
-                template_backbone_frame_masks.append(
-                    template_features["template_backbone_frame_mask"]
-                )
-                template_distograms.append(template_features["template_distogram"])
-                template_unit_vectors.append(template_features["template_unit_vector"])
+                template_restype_list[chain_index][template_index] = template_features[
+                    "template_restype"
+                ]
+                template_pseudo_beta_mask_list[chain_index][template_index] = template_features[
+                    "template_pseudo_beta_mask"
+                ]
+                template_backbone_frame_mask_list[chain_index][template_index] = template_features[
+                    "template_backbone_frame_mask"
+                ]
+                template_distogram_list[chain_index][template_index] = template_features[
+                    "template_distogram"
+                ]
+                template_unit_vector_list[chain_index][template_index] = template_features[
+                    "template_unit_vector"
+                ]
 
             except Exception as e:
                 log.warning(
                     f"Skipping extraction of template features for chain {chain_id} due to: {e}."
                 )
 
-                template_restypes.append(
-                    F.one_hot(
-                        torch.full((num_res,), unknown_restype, dtype=torch.long),
-                        num_classes=num_restype_classes,
-                    )
+                template_restype_list[chain_index][template_index] = F.one_hot(
+                    torch.full((num_res,), unknown_restype, dtype=torch.long),
+                    num_classes=num_restype_classes,
                 )
-                template_pseudo_beta_masks.append(torch.zeros(num_res, dtype=torch.bool))
-                template_backbone_frame_masks.append(torch.zeros(num_res, dtype=torch.bool))
-                template_distograms.append(
-                    torch.zeros((num_res, num_res, num_distogram_bins), dtype=torch.float32)
+                template_pseudo_beta_mask_list[chain_index][template_index] = torch.zeros(
+                    num_res, dtype=torch.bool
                 )
-                template_unit_vectors.append(
-                    torch.zeros((num_res, num_res, 3), dtype=torch.float32)
+                template_backbone_frame_mask_list[chain_index][template_index] = torch.zeros(
+                    num_res, dtype=torch.bool
+                )
+                template_distogram_list[chain_index][template_index] = torch.zeros(
+                    (num_res, num_res, num_distogram_bins), dtype=torch.float32
+                )
+                template_unit_vector_list[chain_index][template_index] = torch.zeros(
+                    (num_res, num_res, 3), dtype=torch.float32
                 )
 
     # NOTE: This is an improvised solution to handle template residue masks and pairwise features succinctly.
@@ -401,36 +405,36 @@ def make_template_features(
     # NOTE: Following AF3 Supplement, Section 2.4, the pairwise distogram and
     # unit vector features do not contain inter-chain interaction information.
 
-    # Initialize an empty list to store the block_diag results
+    # Initialize an empty list to store the block_diag results.
     block_diag_distograms = []
     block_diag_unit_vectors = []
 
-    # Loop over the first dimension (templates dimension)
+    # Loop over the first dimension (templates dimension).
     for i in range(max_templates):
-        # Initialize an empty list to store each 2D block-diagonal matrix for distograms and unit vectors
+        # Initialize an empty list to store each 2D block-diagonal matrix for distograms and unit vectors.
         distogram_blocks = []
         unit_vector_blocks = []
 
-        # Loop over the last dimension (channels)
+        # Loop over the last dimension (channels).
         for j in range(num_distogram_bins):
-            # Extract the 2D slice and apply `block_diag()`
+            # Extract the 2D slice and apply `block_diag()`.
             distogram_blocks.append(
-                torch.block_diag(*[t[i, :, :, j] for t in template_distogram_list])
+                torch.block_diag(*[c[i, :, :, j] for c in template_distogram_list])
             )
             if j < 3:
                 unit_vector_blocks.append(
-                    torch.block_diag(*[t[i, :, :, j] for t in template_unit_vector_list])
+                    torch.block_diag(*[c[i, :, :, j] for c in template_unit_vector_list])
                 )
 
-        # Stack along the third dimension (residues) and append to the list
+        # Stack along the third dimension (residues) and append to the list.
         block_diag_distograms.append(torch.stack(distogram_blocks, dim=-1))
         block_diag_unit_vectors.append(torch.stack(unit_vector_blocks, dim=-1))
 
-    # Stack along the first dimension (templates dimension) to form the final tensors
+    # Stack along the first dimension (templates dimension) to form the final tensors.
     block_diag_distograms = torch.stack(block_diag_distograms, dim=0)
     block_diag_unit_vectors = torch.stack(block_diag_unit_vectors, dim=0)
 
-    # Concatenate along the last dimension (channels)
+    # Concatenate along the last dimension (channels).
     templates_pairwise = torch.cat((block_diag_distograms, block_diag_unit_vectors), dim=-1)
 
     features = {

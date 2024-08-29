@@ -147,6 +147,7 @@ def _extract_template_features(
     num_restype_classes: int = 32,
     num_distogram_bins: int = 39,
     distance_bins: List[float] = torch.linspace(3.25, 50.75, 38).float(),
+    verbose: bool = False,
 ) -> Dict[str, Any]:
     """Parse atom positions in the target structure and align with the query.
 
@@ -169,6 +170,7 @@ def _extract_template_features(
     :param num_dist_bins: The total number of distance bins.
     :param distance_bins: List of floats representing the bins for the distance
         histogram (i.e., distogram).
+    :param verbose: Whether to log verbose output.
 
     :return: A dictionary containing the extra features derived from the template
         structure.
@@ -208,6 +210,10 @@ def _extract_template_features(
             np.zeros((query_chem_residue_constants.atom_type_num, 3), dtype=np.float32)
         )
 
+        template_distogram_atom_indices.append(0)
+        template_token_center_atom_indices.append(0)
+        template_three_atom_indices_for_frame.append(None)
+
     for query_index, template_index in mapping.items():
         # NOTE: Here, we assume that the query sequence's chemical types are the same as the
         # template sequence's chemical types. This is a reasonable assumption since the template
@@ -227,9 +233,12 @@ def _extract_template_features(
             raise ValueError(f"Unrecognized chain chemical type: {chemtype}")
 
         if not (0 <= template_index < len(template_sequence)):
-            raise Exception(
-                f"Template index {template_index} does not align with template sequence {template_sequence}."
-            )
+            if verbose:
+                logger.warning(
+                    f"Query index {query_index} is not mappable to the template sequence. "
+                    f"Substituting with zero templates features for this position."
+                )
+            continue
 
         template_residue = template_sequence[template_index]
         template_res = seq_mapping.get(template_residue)
@@ -262,9 +271,9 @@ def _extract_template_features(
         template_all_atom_mask[query_index] = all_atom_masks[template_index][0]
         template_all_atom_positions[query_index] = all_atom_positions[template_index][0]
 
-        template_distogram_atom_indices.append(distogram_atom_idx)
-        template_token_center_atom_indices.append(token_center_atom_idx)
-        template_three_atom_indices_for_frame.append(three_atom_indices_for_frame)
+        template_distogram_atom_indices[query_index] = distogram_atom_idx
+        template_token_center_atom_indices[query_index] = token_center_atom_idx
+        template_three_atom_indices_for_frame[query_index] = three_atom_indices_for_frame
 
     # Assemble the template features tensors.
     template_restype = F.one_hot(torch.tensor(template_restype), num_classes=num_restype_classes)
@@ -295,6 +304,7 @@ def _extract_template_features(
                 # Track invalid ligand frames.
                 if (new_frame_token_indices[token_index] == -1).any():
                     template_backbone_frame_atom_mask[token_index] = False
+                    template_three_atom_indices_for_frame[token_index] = (0, 0, 0)
                     continue
 
                 # Collect the (token center) atom positions of the ligand frame atoms.

@@ -2730,7 +2730,9 @@ def pdb_input_to_molecule_input(
             if exists(templates):
                 templates = templates[:, sorted_crop_mask]
                 template_mask = template_mask[:, sorted_crop_mask]
-                templates_pairwise = templates_pairwise[:, sorted_crop_mask, sorted_crop_mask]
+                templates_pairwise = templates_pairwise[:, sorted_crop_mask][
+                    :, :, sorted_crop_mask
+                ]
 
         except Exception as e:
             raise ValueError(f"Failed to crop the biomolecule for input {file_id} due to: {e}")
