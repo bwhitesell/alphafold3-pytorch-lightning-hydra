@@ -1310,7 +1310,9 @@ def molecule_lengthed_molecule_input_to_atom_input(
         is_molecule_mod=is_molecule_mod,
         is_molecule_types=is_molecule_types,
         msa=msa,
+        msa_mask=i.msa_mask,
         templates=templates,
+        template_mask=i.template_mask,
         atom_pos=atom_pos,
         token_bonds=token_bonds,
         atom_parent_ids=i.atom_parent_ids,
@@ -2104,14 +2106,14 @@ def create_mol_from_atom_positions_and_types(
 
 
 @typecheck
-def extract_template_molecules_from_biomolecule_chains(
+def extract_canonical_molecules_from_biomolecule_chains(
     biomol: Biomolecule,
     chain_seqs: List[str],
     chain_chem_types: List[PDB_INPUT_RESIDUE_MOLECULE_TYPE],
     mol_keyname: str = "rdchem_mol",
     verbose: bool = False,
 ) -> Tuple[List[Mol], List[PDB_INPUT_RESIDUE_MOLECULE_TYPE]]:
-    """Extract RDKit template molecules and their types for the residues of each `Biomolecule`
+    """Extract RDKit canonical molecules and their types for the residues of each `Biomolecule`
     chain.
 
     NOTE: Missing atom indices are marked as a comma-separated property string for each RDKit molecule
@@ -2174,10 +2176,10 @@ def extract_template_molecules_from_biomolecule_chains(
                         f"Could not locate the PDB CCD's SMILES string for atomized residue: {seq}"
                     )
 
-                # construct template molecule for post-mapping bond orders
+                # construct canonical molecule for post-mapping bond orders
 
                 smile = seq_mapping[seq]
-                template_mol = mol_from_smile(smile)
+                canonical_mol = mol_from_smile(smile)
 
                 # find all atom positions and masks for the current atomized residue
 
@@ -2207,11 +2209,11 @@ def extract_template_molecules_from_biomolecule_chains(
                     verbose=verbose,
                 )
                 try:
-                    mol = AllChem.AssignBondOrdersFromTemplate(template_mol, mol)
+                    mol = AllChem.AssignBondOrdersFromTemplate(canonical_mol, mol)
                 except Exception as e:
                     if verbose:
                         logger.warning(
-                            f"Failed to assign bond orders from the template atomized molecule for residue {seq} due to: {e}. "
+                            f"Failed to assign bond orders from the canonical atomized molecule for residue {seq} due to: {e}. "
                             "Skipping bond order assignment."
                         )
                 res_index += mol.GetNumAtoms()
@@ -2766,9 +2768,9 @@ def pdb_input_to_molecule_input(
         chem_comp_details,
     )
 
-    # retrieve RDKit template molecules for the residues of each chain,
-    # and insert the input atom coordinates into the template molecules
-    molecules, molecule_types = extract_template_molecules_from_biomolecule_chains(
+    # retrieve RDKit canonical molecules for the residues of each chain,
+    # and insert the input atom coordinates into the canonical molecules
+    molecules, molecule_types = extract_canonical_molecules_from_biomolecule_chains(
         biomol,
         chain_seqs,
         chain_chem_types,
@@ -3233,7 +3235,7 @@ def pdb_input_to_molecule_input(
         offset_only_positive(atom_indices_for_frame, atom_indices_offsets[..., None]),
     )
 
-    # construct atom positions from template molecules after instantiating their 3D conformers
+    # construct atom positions from canonical molecules after instantiating their 3D conformers
     atom_pos = torch.from_numpy(
         np.concatenate([mol.GetConformer().GetPositions() for mol in molecules]).astype(np.float32)
     )
