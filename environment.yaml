@@ -76,6 +76,7 @@ dependencies:
   - icu=73.2=h59595ed_0
   - idna=3.7=pyhd8ed1ab_0
   - jmespath=1.0.1=pyhd8ed1ab_0
+  - kalign2=2.04=h031d066_7
   - keyutils=1.6.1=h166bdaf_0
   - kiwisolver=1.4.5=py310hd41b1e2_1
   - krb5=1.21.3=h659f571_0
@@ -171,7 +172,7 @@ dependencies:
   - ocl-icd=2.3.2=hd590300_1
   - openh264=2.4.1=h59595ed_0
   - openjpeg=2.5.2=h488ebb8_0
-  - openssl=3.3.1=h4bc722e_2
+  - openssl=3.3.1=hb9d3cd8_3
   - p11-kit=0.24.1=hc5aa10d_0
   - packaging=24.0=pyhd8ed1ab_0
   - pcre2=10.43=hcad00b1_0

@@ -8,6 +8,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from contextlib import redirect_stderr
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timedelta
 from functools import partial
 from io import StringIO
 from itertools import groupby
@@ -35,12 +36,13 @@ from alphafold3_pytorch.common.biomolecule import (
     _from_mmcif_object,
     get_residue_constants,
 )
-from alphafold3_pytorch.data import mmcif_parsing, msa_parsing
+from alphafold3_pytorch.data import mmcif_parsing, msa_parsing, template_parsing
 from alphafold3_pytorch.data.data_pipeline import (
     FeatureDict,
     get_assembly,
     make_msa_features,
     make_msa_mask,
+    make_template_features,
 )
 from alphafold3_pytorch.data.life import (
     ATOM_BONDS,
@@ -65,9 +67,10 @@ from alphafold3_pytorch.utils.data_utils import (
 )
 from alphafold3_pytorch.utils.model_utils import (
     exclusive_cumsum,
-    l2norm,
+    get_frames_from_atom_pos,
     maybe,
     offset_only_positive,
+    remove_consecutive_duplicate,
 )
 from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
@@ -174,7 +177,7 @@ def compose(*fns: Callable):
 
 
 def hard_validate_atom_indices_ascending(
-    indices: Int["b n"] | Int["b n 3"], error_msg_field: str = "indices"  # type: ignore
+    indices: Int["b n"] | Int["b n 3"], error_msg_field: str = "indices", mask: Bool["b n"] | None = None  # type: ignore
 ):
     """Perform a hard validation on atom indices to ensure they are ascending. The function asserts
     if any of the indices that are not -1 (missing) are identical or descending. This will cover
@@ -182,12 +185,17 @@ def hard_validate_atom_indices_ascending(
 
     :param indices: The indices to validate.
     :param error_msg_field: The error message field.
+    :param mask: The mask to apply to the indices. Note that, when a mask is specified, only masked
+        values are expected to be ascending.
     """
 
     if indices.ndim == 2:
         indices = rearrange(indices, "... -> ... 1")
 
-    for sample_indices in indices:
+    for batch_index, sample_indices in enumerate(indices):
+        if exists(mask):
+            sample_indices = sample_indices[mask[batch_index]]
+
         all_present = (sample_indices >= 0).all(dim=-1)
         present_indices = sample_indices[all_present]
 
@@ -203,146 +211,6 @@ def hard_validate_atom_indices_ascending(
         assert (
             difference >= 0
         ).all(), f"Detected invalid {error_msg_field} for a batch: {present_indices}"
-
-
-# functions for deriving the frames for ligands
-# this follows the logic from Alphafold3 Supplementary section 4.3.2
-
-
-@typecheck
-def get_indices_three_closest_atom_pos(
-    atom_pos: Float["... n d"],  # type: ignore
-    mask: Bool["... n"] | None = None,  # type: ignore
-) -> Int["... 3"]:  # type: ignore
-    """Get the indices of the three closest atoms to a given center atom.
-
-    :param atom_pos: The atom positions.
-    :param mask: The mask to apply.
-    :return: The indices of the three closest atoms.
-    """
-    prec_dims, device = atom_pos.shape[:-2], atom_pos.device
-    num_atoms, has_batch = atom_pos.shape[-2], atom_pos.ndim == 3
-
-    if not exists(mask) and num_atoms < 3:
-        return atom_pos.new_full((*prec_dims, 3), -1).long()
-
-    if not has_batch:
-        atom_pos = rearrange(atom_pos, "... -> 1 ...")
-
-        if exists(mask):
-            mask = rearrange(mask, "... -> 1 ...")
-
-    # figure out which set of atoms are less than 3 for masking out later
-
-    if exists(mask):
-        insufficient_atom_mask = mask.sum(dim=-1) < 3
-
-    # get distances between all atoms
-
-    atom_dist = torch.cdist(atom_pos, atom_pos)
-
-    # mask out the distance to self
-
-    eye = torch.eye(num_atoms, device=device, dtype=torch.bool)
-
-    mask_value = 1e4
-    atom_dist.masked_fill_(eye, mask_value)
-
-    # take care of padding
-
-    if exists(mask):
-        pair_mask = einx.logical_and("... i, ... j -> ... i j", mask, mask)
-        atom_dist.masked_fill_(~pair_mask, mask_value)
-
-    # will use topk on the negative of the distance
-
-    neg_distance, two_closest_atom_indices = (-atom_dist).topk(2, dim=-1)
-    mean_neg_distance = neg_distance.mean(dim=-1)
-    best_atom_pair_index = mean_neg_distance.argmax(dim=-1)
-    best_two_atom_neighbors = einx.get_at(
-        "... [m] c, ... -> ... c", two_closest_atom_indices, best_atom_pair_index
-    )
-    # place the chosen atom at the center
-    three_atom_indices, _ = pack(
-        (
-            best_two_atom_neighbors[..., 0],
-            best_atom_pair_index,
-            best_two_atom_neighbors[..., 1],
-        ),
-        "b *",
-    )
-
-    # mask out
-
-    if exists(mask):
-        three_atom_indices = einx.where(
-            "..., ... three, -> ... three", ~insufficient_atom_mask, three_atom_indices, -1
-        )
-
-    if not has_batch:
-        three_atom_indices = rearrange(three_atom_indices, "1 ... -> ...")
-
-    return three_atom_indices
-
-
-@typecheck
-def get_angle_between_edges(
-    edge1: Float["... 3"],  # type: ignore
-    edge2: Float["... 3"],  # type: ignore
-) -> Float["..."]:  # type: ignore
-    """Get the angle between two edges.
-
-    :param edge1: The first edge.
-    :param edge2: The second edge.
-    :return: The angle between the two edges.
-    """
-    cos = torch.dot(l2norm(edge1), l2norm(edge2))
-    return torch.acos(cos)
-
-
-@typecheck
-def get_frames_from_atom_pos(
-    atom_pos: Float["... n d"],  # type: ignore
-    mask: Bool["... n"] | None = None,  # type: ignore
-    filter_colinear_pos: bool = False,
-    is_colinear_angle_thres: float = 25.0,  # NOTE: DM uses 25 degrees as a way of filtering out invalid frames
-) -> Int["... 3"]:  # type: ignore
-    """Get the frames for ligands from atom positions.
-
-    :param atom_pos: The atom positions.
-    :param filter_colinear_pos: Whether to filter colinear positions.
-    :param is_colinear_angle_thres: The colinear angle threshold.
-    :return: The frames for the ligands.
-    """
-    frames = get_indices_three_closest_atom_pos(atom_pos, mask=mask)
-
-    if not filter_colinear_pos:
-        return frames
-
-    is_invalid = (frames == -1).any(dim=-1)
-
-    # get the edges and derive angles
-
-    three_atom_pos = einx.get_at("... [m] c, ... three -> ... three c", atom_pos, frames)
-
-    left_pos, center_pos, right_pos = three_atom_pos.unbind(dim=-2)
-
-    edges1, edges2 = (left_pos - center_pos), (right_pos - center_pos)
-
-    angle = get_angle_between_edges(edges1, edges2)
-
-    degree = torch.rad2deg(angle)
-
-    is_colinear = (degree.abs() < is_colinear_angle_thres) | (
-        (180.0 - degree.abs()).abs() < is_colinear_angle_thres
-    )
-
-    # set any three atoms that are colinear to -1 indices
-
-    three_atom_indices = einx.where(
-        "..., ... three, -> ... three", ~(is_colinear | is_invalid), frames, -1
-    )
-    return three_atom_indices
 
 
 # atom level, what Alphafold3 accepts
@@ -1410,6 +1278,10 @@ def molecule_lengthed_molecule_input_to_atom_input(
         atom_indices_for_frame, atom_indices_offsets[..., None]
     )
 
+    # just use a hack to remove any duplicated indices (ligands and modified biomolecules) in a row
+
+    atom_indices_for_frame = remove_consecutive_duplicate(atom_indices_for_frame)
+
     # handle atom positions
 
     atom_pos = i.atom_pos
@@ -1438,7 +1310,9 @@ def molecule_lengthed_molecule_input_to_atom_input(
         is_molecule_mod=is_molecule_mod,
         is_molecule_types=is_molecule_types,
         msa=msa,
+        msa_mask=i.msa_mask,
         templates=templates,
+        template_mask=i.template_mask,
         atom_pos=atom_pos,
         token_bonds=token_bonds,
         atom_parent_ids=i.atom_parent_ids,
@@ -1547,6 +1421,13 @@ def alphafold3_input_to_molecule_lengthed_molecule_input(
 
     ss_rnas = list(i.ss_rna)
     ss_dnas = list(i.ss_dna)
+
+    # handle atom positions - need atom positions for deriving frame of ligand for PAE
+
+    atom_pos = i.atom_pos
+
+    if isinstance(atom_pos, list):
+        atom_pos = torch.cat(atom_pos)
 
     # any double stranded nucleic acids is added to single stranded lists with its reverse complement
     # rc stands for reverse complement
@@ -1670,6 +1551,28 @@ def alphafold3_input_to_molecule_lengthed_molecule_input(
     ]
 
     molecule_ids.append(tensor([ligand_id] * len(mol_ligands)))
+
+    # handle frames for the ligands, which depends on knowing the atom positions (section 4.3.2)
+
+    if exists(atom_pos):
+        ligand_atom_pos_offset = 0
+
+        for mol in flatten([*mol_proteins, *mol_ss_rnas, *mol_ss_dnas]):
+            ligand_atom_pos_offset += mol.GetNumAtoms()
+
+        for mol_ligand in mol_ligands:
+            num_ligand_atoms = mol_ligand.GetNumAtoms()
+            ligand_atom_pos = atom_pos[
+                ligand_atom_pos_offset : (ligand_atom_pos_offset + num_ligand_atoms)
+            ]
+
+            frames = get_frames_from_atom_pos(ligand_atom_pos, filter_colinear_pos=True)
+
+            # NOTE: since `Alphafold3Input` is only used for inference, we can safely assume that
+            # the middle atom frame of each ligand molecule is a suitable representative frame for the ligand
+            atom_indices_for_frame.append(frames[len(frames) // 2].tolist())
+
+            ligand_atom_pos_offset += num_ligand_atoms
 
     # convert metal ions to rdchem.Mol
 
@@ -1854,10 +1757,6 @@ def alphafold3_input_to_molecule_lengthed_molecule_input(
     molecule_atom_indices = tensor(molecule_atom_indices)
     molecule_atom_indices = pad_to_len(molecule_atom_indices, num_tokens, value=-1)
 
-    # atom positions
-
-    atom_pos = i.atom_pos
-
     # handle missing atom indices
 
     missing_atom_indices = None
@@ -1933,8 +1832,12 @@ class PDBInput:
     add_atompair_ids: bool = False
     directed_bonds: bool = False
     training: bool = False
+    distillation: bool = False
     resolution: float | None = None
     max_msas_per_chain: int | None = None
+    max_templates_per_chain: int | None = None
+    num_templates_per_chain: int | None = None
+    kalign_binary_path: str | None = None
     extract_atom_feats_fn: Callable[[Atom], Float["m dai"]] = default_extract_atom_feats_fn  # type: ignore
     extract_atompair_feats_fn: Callable[[Mol], Float["m m dapi"]] = default_extract_atompair_feats_fn  # type: ignore
 
@@ -2203,14 +2106,14 @@ def create_mol_from_atom_positions_and_types(
 
 
 @typecheck
-def extract_template_molecules_from_biomolecule_chains(
+def extract_canonical_molecules_from_biomolecule_chains(
     biomol: Biomolecule,
     chain_seqs: List[str],
     chain_chem_types: List[PDB_INPUT_RESIDUE_MOLECULE_TYPE],
     mol_keyname: str = "rdchem_mol",
     verbose: bool = False,
 ) -> Tuple[List[Mol], List[PDB_INPUT_RESIDUE_MOLECULE_TYPE]]:
-    """Extract RDKit template molecules and their types for the residues of each `Biomolecule`
+    """Extract RDKit canonical molecules and their types for the residues of each `Biomolecule`
     chain.
 
     NOTE: Missing atom indices are marked as a comma-separated property string for each RDKit molecule
@@ -2273,10 +2176,10 @@ def extract_template_molecules_from_biomolecule_chains(
                         f"Could not locate the PDB CCD's SMILES string for atomized residue: {seq}"
                     )
 
-                # construct template molecule for post-mapping bond orders
+                # construct canonical molecule for post-mapping bond orders
 
                 smile = seq_mapping[seq]
-                template_mol = mol_from_smile(smile)
+                canonical_mol = mol_from_smile(smile)
 
                 # find all atom positions and masks for the current atomized residue
 
@@ -2306,11 +2209,11 @@ def extract_template_molecules_from_biomolecule_chains(
                     verbose=verbose,
                 )
                 try:
-                    mol = AllChem.AssignBondOrdersFromTemplate(template_mol, mol)
+                    mol = AllChem.AssignBondOrdersFromTemplate(canonical_mol, mol)
                 except Exception as e:
                     if verbose:
                         logger.warning(
-                            f"Failed to assign bond orders from the template atomized molecule for residue {seq} due to: {e}. "
+                            f"Failed to assign bond orders from the canonical atomized molecule for residue {seq} due to: {e}. "
                             "Skipping bond order assignment."
                         )
                 res_index += mol.GetNumAtoms()
@@ -2531,7 +2434,14 @@ def load_msa_from_msa_dir(
 @typecheck
 def load_templates_from_templates_dir(
     templates_dir: str | None,
+    mmcif_dir: str | None,
     file_id: str,
+    chain_id_to_residue: Dict[str, Dict[str, List[int]]],
+    max_templates_per_chain: int | None = None,
+    num_templates_per_chain: int | None = None,
+    kalign_binary_path: str | None = None,
+    template_cutoff_date: datetime | None = None,
+    randomly_sample_num_templates: bool = False,
     raise_missing_exception: bool = False,
     verbose: bool = False,
 ) -> FeatureDict:
@@ -2547,17 +2457,55 @@ def load_templates_from_templates_dir(
             )
         return {}
 
-    # template_fpath = os.path.join(templates_dir, f"{file_id}.pdb")
-    # with open(template_fpath, "r") as f:
-    #     template = f.read()
+    if (not exists(mmcif_dir) or not os.path.exists(mmcif_dir)) and raise_missing_exception:
+        raise FileNotFoundError(f"{mmcif_dir} does not exist.")
+    elif not exists(mmcif_dir) or not os.path.exists(mmcif_dir):
+        if verbose:
+            logger.warning(
+                f"{mmcif_dir} does not exist. Skipping template loading by returning `Nones`."
+            )
+        return {}
 
-    # template = template_parsing.parse_pdb(template)
-    # features = make_template_features([template])
-    # features = make_template_mask(features)
+    templates = defaultdict(list)
+    for chain_id in chain_id_to_residue:
+        template_fpaths = glob.glob(os.path.join(templates_dir, f"{file_id}{chain_id}_*.m8"))
 
-    # return features
+        if not template_fpaths:
+            templates[chain_id] = []
+            continue
 
-    return {}
+        # NOTE: A single chain-specific template file contains a template for all polymer residues in the chain,
+        # but the chain's ligands are not included in the template file and therefore must be manually inserted
+        # into the templates as unknown amino acid residues.
+        assert len(template_fpaths) == 1, (
+            f"{len(template_fpaths)} template files found for chain {chain_id} of file {file_id}. "
+            "Please ensure that one template file is present for each chain."
+        )
+        template_fpath = template_fpaths[0]
+        query_id = file_id.split("-assembly1")[0]
+
+        template_type = os.path.splitext(os.path.basename(template_fpath))[0].split("_")[1]
+
+        template_biomols = template_parsing.parse_m8(
+            template_fpath,
+            template_type,
+            query_id,
+            mmcif_dir,
+            max_templates=max_templates_per_chain,
+            num_templates=num_templates_per_chain,
+            template_cutoff_date=template_cutoff_date,
+            randomly_sample_num_templates=randomly_sample_num_templates,
+        )
+        templates[chain_id].extend(template_biomols)
+
+    features = make_template_features(
+        templates,
+        chain_id_to_residue,
+        num_templates=num_templates_per_chain,
+        kalign_binary_path=kalign_binary_path,
+    )
+
+    return features
 
 
 @typecheck
@@ -2587,6 +2535,7 @@ def pdb_input_to_molecule_input(
             file_id=file_id,
         )
         mmcif_resolution = extract_mmcif_metadata_field(mmcif_object, "resolution")
+        mmcif_release_date = extract_mmcif_metadata_field(mmcif_object, "release_date")
         biomol = (
             _from_mmcif_object(mmcif_object)
             if "assembly" in file_id
@@ -2637,13 +2586,14 @@ def pdb_input_to_molecule_input(
     chain_id_to_residue = {
         chain_id: {
             "chemtype": biomol.chemtype[biomol.chain_id == chain_id].tolist(),
+            "restype": biomol.restype[biomol.chain_id == chain_id].tolist(),
             "residue_index": residue_index[biomol.chain_id == chain_id].tolist(),
         }
         for chain_id in biomol_chain_ids
     }
 
     msa_features = load_msa_from_msa_dir(
-        # NOTE: if MSAs are not locally available, `Nones` will be used
+        # NOTE: if MSAs are not locally available, no MSA features will be used
         i.msa_dir,
         file_id,
         chain_id_to_residue,
@@ -2703,9 +2653,34 @@ def pdb_input_to_molecule_input(
         msa = make_one_hot(msa, NUM_MSA_ONE_HOT)
         msa_row_mask = msa_row_mask.bool()
 
-    # TODO: retrieve templates for each chain
-    # NOTE: if they are not locally available, `Nones` will be used
-    template_features = load_templates_from_templates_dir(i.templates_dir, file_id)
+    # retrieve templates for each chain
+
+    mmcif_dir = str(Path(i.mmcif_filepath).parent.parent)
+    template_cutoff_date = datetime.strptime(mmcif_release_date, "%Y-%m-%d")
+
+    # use the template cutoff dates listed in the AF3 supplement's Section 2.4
+    if i.training:
+        template_cutoff_date = (
+            datetime.strptime("2018-04-30", "%Y-%m-%d")
+            if i.distillation
+            else (template_cutoff_date - timedelta(days=60))
+        )
+    else:
+        # NOTE: this is the template cutoff date for all inference tasks
+        template_cutoff_date = datetime.strptime("2021-09-30", "%Y-%m-%d")
+
+    template_features = load_templates_from_templates_dir(
+        # NOTE: if templates are not locally available, no template features will be used
+        i.templates_dir,
+        mmcif_dir,
+        file_id,
+        chain_id_to_residue,
+        max_templates_per_chain=i.max_templates_per_chain,
+        num_templates_per_chain=i.num_templates_per_chain,
+        kalign_binary_path=i.kalign_binary_path,
+        template_cutoff_date=template_cutoff_date,
+        randomly_sample_num_templates=i.training,
+    )
 
     templates = template_features.get("templates")
     template_mask = template_features.get("template_mask")
@@ -2741,6 +2716,10 @@ def pdb_input_to_molecule_input(
             )
             sorted_crop_mask = np.concatenate([crop_masks[idx] for idx in chain_id_sorted_indices])
 
+            biomol_chain_ids = list(
+                dict.fromkeys(biomol.chain_id.tolist())
+            )  # NOTE: we must maintain the order of unique chain IDs
+
             # crop MSA features
             if exists(msa):
                 msa = msa[:, sorted_crop_mask]
@@ -2748,7 +2727,9 @@ def pdb_input_to_molecule_input(
                 additional_token_feats = additional_token_feats[sorted_crop_mask]
                 additional_msa_feats = additional_msa_feats[:, sorted_crop_mask]
 
-            # TODO: crop template features
+            # crop template features
+            if exists(templates):
+                templates = templates[:, sorted_crop_mask][:, :, sorted_crop_mask]
 
         except Exception as e:
             raise ValueError(f"Failed to crop the biomolecule for input {file_id} due to: {e}")
@@ -2782,9 +2763,9 @@ def pdb_input_to_molecule_input(
         chem_comp_details,
     )
 
-    # retrieve RDKit template molecules for the residues of each chain,
-    # and insert the input atom coordinates into the template molecules
-    molecules, molecule_types = extract_template_molecules_from_biomolecule_chains(
+    # retrieve RDKit canonical molecules for the residues of each chain,
+    # and insert the input atom coordinates into the canonical molecules
+    molecules, molecule_types = extract_canonical_molecules_from_biomolecule_chains(
         biomol,
         chain_seqs,
         chain_chem_types,
@@ -2844,15 +2825,18 @@ def pdb_input_to_molecule_input(
 
     # collect frame, token center, distogram, and source-target atom indices for each token
     atom_indices_for_frame = []
+    is_ligand_frame = []
     molecule_atom_indices = []
+    token_center_atom_indices = []
     distogram_atom_indices = []
     src_tgt_atom_indices = []
 
     current_atom_index = 0
     current_res_index = -1
 
-    for mol_type, chemid, res_index in zip(
+    for mol_type, atom_mask, chemid, res_index in zip(
         molecule_atom_types,
+        biomol.atom_mask,
         biomol.chemid,
         biomol.residue_index,
     ):
@@ -2875,19 +2859,76 @@ def pdb_input_to_molecule_input(
                 current_atom_index = 0
                 current_res_index = res_index
 
+            # NOTE: we have to dynamically determine the token center atom index for atomized residues
+            token_center_atom_index = np.where(atom_mask)[0][0]
+
             atom_indices_for_frame.append(None)
+            is_ligand_frame.append(True)
             molecule_atom_indices.append(current_atom_index)
+            token_center_atom_indices.append(token_center_atom_index)
             distogram_atom_indices.append(current_atom_index)
             # NOTE: ligand and modified polymer residue tokens do not have source-target atom indices
         else:
             # collect indices for each polymer residue token
             atom_indices_for_frame.append(entry["three_atom_indices_for_frame"])
+            is_ligand_frame.append(False)
             molecule_atom_indices.append(entry["token_center_atom_idx"])
+            token_center_atom_indices.append(entry["token_center_atom_idx"])
             distogram_atom_indices.append(entry["distogram_atom_idx"])
             src_tgt_atom_indices.append([entry["first_atom_idx"], entry["last_atom_idx"]])
 
+    is_ligand_frame = torch.tensor(is_ligand_frame)
     molecule_atom_indices = tensor(molecule_atom_indices)
+    token_center_atom_indices = tensor(token_center_atom_indices)
     distogram_atom_indices = tensor(distogram_atom_indices)
+
+    # handle frames for ligands (AF3 Supplement, Section 4.3.2)
+    chain_id_to_token_center_atom_positions = {
+        # NOTE: Here, we improvise by using only the token center atom
+        # positions of tokens in the same chain to derive ligand frames
+        chain_id: torch.gather(
+            tensor(biomol.atom_positions[biomol.chain_id == chain_id]),
+            1,
+            token_center_atom_indices[biomol.chain_id == chain_id][..., None, None].expand(
+                -1, -1, 3
+            ),
+        ).squeeze(1)
+        for chain_id in biomol_chain_ids
+    }
+    chain_id_to_token_center_atom_mask = {
+        chain_id: torch.gather(
+            tensor(biomol.atom_mask[biomol.chain_id == chain_id]),
+            1,
+            token_center_atom_indices[biomol.chain_id == chain_id].unsqueeze(-1),
+        ).squeeze(1)
+        for chain_id in biomol_chain_ids
+    }
+
+    chain_id_to_first_token_indices = {
+        chain_id: np.where(biomol.chain_id == chain_id)[0].min() for chain_id in biomol_chain_ids
+    }
+
+    chain_id_to_frames = {
+        chain_id: get_frames_from_atom_pos(
+            atom_pos=chain_id_to_token_center_atom_positions[chain_id],
+            mask=chain_id_to_token_center_atom_mask[chain_id].bool(),
+            filter_colinear_pos=True,
+        )
+        + chain_id_to_first_token_indices[chain_id]
+        for chain_id in biomol_chain_ids
+    }
+    token_index_to_frames = {
+        token_index: frame
+        for token_index, frame in enumerate(
+            frame for chain_frames in chain_id_to_frames.values() for frame in chain_frames
+        )
+    }
+
+    for token_index in range(len(atom_indices_for_frame)):
+        if not exists(atom_indices_for_frame[token_index]):
+            atom_indices_for_frame[token_index] = tuple(
+                token_index_to_frames[token_index].tolist()
+            )
 
     # constructing the additional_molecule_feats
     # which is in turn used to derive relative positions
@@ -3157,14 +3198,39 @@ def pdb_input_to_molecule_input(
         exclusive_cumsum(atoms_per_molecule), token_repeats, dim=0
     )
 
+    # craft ligand frame offsets
+    atom_indices_for_ligand_frame = torch.zeros_like(atom_indices_for_frame)
+    for ligand_frame_index in torch.where(is_ligand_frame)[0]:
+        global_atom_indices = torch.gather(
+            atom_indices_offsets, 0, atom_indices_for_frame[ligand_frame_index]
+        )
+
+        is_ligand_frame_atom = torch.gather(
+            is_ligand_frame, 0, atom_indices_for_frame[ligand_frame_index]
+        )
+        local_token_center_atom_offsets = torch.where(
+            # NOTE: ligand frames are atomized, so for them we have to
+            # offset the atom indices using (ligand) residue atom-sequential
+            # offsets rather than fixed token center atom indices
+            is_ligand_frame_atom,
+            torch.gather(molecule_atom_indices, 0, atom_indices_for_frame[ligand_frame_index]),
+            torch.gather(token_center_atom_indices, 0, atom_indices_for_frame[ligand_frame_index]),
+        )
+
+        atom_indices_for_ligand_frame[ligand_frame_index] = (
+            global_atom_indices + local_token_center_atom_offsets
+        )
+
     # offset only positive atom indices
     distogram_atom_indices = offset_only_positive(distogram_atom_indices, atom_indices_offsets)
     molecule_atom_indices = offset_only_positive(molecule_atom_indices, atom_indices_offsets)
-    atom_indices_for_frame = offset_only_positive(
-        atom_indices_for_frame, atom_indices_offsets[..., None]
+    atom_indices_for_frame = torch.where(
+        is_ligand_frame.unsqueeze(-1),
+        atom_indices_for_ligand_frame,
+        offset_only_positive(atom_indices_for_frame, atom_indices_offsets[..., None]),
     )
 
-    # construct atom positions from template molecules after instantiating their 3D conformers
+    # construct atom positions from canonical molecules after instantiating their 3D conformers
     atom_pos = torch.from_numpy(
         np.concatenate([mol.GetConformer().GetPositions() for mol in molecules]).astype(np.float32)
     )
