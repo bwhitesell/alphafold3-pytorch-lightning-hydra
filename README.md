@@ -51,7 +51,7 @@ A visualization of the molecules of life used in the repository can be seen and 
 
 - <a href="https://github.com/xluo233">@xluo233</a> for contributing the confidence measures, clash penalty ranking, sample ranking logic, as well as the logic for computing the model selection score and unresolved RASA!
 
-- <a href="https://github.com/sj900">sj900</a> for integrating and testing the `WeightedPDBSampler` within the `PDBDataset` and for adding initial support for MSA parsing!
+- <a href="https://github.com/sj900">sj900</a> for integrating and testing the `WeightedPDBSampler` within the `PDBDataset` and for adding initial support for MSA and template parsing!
 
 - <a href="https://github.com/wufandi">Fandi</a> for discovering a few inconsistencies in the elucidated atom diffusion module with the supplementary
 
