@@ -25,7 +25,6 @@ from alphafold3_pytorch.models.components.alphafold3 import (
     DiffusionTransformer,
     DistogramHead,
     ElucidatedAtomDiffusion,
-    ExpressCoordinatesInFrame,
     InputFeatureEmbedder,
     MSAModule,
     MSAPairWeightedAveraging,
@@ -34,7 +33,6 @@ from alphafold3_pytorch.models.components.alphafold3 import (
     PairformerStack,
     PreLayerNorm,
     RelativePositionEncoding,
-    RigidFrom3Points,
     SmoothLDDTLoss,
     TemplateEmbedder,
     Transition,
@@ -61,6 +59,10 @@ from alphafold3_pytorch.models.components.inputs import (
     maybe_transform_to_atom_inputs,
     pdb_dataset_to_atom_inputs,
     register_input_transform,
+)
+from alphafold3_pytorch.utils.model_utils import (
+    ExpressCoordinatesInFrame,
+    RigidFrom3Points,
 )
 
 __all__ = [
