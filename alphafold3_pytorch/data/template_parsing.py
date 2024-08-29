@@ -19,9 +19,13 @@ from alphafold3_pytorch.data.life import (
     LIGANDS,
     RNA_NUCLEOTIDES,
 )
-from alphafold3_pytorch.models.components.inputs import get_frames_from_atom_pos
 from alphafold3_pytorch.utils.data_utils import extract_mmcif_metadata_field
-from alphafold3_pytorch.utils.model_utils import distance_to_bins
+from alphafold3_pytorch.utils.model_utils import (
+    ExpressCoordinatesInFrame,
+    RigidFrom3Points,
+    distance_to_bins,
+    get_frames_from_atom_pos,
+)
 from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import typecheck
 from alphafold3_pytorch.utils.utils import exists
@@ -218,12 +222,11 @@ def _extract_template_features(
         elif chemtype == 2:
             seq_mapping = DNA_NUCLEOTIDES
         elif chemtype == 3:
-            # TODO: Handle ligand frames properly.
             seq_mapping = LIGANDS
         else:
             raise ValueError(f"Unrecognized chain chemical type: {chemtype}")
 
-        if template_index < 0 or template_index >= len(template_sequence):
+        if not (0 <= template_index < len(template_sequence)):
             raise Exception(
                 f"Template index {template_index} does not align with template sequence {template_sequence}."
             )
@@ -236,7 +239,7 @@ def _extract_template_features(
         is_ligand_res = not is_polymer_res
         is_modified_polymer_res = is_polymer_res and (
             template_residue == "X"
-            or template_res not in query_chem_residue_constants.restype_1to3
+            or template_residue not in query_chem_residue_constants.restype_1to3
         )
         if is_modified_polymer_res:
             template_res = LIGANDS.get("X")
@@ -251,8 +254,7 @@ def _extract_template_features(
             # arbitrary indices, so we must use the atom mask to dynamically retrieve them.
             distogram_atom_idx = token_center_atom_idx = np.where(
                 all_atom_masks[template_index][0]
-            )[0]
-            three_atom_indices_for_frame = tuple(token_center_atom_idx for _ in range(3))
+            )[0][0]
 
         template_restype[query_index] = query_chem_residue_constants.MSA_CHAR_TO_ID.get(
             template_residue, query_chem_residue_constants.restype_num
@@ -269,22 +271,23 @@ def _extract_template_features(
     template_all_atom_mask = torch.from_numpy(np.stack(template_all_atom_mask))
     template_all_atom_positions = torch.from_numpy(np.stack(template_all_atom_positions))
 
+    template_token_center_atom_indices = torch.tensor(template_token_center_atom_indices)
+    template_token_center_atom_positions = torch.gather(
+        template_all_atom_positions,
+        1,
+        template_token_center_atom_indices[..., None, None].expand(-1, -1, 3),
+    ).squeeze(1)
+
     # Handle ligand and modified polymer residue frames.
     ligand_frames_present = not all(template_three_atom_indices_for_frame)
     template_backbone_frame_atom_mask = torch.ones(len(template_restype), dtype=torch.bool)
     if ligand_frames_present:
-        template_token_center_atom_indices = torch.tensor(template_token_center_atom_indices)
-        template_token_center_atom_positions = torch.gather(
-            template_all_atom_positions,
-            1,
-            template_token_center_atom_indices.unsqueeze(-1).expand(-1, -1, 3),
-        )
         template_token_center_atom_mask = torch.gather(
-            template_all_atom_mask, 1, template_token_center_atom_indices
-        )
+            template_all_atom_mask, 1, template_token_center_atom_indices.unsqueeze(-1)
+        ).squeeze(1)
         new_frame_token_indices = get_frames_from_atom_pos(
             atom_pos=template_token_center_atom_positions,
-            mask=template_token_center_atom_mask,
+            mask=template_token_center_atom_mask.bool(),
             filter_colinear_pos=True,
         )
         for token_index, frame_token_indices in enumerate(template_three_atom_indices_for_frame):
@@ -368,6 +371,24 @@ def _extract_template_features(
     template_unit_vector = torch.zeros(
         (len(template_restype), len(template_restype), 3), dtype=torch.float32
     )
+
+    template_backbone_frame_atom_positions = torch.gather(
+        template_all_atom_positions,
+        1,
+        template_three_atom_indices_for_frame.unsqueeze(-1).expand(-1, -1, 3),
+    )
+
+    rigid_from_three_points = RigidFrom3Points()
+    template_backbone_frames, _ = rigid_from_three_points(
+        template_backbone_frame_atom_positions.unbind(-2)
+    )
+
+    express_coordinates_in_frame = ExpressCoordinatesInFrame()
+    template_unit_vector = express_coordinates_in_frame(
+        template_token_center_atom_positions.unsqueeze(0),
+        template_backbone_frames.unsqueeze(0),
+        pairwise=True,
+    ).squeeze(0)
 
     return {
         "template_restype": template_restype.float(),

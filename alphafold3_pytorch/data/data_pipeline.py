@@ -398,15 +398,40 @@ def make_template_features(
         template_backbone_frame_mask_list, dim=1
     )
 
-    templates_pairwise = torch.cat(
-        (
-            # NOTE: Following AF3 Supplement, Section 2.4, the pairwise distogram and
-            # unit vector features do not contain inter-chain interaction information.
-            torch.block_diag(*template_distogram_list),
-            torch.block_diag(*template_unit_vector_list),
-        ),
-        dim=-1,
-    )
+    # NOTE: Following AF3 Supplement, Section 2.4, the pairwise distogram and
+    # unit vector features do not contain inter-chain interaction information.
+
+    # Initialize an empty list to store the block_diag results
+    block_diag_distograms = []
+    block_diag_unit_vectors = []
+
+    # Loop over the first dimension (templates dimension)
+    for i in range(max_templates):
+        # Initialize an empty list to store each 2D block-diagonal matrix for distograms and unit vectors
+        distogram_blocks = []
+        unit_vector_blocks = []
+
+        # Loop over the last dimension (channels)
+        for j in range(num_distogram_bins):
+            # Extract the 2D slice and apply `block_diag()`
+            distogram_blocks.append(
+                torch.block_diag(*[t[i, :, :, j] for t in template_distogram_list])
+            )
+            if j < 3:
+                unit_vector_blocks.append(
+                    torch.block_diag(*[t[i, :, :, j] for t in template_unit_vector_list])
+                )
+
+        # Stack along the third dimension (residues) and append to the list
+        block_diag_distograms.append(torch.stack(distogram_blocks, dim=-1))
+        block_diag_unit_vectors.append(torch.stack(unit_vector_blocks, dim=-1))
+
+    # Stack along the first dimension (templates dimension) to form the final tensors
+    block_diag_distograms = torch.stack(block_diag_distograms, dim=0)
+    block_diag_unit_vectors = torch.stack(block_diag_unit_vectors, dim=0)
+
+    # Concatenate along the last dimension (channels)
+    templates_pairwise = torch.cat((block_diag_distograms, block_diag_unit_vectors), dim=-1)
 
     features = {
         "templates": torch.cat(template_restype_list, dim=1).float(),

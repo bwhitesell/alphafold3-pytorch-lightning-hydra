@@ -53,11 +53,13 @@ from alphafold3_pytorch.models.components.inputs import (
     Alphafold3Input,
     PDBInput,
     atom_ref_pos_to_atompair_inputs,
-    get_frames_from_atom_pos,
     molecule_to_atom_input,
     pdb_input_to_molecule_input,
 )
-from alphafold3_pytorch.utils.model_utils import exclusive_cumsum
+from alphafold3_pytorch.utils.model_utils import (
+    exclusive_cumsum,
+    get_frames_from_atom_pos,
+)
 from alphafold3_pytorch.utils.utils import exists
 
 DATA_TEST_PDB_ID = "721p"
@@ -280,7 +282,7 @@ def test_deriving_frames_for_ligands():
 
     frames = get_frames_from_atom_pos(points, filter_colinear_pos=False)
 
-    assert torch.allclose(frames, torch.tensor([0, 2, 4]))
+    assert torch.allclose(frames[2], torch.tensor([0, 2, 4]))
 
     # test with mask
 
