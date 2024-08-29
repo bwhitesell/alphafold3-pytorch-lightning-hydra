@@ -6486,7 +6486,7 @@ class Alphafold3(Module):
 
             is_biomolecule = ~(
                 (~is_molecule_types[..., IS_BIOMOLECULE_INDICES].any(dim=-1))
-                | is_molecule_mod.any(dim=-1)
+                | (exists(is_molecule_mod) and is_molecule_mod.any(dim=-1))
             )
             maybe(hard_validate_atom_indices_ascending)(
                 atom_indices_for_frame,
