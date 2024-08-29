@@ -216,6 +216,7 @@ def make_template_features(
     num_restype_classes: int = 32,
     num_distogram_bins: int = 39,
     raise_missing_exception: bool = False,
+    verbose: bool = False,
 ) -> FeatureDict:
     """Construct a feature dictionary of template features.
 
@@ -228,6 +229,7 @@ def make_template_features(
     :param num_restype_classes: The number of classes in the residue type classification.
     :param num_distogram_bins: The number of bins in the distogram features.
     :param raise_missing_exception: Whether to raise an exception if no templates are provided.
+    :param verbose: Whether to log verbose output.
     :return: The template feature dictionary.
     """
 
@@ -246,6 +248,9 @@ def make_template_features(
     template_backbone_frame_mask_list = []
     template_distogram_list = []
     template_unit_vector_list = []
+    chain_index_list = []
+
+    template_mask = torch.zeros(max_templates, dtype=torch.bool)
 
     for chain_index, (chain_id, template) in enumerate(templates.items()):
         chain_chemtype = chain_id_to_residue[chain_id]["chemtype"]
@@ -293,6 +298,7 @@ def make_template_features(
         template_unit_vector_list.append(
             torch.zeros((max_templates, num_res, num_res, 3), dtype=torch.float32)
         )
+        chain_index_list.append(torch.full((max_templates, num_res), chain_index))
 
         if not templates[chain_id] or not exists(kalign_binary_path):
             if raise_missing_exception:
@@ -374,11 +380,13 @@ def make_template_features(
                 template_unit_vector_list[chain_index][template_index] = template_features[
                     "template_unit_vector"
                 ]
+                template_mask[template_index] = True
 
             except Exception as e:
-                log.warning(
-                    f"Skipping extraction of template features for chain {chain_id} due to: {e}."
-                )
+                if verbose:
+                    log.warning(
+                        f"Skipping extraction of template features for chain {chain_id} due to: {e}"
+                    )
 
                 template_restype_list[chain_index][template_index] = F.one_hot(
                     torch.full((num_res,), unknown_restype, dtype=torch.long),
@@ -396,11 +404,6 @@ def make_template_features(
                 template_unit_vector_list[chain_index][template_index] = torch.zeros(
                     (num_res, num_res, 3), dtype=torch.float32
                 )
-
-    # NOTE: This is an improvised solution to handle template residue masks and pairwise features succinctly.
-    template_mask = torch.cat(template_pseudo_beta_mask_list, dim=1) & torch.cat(
-        template_backbone_frame_mask_list, dim=1
-    )
 
     # NOTE: Following AF3 Supplement, Section 2.4, the pairwise distogram and
     # unit vector features do not contain inter-chain interaction information.
@@ -430,17 +433,46 @@ def make_template_features(
         block_diag_distograms.append(torch.stack(distogram_blocks, dim=-1))
         block_diag_unit_vectors.append(torch.stack(unit_vector_blocks, dim=-1))
 
-    # Stack along the first dimension (templates dimension) to form the final tensors.
-    block_diag_distograms = torch.stack(block_diag_distograms, dim=0)
-    block_diag_unit_vectors = torch.stack(block_diag_unit_vectors, dim=0)
+    # Finalize template features by assembling each of them into a pairwise representation.
+    template_backbone_frame_masks = torch.cat(template_backbone_frame_mask_list, dim=1)
+    template_pseudo_beta_masks = torch.cat(template_pseudo_beta_mask_list, dim=1)
+    template_distograms = torch.stack(block_diag_distograms, dim=0)
+    template_unit_vectors = torch.stack(block_diag_unit_vectors, dim=0)
+    template_restypes = torch.cat(template_restype_list, dim=1).float()
+    chain_indices = torch.cat(chain_index_list, dim=1)
 
-    # Concatenate along the last dimension (channels).
-    templates_pairwise = torch.cat((block_diag_distograms, block_diag_unit_vectors), dim=-1)
+    template_backbone_pairwise_frame_masks = template_backbone_frame_masks.unsqueeze(
+        1
+    ) * template_backbone_frame_masks.unsqueeze(2)
+    template_pseudo_beta_pairwise_masks = template_pseudo_beta_masks.unsqueeze(
+        1
+    ) * template_pseudo_beta_masks.unsqueeze(2)
+
+    templates = torch.cat(
+        (
+            template_distograms,
+            template_backbone_pairwise_frame_masks.unsqueeze(-1),
+            template_unit_vectors,
+            template_pseudo_beta_pairwise_masks.unsqueeze(-1),
+        ),
+        dim=-1,
+    )
+
+    is_same_chain = chain_indices.unsqueeze(1) == chain_indices.unsqueeze(2)
+    templates *= is_same_chain.unsqueeze(-1)
+
+    templates = torch.cat(
+        (
+            templates,
+            template_restypes.unsqueeze(-3).expand(-1, template_restypes.shape[-2], -1, -1),
+            template_restypes.unsqueeze(-2).expand(-1, -1, template_restypes.shape[-2], -1),
+        ),
+        dim=-1,
+    )
 
     features = {
-        "templates": torch.cat(template_restype_list, dim=1).float(),
+        "templates": templates,
         "template_mask": template_mask,
-        "templates_pairwise": templates_pairwise,
     }
     return features
 

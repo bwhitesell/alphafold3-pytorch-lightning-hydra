@@ -2471,7 +2471,7 @@ def load_templates_from_templates_dir(
         template_fpaths = glob.glob(os.path.join(templates_dir, f"{file_id}{chain_id}_*.m8"))
 
         if not template_fpaths:
-            templates[chain_id] = None
+            templates[chain_id] = []
             continue
 
         # NOTE: A single chain-specific template file contains a template for all polymer residues in the chain,
@@ -2684,7 +2684,6 @@ def pdb_input_to_molecule_input(
 
     templates = template_features.get("templates")
     template_mask = template_features.get("template_mask")
-    templates_pairwise = template_features.get("templates_pairwise")
 
     # crop the `Biomolecule` object during training only
 
@@ -2730,11 +2729,7 @@ def pdb_input_to_molecule_input(
 
             # crop template features
             if exists(templates):
-                templates = templates[:, sorted_crop_mask]
-                template_mask = template_mask[:, sorted_crop_mask]
-                templates_pairwise = templates_pairwise[:, sorted_crop_mask][
-                    :, :, sorted_crop_mask
-                ]
+                templates = templates[:, sorted_crop_mask][:, :, sorted_crop_mask]
 
         except Exception as e:
             raise ValueError(f"Failed to crop the biomolecule for input {file_id} due to: {e}")
@@ -3281,7 +3276,6 @@ def pdb_input_to_molecule_input(
         additional_msa_feats=default(additional_msa_feats, torch.zeros(num_msas, num_tokens, 2)),
         additional_token_feats=default(additional_token_feats, torch.zeros(num_tokens, 33)),
         templates=templates,
-        templates_pairwise=templates_pairwise,
         msa=msa,
         atom_pos=atom_pos,
         template_mask=template_mask,

@@ -6660,11 +6660,6 @@ class Alphafold3(Module):
 
         pairwise_mask = to_pairwise_mask(mask)
 
-        # prepare mask for msa module and template embedder
-        # which is equivalent to the `is_protein` of the `is_molecular_types` input
-
-        is_protein_mask = is_molecule_types[..., IS_PROTEIN_INDEX]
-
         # init recycled single and pairwise
 
         detach_when_recycling = default(detach_when_recycling, self.detach_when_recycling)
@@ -6700,7 +6695,6 @@ class Alphafold3(Module):
                     templates=templates,
                     template_mask=template_mask,
                     pairwise_repr=pairwise,
-                    mask=is_protein_mask,
                 )
 
                 pairwise = embedded_template + pairwise
@@ -6712,7 +6706,6 @@ class Alphafold3(Module):
                     msa=msa,
                     single_repr=single,
                     pairwise_repr=pairwise,
-                    mask=is_protein_mask,
                     msa_mask=msa_mask,
                     additional_msa_feats=additional_msa_feats,
                 )

@@ -156,7 +156,7 @@ from alphafold3_pytorch.utils.model_utils import exclusive_cumsum
 
 alphafold3 = Alphafold3(
     dim_atom_inputs = 77,
-    dim_template_feats = 44
+    dim_template_feats = 108
 )
 
 # Mock inputs
@@ -178,7 +178,7 @@ is_molecule_types = torch.randint(0, 2, (2, seq_len, 5)).bool()
 is_molecule_mod = torch.randint(0, 2, (2, seq_len, 4)).bool()
 molecule_ids = torch.randint(0, 32, (2, seq_len))
 
-template_feats = torch.randn(2, 2, seq_len, seq_len, 44)
+template_feats = torch.randn(2, 2, seq_len, seq_len, 108)
 template_mask = torch.ones((2, 2)).bool()
 
 msa = torch.randn(2, 7, seq_len, 32)
@@ -289,7 +289,7 @@ alphafold3 = Alphafold3(
     dim_atom_inputs = 3,
     dim_atompair_inputs = 5,
     atoms_per_window = 27,
-    dim_template_feats = 44,
+    dim_template_feats = 108,
     num_dist_bins = 38,
     num_molecule_mods = 0,
     confidence_head_kwargs = dict(

@@ -47,6 +47,7 @@ def parse_m8(
     num_templates: int | None = None,
     template_cutoff_date: datetime | None = None,
     randomly_sample_num_templates: bool = False,
+    verbose: bool = False,
 ) -> List[Tuple[Biomolecule, TEMPLATE_TYPE]]:
     """Parse an M8 file and return a list of template Biomolecule objects.
 
@@ -59,6 +60,7 @@ def parse_m8(
     :param template_cutoff_date: The (optional) cutoff date for templates.
     :param randomly_sample_num_templates: Whether to randomly sample the number of templates to
         return.
+    :param verbose: Whether to log verbose output.
     :return: A list of template Biomolecule objects and their template types.
     """
     # Define the column names.
@@ -82,7 +84,8 @@ def parse_m8(
     try:
         df = pl.read_csv(m8_filepath, separator="\t", has_header=False, new_columns=columns)
     except Exception as e:
-        logger.warning(f"Skipping loading M8 file {m8_filepath} due to: {e}")
+        if verbose:
+            logger.warning(f"Skipping loading M8 file {m8_filepath} due to: {e}")
         return []
 
     # Filter the DataFrame to only include rows where
@@ -133,7 +136,8 @@ def parse_m8(
             if len(template_biomol.atom_positions):
                 template_biomols.append((template_biomol, template_type))
         except Exception as e:
-            logger.warning(f"Skipping loading template {template_id} due to: {e}")
+            if verbose:
+                logger.warning(f"Skipping loading template {template_id} due to: {e}")
 
     return template_biomols
 

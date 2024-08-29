@@ -524,13 +524,13 @@ def test_relative_position_encoding():
 @pytest.mark.parametrize("checkpoint", (False, True))
 def test_template_embed(checkpoint):
     """Test the template embedder."""
-    template_feats = torch.randn(2, 2, 16, 16, 77)
+    template_feats = torch.randn(2, 2, 16, 16, 108)
     template_mask = torch.ones((2, 2)).bool()
 
     pairwise_repr = torch.randn(2, 16, 16, 128).requires_grad_()
     mask = torch.ones((2, 16)).bool()
 
-    embedder = TemplateEmbedder(dim_template_feats=77, checkpoint=checkpoint)
+    embedder = TemplateEmbedder(dim_template_feats=108, checkpoint=checkpoint)
 
     template_embed = embedder(
         templates=template_feats,
@@ -690,7 +690,7 @@ def test_alphafold3(
     if atom_transformer_intramolecular_attn:
         atom_parent_ids = torch.ones(2, atom_seq_len).long()
 
-    template_feats = torch.randn(2, 2, seq_len, seq_len, 44)
+    template_feats = torch.randn(2, 2, seq_len, seq_len, 108)
     template_mask = torch.ones((2, 2)).bool()
 
     msa = torch.randn(2, 7, seq_len, 32)
@@ -723,7 +723,7 @@ def test_alphafold3(
         dim_single=8,
         dim_token=8,
         atoms_per_window=atoms_per_window,
-        dim_template_feats=44,
+        dim_template_feats=108,
         num_dist_bins=38,
         num_molecule_mods=num_molecule_mods,
         confidence_head_kwargs=dict(pairformer_depth=1),
@@ -828,7 +828,7 @@ def test_alphafold3_without_msa_and_templates():
 
     alphafold3 = Alphafold3(
         dim_atom_inputs=77,
-        dim_template_feats=44,
+        dim_template_feats=108,
         num_dist_bins=38,
         num_molecule_mods=0,
         checkpoint_trunk_pairformer=True,
@@ -903,7 +903,7 @@ def test_alphafold3_force_return_loss():
 
     alphafold3 = Alphafold3(
         dim_atom_inputs=77,
-        dim_template_feats=44,
+        dim_template_feats=108,
         num_dist_bins=38,
         num_molecule_mods=0,
         confidence_head_kwargs=dict(pairformer_depth=1),
@@ -984,7 +984,7 @@ def test_alphafold3_force_return_loss_with_confidence_logits():
 
     alphafold3 = Alphafold3(
         dim_atom_inputs=77,
-        dim_template_feats=44,
+        dim_template_feats=108,
         num_dist_bins=38,
         num_molecule_mods=0,
         confidence_head_kwargs=dict(pairformer_depth=1),
@@ -1026,7 +1026,7 @@ def test_alphafold3_with_atom_and_bond_embeddings():
         num_atompair_embeds=3,
         num_molecule_mods=0,
         dim_atom_inputs=77,
-        dim_template_feats=44,
+        dim_template_feats=108,
     )
 
     # mock inputs
@@ -1050,7 +1050,7 @@ def test_alphafold3_with_atom_and_bond_embeddings():
     is_molecule_types = torch.randint(0, 2, (2, seq_len, IS_MOLECULE_TYPES)).bool()
     molecule_ids = torch.randint(0, 32, (2, seq_len))
 
-    template_feats = torch.randn(2, 2, seq_len, seq_len, 44)
+    template_feats = torch.randn(2, 2, seq_len, seq_len, 108)
     template_mask = torch.ones((2, 2)).bool()
 
     msa = torch.randn(2, 7, seq_len, 32)
@@ -1103,7 +1103,7 @@ def test_alphafold3_with_atom_and_bond_embeddings():
 def test_collate_fn():
     alphafold3 = Alphafold3(
         dim_atom_inputs=77,
-        dim_template_feats=44,
+        dim_template_feats=108,
         num_dist_bins=38,
         confidence_head_kwargs=dict(pairformer_depth=1),
         template_embedder_kwargs=dict(pairformer_stack_depth=1),
@@ -1288,7 +1288,7 @@ def test_model_selection_score_end_to_end():
         dim_single=8,
         dim_token=8,
         atoms_per_window=27,
-        dim_template_feats=44,
+        dim_template_feats=108,
         num_dist_bins=38,
         confidence_head_kwargs=dict(pairformer_depth=1),
         template_embedder_kwargs=dict(pairformer_stack_depth=1),
@@ -1367,7 +1367,7 @@ def test_unresolved_protein_rasa():
 
 def test_readme1():
     """Test the first README example."""
-    alphafold3 = Alphafold3(dim_atom_inputs=77, dim_template_feats=44)
+    alphafold3 = Alphafold3(dim_atom_inputs=77, dim_template_feats=108)
 
     # mock inputs
 
@@ -1388,7 +1388,7 @@ def test_readme1():
     is_molecule_mod = torch.randint(0, 2, (2, seq_len, 4)).bool()
     molecule_ids = torch.randint(0, 32, (2, seq_len))
 
-    template_feats = torch.randn(2, 2, seq_len, seq_len, 44)
+    template_feats = torch.randn(2, 2, seq_len, seq_len, 108)
     template_mask = torch.ones((2, 2)).bool()
 
     msa = torch.randn(2, 7, seq_len, 32)
@@ -1483,7 +1483,7 @@ def test_readme2():
         dim_atom_inputs=3,
         dim_atompair_inputs=5,
         atoms_per_window=27,
-        dim_template_feats=44,
+        dim_template_feats=108,
         num_dist_bins=38,
         num_molecule_mods=0,
         confidence_head_kwargs=dict(pairformer_depth=1),
