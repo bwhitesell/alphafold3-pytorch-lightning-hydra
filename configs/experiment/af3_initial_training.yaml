@@ -27,3 +27,12 @@ logger:
     group: "af3-training"
     tags: ${tags}
     name: bs1-${now:%Y%m%d%H%M%S}
+
+model:
+  net:
+    dim_single: 192
+    dim_pairwise: 64
+    dim_token: 192
+
+trainer:
+  gradient_clip_val: 0 # NOTE: indicates no clipping is performed, to work around FSDP's clipping limitations

@@ -51,6 +51,10 @@ model:
   diffusion_add_smooth_lddt_loss: true
   diffusion_add_bond_loss: true
   visualize_val_samples_every_n_steps: 1
+  net:
+    dim_single: 192
+    dim_pairwise: 64
+    dim_token: 192
 
 trainer:
   min_steps: null
@@ -60,3 +64,4 @@ trainer:
   check_val_every_n_epoch: null
   val_check_interval: 50
   log_every_n_steps: 1
+  gradient_clip_val: 0 # NOTE: indicates no clipping is performed, to work around FSDP's clipping limitations
