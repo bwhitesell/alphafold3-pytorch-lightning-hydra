@@ -6,7 +6,7 @@
 #SBATCH --nodes=1                                             # NOTE: this needs to match Lightning's `Trainer(num_nodes=...)`
 #SBATCH --ntasks-per-node=1                                   # NOTE: this needs to be `1` on SLURM clusters when using Lightning's `ddp_spawn` strategy`; otherwise, set to match Lightning's quantity of `Trainer(devices=...)`
 #SBATCH --time 0-24:00:00                                     # time limit for the job (up to 24 hours: `0-24:00:00`)
-#SBATCH --job-name=af3_initial_training_bs1                   # job name
+#SBATCH --job-name=af3_initial_training                       # job name
 #SBATCH --output=J-%x.%j.out                                  # output log file
 #SBATCH --error=J-%x.%j.err                                   # error log file
 #SBATCH --exclusive                                           # request exclusive node access
@@ -14,8 +14,8 @@
 #################################################################
 
 # Load required modules
-module load pytorch/2.2.0-rocm5.7.3
 module load pawseyenv/2023.08
+module load pytorch/2.2.0-rocm5.7.3
 # NOTE: The following module swap is needed due to a PyTorch module bug
 module load singularity/3.11.4-nohost
 
@@ -63,7 +63,7 @@ srun -c 64 singularity exec \
         --rdzv_backend=c10d \
         --rdzv_endpoint=$RDZV_HOST:$RDZV_PORT \
         alphafold3_pytorch/train.py \
-        experiment=af3_initial_training_bs1 \
+        experiment=af3_initial_training \
         data.batch_size=$NUM_PYTORCH_PROCESSES \
         trainer.num_nodes=$SLURM_JOB_NUM_NODES \
         trainer.devices=$NUM_PYTORCH_PROCESSES

@@ -14,8 +14,8 @@
 #################################################################
 
 # Load required modules
-module load pytorch/2.2.0-rocm5.7.3
 module load pawseyenv/2023.08
+module load pytorch/2.2.0-rocm5.7.3
 # NOTE: The following module swap is needed due to a PyTorch module bug
 module load singularity/3.11.4-nohost
 
