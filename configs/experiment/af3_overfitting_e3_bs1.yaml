@@ -45,6 +45,8 @@ model:
     dim_single: 192
     dim_pairwise: 64
     dim_token: 192
+    pairformer_stack:
+      depth: 24
 
 trainer:
   min_steps: null
