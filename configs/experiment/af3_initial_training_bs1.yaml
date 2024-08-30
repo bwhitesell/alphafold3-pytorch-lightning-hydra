@@ -3,7 +3,7 @@
 # lists the experiment parameters corresponding to "Initial training" in Table 6 of the paper
 
 # to execute this experiment run:
-# python train.py experiment=af3_initial_training
+# python train.py experiment=af3_initial_training_bs1
 
 defaults:
   - override /callbacks: default
