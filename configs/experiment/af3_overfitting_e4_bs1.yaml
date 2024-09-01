@@ -57,6 +57,8 @@ model:
     dim_token: 64
     pairformer_stack:
       depth: 4
+    diffusion_module_kwargs:
+      token_transformer_depth: 4
 
 trainer:
   min_steps: null
