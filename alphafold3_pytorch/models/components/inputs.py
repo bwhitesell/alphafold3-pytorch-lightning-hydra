@@ -3160,6 +3160,10 @@ def pdb_input_to_molecule_input(
     num_present_atoms = mol_total_atoms - num_missing_atom_indices
     assert num_present_atoms == int(biomol.atom_mask.sum())
 
+    # handle `atom_indices_for_frame` for the PAE
+
+    atom_indices_for_frame = tensor(atom_indices_for_frame)
+
     # build offsets for all indices
 
     # derive `atom_lens` based on `one_token_per_atom`, for ligands and modified biomolecules
@@ -3222,12 +3226,6 @@ def pdb_input_to_molecule_input(
         is_ligand_frame.unsqueeze(-1),
         atom_indices_for_ligand_frame,
         offset_only_positive(atom_indices_for_frame, atom_indices_offsets[..., None]),
-    )
-
-    # handle `atom_indices_for_frame` for the PAE
-
-    atom_indices_for_frame = tensor(
-        [default(indices, (-1, -1, -1)) for indices in atom_indices_for_frame]
     )
 
     # construct atom positions from canonical molecules after instantiating their 3D conformers
