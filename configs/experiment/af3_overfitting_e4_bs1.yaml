@@ -52,13 +52,14 @@ model:
   diffusion_add_bond_loss: true
   visualize_val_samples_every_n_steps: 1
   net:
-    dim_single: 64
-    dim_pairwise: 16
-    dim_token: 64
+    dim_atom: 32
+    dim_single: 32
+    dim_pairwise: 8
+    dim_token: 32
     pairformer_stack:
-      depth: 4
+      depth: 2
     diffusion_module_kwargs:
-      token_transformer_depth: 4
+      token_transformer_depth: 2
 
 trainer:
   min_steps: null
