@@ -1,7 +1,7 @@
 import importlib
 from typing import Any, List, Set
 
-from omegaconf import OmegaConf
+from omegaconf import ListConfig, OmegaConf
 
 from alphafold3_pytorch.data.pdb_datamodule import (
     alphafold3_inputs_to_batched_atom_input,
@@ -189,7 +189,7 @@ def int_divide(x: int, y: int) -> int:
 
 
 def validate_gradient_accumulation_factor(
-    batch_size: int, devices: int | List[int], num_nodes: int
+    batch_size: int, devices: int | ListConfig, num_nodes: int
 ) -> int:
     """Validate the gradient accumulation factor. If the factor is valid, return `world_size`.
 
@@ -198,7 +198,7 @@ def validate_gradient_accumulation_factor(
     :param num_nodes: The number of nodes.
     :return: The validated gradient accumulation factor.
     """
-    if isinstance(devices, list):
+    if isinstance(devices, ListConfig):
         devices = len(devices)
     world_size = devices * num_nodes
     if batch_size % world_size == 0:
