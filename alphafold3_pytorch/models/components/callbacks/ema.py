@@ -369,7 +369,7 @@ class EMAOptimizer(torch.optim.Optimizer):
             else list(self.all_parameters())
         )
         state_dict = {
-            "opt": self.optimizer.state_dict(),
+            "state": self.optimizer.state_dict(),
             "ema": ema_params,
             "current_step": self.current_step,
             "decay": self.decay,
@@ -381,7 +381,7 @@ class EMAOptimizer(torch.optim.Optimizer):
         """Load the state dict for the optimizer."""
         self.join()
 
-        self.optimizer.load_state_dict(state_dict["opt"])
+        self.optimizer.load_state_dict(state_dict["state"])
         self.ema_params = tuple(
             param.to(self.device) for param in copy.deepcopy(state_dict["ema"])
         )
