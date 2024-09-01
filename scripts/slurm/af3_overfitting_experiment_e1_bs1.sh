@@ -4,6 +4,7 @@
 #SBATCH --partition=gpu                                       # use partition `gpu` for GPU nodes
 #SBATCH --account=pawsey1018-gpu                              # IMPORTANT: use your own project and the -gpu suffix
 #SBATCH --nodes=1                                             # NOTE: this needs to match Lightning's `Trainer(num_nodes=...)`
+#SBATCH --gres=gpu:1                                          # NOTE: requests any GPU resource(s)
 #SBATCH --ntasks-per-node=1                                   # NOTE: this needs to be `1` on SLURM clusters when using Lightning's `ddp_spawn` strategy`; otherwise, set to match Lightning's quantity of `Trainer(devices=...)`
 #SBATCH --time 0-24:00:00                                     # time limit for the job (up to 24 hours: `0-24:00:00`)
 #SBATCH --job-name=af3_overfitting_e1_bs1                     # job name
@@ -34,7 +35,7 @@ export OMP_NUM_THREADS=8
 RUN_ID="8qnn9fqs"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
-srun -c 64 singularity exec --rocm \
+srun singularity exec --rocm \
     --cleanenv \
     -H "$PWD":/home \
     -B alphafold3-pytorch-lightning-hydra:/alphafold3-pytorch-lightning-hydra \
