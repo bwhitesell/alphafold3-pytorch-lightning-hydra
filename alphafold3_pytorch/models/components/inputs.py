@@ -3203,6 +3203,7 @@ def pdb_input_to_molecule_input(
             atom_indices_for_ligand_frame[ligand_frame_index] = atom_indices_for_frame[
                 ligand_frame_index
             ]
+            continue
 
         global_atom_indices = torch.gather(
             atom_indices_offsets, 0, atom_indices_for_frame[ligand_frame_index]
