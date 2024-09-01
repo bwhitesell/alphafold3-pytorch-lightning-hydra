@@ -3199,6 +3199,11 @@ def pdb_input_to_molecule_input(
     # craft ligand frame offsets
     atom_indices_for_ligand_frame = torch.zeros_like(atom_indices_for_frame)
     for ligand_frame_index in torch.where(is_ligand_frame)[0]:
+        if (atom_indices_for_frame[ligand_frame_index] == -1).any():
+            atom_indices_for_ligand_frame[ligand_frame_index] = atom_indices_for_frame[
+                ligand_frame_index
+            ]
+
         global_atom_indices = torch.gather(
             atom_indices_offsets, 0, atom_indices_for_frame[ligand_frame_index]
         )
