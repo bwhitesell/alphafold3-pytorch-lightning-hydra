@@ -52,9 +52,9 @@ model:
   diffusion_add_bond_loss: true
   visualize_val_samples_every_n_steps: 1
   net:
-    dim_single: 192
-    dim_pairwise: 64
-    dim_token: 192
+    dim_single: 64
+    dim_pairwise: 16
+    dim_token: 64
     pairformer_stack:
       depth: 4
 
