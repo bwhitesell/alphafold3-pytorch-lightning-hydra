@@ -54,6 +54,8 @@ srun -c 64 singularity exec \
     --pwd /alphafold3-pytorch-lightning-hydra \
     "$SINGULARITY_CONTAINER" \
     bash -c "
+        python3 -m pip install wandb==0.16.6 && \
+        cd /alphafold3-pytorch-lightning-hydra && \
         WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID \
         CONDA_PREFIX=/opt/miniforge3 \
         TYPECHECK=False DEBUG=False \

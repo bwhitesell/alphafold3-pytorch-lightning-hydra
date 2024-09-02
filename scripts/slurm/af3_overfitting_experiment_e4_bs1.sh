@@ -44,7 +44,7 @@ export RDZV_PORT=29400
 # For what `srun` is concerned, only one task is created, the `torchrun` process.
 
 # Define WandB run ID
-RUN_ID="ircmpbed"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="slgpvng0"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun -c 64 singularity exec \
@@ -54,6 +54,8 @@ srun -c 64 singularity exec \
     --pwd /alphafold3-pytorch-lightning-hydra \
     "$SINGULARITY_CONTAINER" \
     bash -c "
+        python3 -m pip install wandb==0.16.6 && \
+        cd /alphafold3-pytorch-lightning-hydra && \
         WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID \
         CONDA_PREFIX=/opt/miniforge3 \
         TYPECHECK=False DEBUG=False \
