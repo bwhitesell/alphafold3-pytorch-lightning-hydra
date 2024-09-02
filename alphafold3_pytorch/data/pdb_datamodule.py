@@ -346,6 +346,9 @@ class PDBDataModule(LightningDataModule):
                 if exists(self.hparams.sample_only_pdb_ids)
                 else None
             )
+            sample_only_pdb_ids_list = (
+                list(sample_only_pdb_ids) if exists(sample_only_pdb_ids) else None
+            )
 
             # data paths for each split
 
@@ -419,7 +422,7 @@ class PDBDataModule(LightningDataModule):
                     chain_mapping_paths=self.train_chain_mapping_paths,
                     interface_mapping_path=self.train_interface_mapping_path,
                     batch_size=1,
-                    pdb_ids_to_keep=list(sample_only_pdb_ids),
+                    pdb_ids_to_keep=sample_only_pdb_ids_list,
                 ),
                 sample_type=self.hparams.sample_type,
                 contiguous_weight=self.hparams.contiguous_weight,
@@ -444,7 +447,7 @@ class PDBDataModule(LightningDataModule):
                     chain_mapping_paths=self.val_chain_mapping_paths,
                     interface_mapping_path=self.val_interface_mapping_path,
                     batch_size=1,
-                    pdb_ids_to_keep=list(sample_only_pdb_ids),
+                    pdb_ids_to_keep=sample_only_pdb_ids_list,
                 ),
                 sample_type=self.hparams.sample_type,
                 contiguous_weight=self.hparams.contiguous_weight,
@@ -469,7 +472,7 @@ class PDBDataModule(LightningDataModule):
                     chain_mapping_paths=self.test_chain_mapping_paths,
                     interface_mapping_path=self.test_interface_mapping_path,
                     batch_size=1,
-                    pdb_ids_to_keep=list(sample_only_pdb_ids),
+                    pdb_ids_to_keep=sample_only_pdb_ids_list,
                 ),
                 sample_type=self.hparams.sample_type,
                 contiguous_weight=self.hparams.contiguous_weight,
