@@ -1,6 +1,6 @@
 [project]
 name = "alphafold3-pytorch-lightning-hydra"
-version = "0.4.20"
+version = "0.4.21"
 description = "AlphaFold 3 - Pytorch"
 authors = [
     { name = "Phil Wang", email = "lucidrains@gmail.com" },
@@ -52,9 +52,11 @@ dependencies = [
     "adam-atan2-pytorch>=0.0.8", # optimization
     "beartype",        # runtime type checking
     "biopython>=1.83", # for biological data parsing
+    "click",           # for command line interfaces
     "CoLT5-attention>=0.11.0", # for CoLT5 attention
     "einx>=0.2.2",     # for Einstein-inspired notation
     "einops>=0.8.0",   # for Einstein-inspired operations
+    "fastapi",         # for web APIs
     "frame-averaging-pytorch>=0.0.18", # for geometric data augmentation
     "gemmi>=0.6.6",    # for mmCIF file metadata parsing
     "huggingface_hub>=0.21.4", # for downloading pretrained HuggingFace weights
