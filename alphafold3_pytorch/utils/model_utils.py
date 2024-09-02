@@ -671,20 +671,25 @@ def get_indices_three_closest_atom_pos(
         pair_mask = einx.logical_and("... i, ... j -> ... i j", mask, mask)
         atom_dist.masked_fill_(~pair_mask, mask_value)
 
-    # will use topk on the negative of the distance
+    if insufficient_atom_mask.any():
+        three_atom_indices = torch.full(
+            (batch_size, num_atoms, 3), -1, dtype=torch.long, device=device
+        )
+    else:
+        # will use topk on the negative of the distance
 
-    _, two_closest_atom_indices = (-atom_dist).topk(2, dim=-1)
+        _, two_closest_atom_indices = (-atom_dist).topk(2, dim=-1)
 
-    # place each atom at the center of its frame
+        # place each atom at the center of its frame
 
-    three_atom_indices, _ = pack(
-        (
-            two_closest_atom_indices[..., 0],
-            torch.arange(num_atoms, device=device).unsqueeze(0).expand(batch_size, -1),
-            two_closest_atom_indices[..., 1],
-        ),
-        "b n *",
-    )
+        three_atom_indices, _ = pack(
+            (
+                two_closest_atom_indices[..., 0],
+                torch.arange(num_atoms, device=device).unsqueeze(0).expand(batch_size, -1),
+                two_closest_atom_indices[..., 1],
+            ),
+            "b n *",
+        )
 
     # mask out
 
