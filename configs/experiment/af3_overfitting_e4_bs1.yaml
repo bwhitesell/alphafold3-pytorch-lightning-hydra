@@ -65,7 +65,7 @@ model:
       depth: 1
       dim_msa: 8
     pairformer_stack:
-      depth: 12
+      depth: 8
       pair_bias_attn_dim_head: 4
       pair_bias_attn_heads: 2
     diffusion_module_kwargs:
