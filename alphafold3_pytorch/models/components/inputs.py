@@ -210,7 +210,7 @@ def hard_validate_atom_indices_ascending(
 
         assert (
             difference >= 0
-        ).all(), f"Detected invalid {error_msg_field} for a batch: {present_indices}"
+        ).all(), f"Detected invalid {error_msg_field} for a batch: {present_indices} with differences: {difference}"
 
 
 # atom level, what Alphafold3 accepts
