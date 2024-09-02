@@ -2715,7 +2715,7 @@ class ElucidatedAtomDiffusion(Module):
         ):
             sigma, sigma_next, gamma = tuple(t.item() for t in (sigma, sigma_next, gamma))
 
-            atom_pos = maybe_augment_fn(atom_pos)
+            atom_pos = maybe_augment_fn(atom_pos).type(dtype)
 
             eps = self.S_noise * torch.randn(
                 shape, dtype=dtype, device=self.device
@@ -4069,7 +4069,6 @@ class CentreRandomAugmentation(Module):
         :param mask: The mask for variable lengths.
         :return: The augmented coordinates.
         """
-        dtype = coords.dtype
         batch_size = coords.shape[0]
 
         # Center the coordinates
@@ -4078,7 +4077,7 @@ class CentreRandomAugmentation(Module):
         if exists(mask):
             coords = einx.where("b n, b n c, -> b n c", mask, coords, 0.0)
             num = reduce(coords, "b n c -> b c", "sum")
-            den = reduce(mask.type(dtype), "b n -> b", "sum")
+            den = reduce(mask.float(), "b n -> b", "sum")
             coords_mean = einx.divide("b c, b -> b 1 c", num, den.clamp(min=1.0))
         else:
             coords_mean = coords.mean(dim=1, keepdim=True)
@@ -4086,10 +4085,10 @@ class CentreRandomAugmentation(Module):
         centered_coords = coords - coords_mean
 
         # Generate random rotation matrix
-        rotation_matrix = self._random_rotation_matrix(batch_size).type(dtype)
+        rotation_matrix = self._random_rotation_matrix(batch_size)
 
         # Generate random translation vector
-        translation_vector = self._random_translation_vector(batch_size).type(dtype)
+        translation_vector = self._random_translation_vector(batch_size)
         translation_vector = rearrange(translation_vector, "b c -> b 1 c")
 
         # Apply rotation and translation
@@ -6973,7 +6972,7 @@ class Alphafold3(Module):
 
                 # normal random augmentations, 48 times in paper
 
-                atom_pos = self.augmenter(atom_pos, mask=aug_atom_mask)
+                atom_pos = self.augmenter(atom_pos, mask=aug_atom_mask).type(dtype)
 
                 # concat back the stochastic frame averaged position
 
