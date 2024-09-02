@@ -67,3 +67,4 @@ model:
 
 trainer:
   gradient_clip_val: 0 # NOTE: indicates no clipping is performed, to work around FSDP's clipping limitations
+  precision: bf16-mixed
