@@ -67,9 +67,7 @@ srun -c 64 singularity exec \
         --rdzv_endpoint=$RDZV_HOST:$RDZV_PORT \
         alphafold3_pytorch/train.py \
         experiment=af3_initial_training \
-        data.batch_size=$NUM_PYTORCH_PROCESSES \
-        trainer.num_nodes=$SLURM_JOB_NUM_NODES \
-        trainer.devices=4
+        data.batch_size=$((SLURM_JOB_NUM_NODES*NUM_PYTORCH_PROCESSES))
     "
 
 # Inform user of run completion
