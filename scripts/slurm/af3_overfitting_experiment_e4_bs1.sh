@@ -69,7 +69,7 @@ srun -c 64 singularity exec \
         experiment=af3_overfitting_e4_bs1 \
         data.batch_size=$((SLURM_JOB_NUM_NODES*NUM_PYTORCH_PROCESSES)) \
         trainer.num_nodes=$SLURM_JOB_NUM_NODES \
-        trainer.devices=$NUM_PYTORCH_PROCESSES
+        trainer.devices='[0, 2, 4, 6]'
     "
 
 # Inform user of run completion
