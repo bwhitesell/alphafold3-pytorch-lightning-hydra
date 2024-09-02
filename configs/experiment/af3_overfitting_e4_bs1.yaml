@@ -52,10 +52,10 @@ model:
   diffusion_add_bond_loss: true
   visualize_val_samples_every_n_steps: 1
   net:
-    dim_atom: 128
-    dim_single: 384
-    dim_pairwise: 128
-    dim_token: 768
+    dim_atom: 64
+    dim_single: 192
+    dim_pairwise: 64
+    dim_token: 192
     diffusion_num_augmentations: 48
     confidence_head_kwargs:
       pairformer_depth: 1
@@ -63,11 +63,11 @@ model:
       pairformer_stack_depth: 1
     msa_module_kwargs:
       depth: 1
-      dim_msa: 64
+      dim_msa: 32
     pairformer_stack:
       depth: 1
-      pair_bias_attn_dim_head: 64
-      pair_bias_attn_heads: 16
+      pair_bias_attn_dim_head: 32
+      pair_bias_attn_heads: 8
     diffusion_module_kwargs:
       atom_encoder_depth: 1
       token_transformer_depth: 1
