@@ -69,7 +69,7 @@ srun -c 64 singularity exec \
         experiment=af3_initial_training \
         data.batch_size=$NUM_PYTORCH_PROCESSES \
         trainer.num_nodes=$SLURM_JOB_NUM_NODES \
-        trainer.devices='[0, 2, 4, 6]'
+        trainer.devices=4
     "
 
 # Inform user of run completion
