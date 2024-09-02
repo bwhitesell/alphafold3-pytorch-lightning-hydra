@@ -140,7 +140,8 @@
                 "trainer=fsdp",
                 "trainer.devices=1",
                 "trainer.val_check_interval=1",
-                // "+trainer.detect_anomaly=true",
+                // "+trainer.precision=16-true",
+                "+trainer.detect_anomaly=true",
             ]
         },
         {

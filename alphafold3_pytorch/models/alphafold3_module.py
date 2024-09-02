@@ -471,7 +471,9 @@ class Alphafold3LitModule(LightningModule):
             example_atom_mask = atom_mask[b]
             sampled_atom_positions = sampled_atom_pos[b][example_atom_mask].cpu().numpy()
             example_b_factors = (
-                b_factors[b][example_atom_mask].cpu().numpy() if exists(b_factors) else None
+                b_factors[b][example_atom_mask].float().cpu().numpy()
+                if exists(b_factors)
+                else None
             )
 
             mmcif_writing.write_mmcif_from_filepath_and_id(
