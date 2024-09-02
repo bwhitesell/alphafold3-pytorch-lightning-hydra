@@ -636,12 +636,12 @@ def get_indices_three_closest_atom_pos(
     :param mask: The mask to apply.
     :return: The indices of the three closest atoms to each atom.
     """
-    prec_dims, device = atom_pos.shape[:-2], atom_pos.device
+    atom_dims, device = atom_pos.shape[-3:-1], atom_pos.device
     num_atoms, has_batch = atom_pos.shape[-2], atom_pos.ndim == 3
     batch_size = 1 if not has_batch else atom_pos.shape[0]
 
-    if not exists(mask) and num_atoms < 3:
-        return atom_pos.new_full((*prec_dims, 3), -1).long()
+    if num_atoms < 3:
+        return atom_pos.new_full((*atom_dims, 3), -1).long()
 
     if not has_batch:
         atom_pos = rearrange(atom_pos, "... -> 1 ...")
@@ -671,25 +671,20 @@ def get_indices_three_closest_atom_pos(
         pair_mask = einx.logical_and("... i, ... j -> ... i j", mask, mask)
         atom_dist.masked_fill_(~pair_mask, mask_value)
 
-    if insufficient_atom_mask.any():
-        three_atom_indices = torch.full(
-            (batch_size, num_atoms, 3), -1, dtype=torch.long, device=device
-        )
-    else:
-        # will use topk on the negative of the distance
+    # will use topk on the negative of the distance
 
-        _, two_closest_atom_indices = (-atom_dist).topk(2, dim=-1)
+    _, two_closest_atom_indices = (-atom_dist).topk(2, dim=-1)
 
-        # place each atom at the center of its frame
+    # place each atom at the center of its frame
 
-        three_atom_indices, _ = pack(
-            (
-                two_closest_atom_indices[..., 0],
-                torch.arange(num_atoms, device=device).unsqueeze(0).expand(batch_size, -1),
-                two_closest_atom_indices[..., 1],
-            ),
-            "b n *",
-        )
+    three_atom_indices, _ = pack(
+        (
+            two_closest_atom_indices[..., 0],
+            torch.arange(num_atoms, device=device).unsqueeze(0).expand(batch_size, -1),
+            two_closest_atom_indices[..., 1],
+        ),
+        "b n *",
+    )
 
     # mask out
 
