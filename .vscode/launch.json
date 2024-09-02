@@ -139,7 +139,8 @@
                 "strategy=fsdp",
                 "trainer=fsdp",
                 "trainer.devices=1",
-                // "trainer.val_check_interval=2",
+                "trainer.val_check_interval=1",
+                // "+trainer.detect_anomaly=true",
             ]
         },
         {

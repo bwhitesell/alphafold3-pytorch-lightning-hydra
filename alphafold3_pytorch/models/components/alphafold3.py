@@ -4658,7 +4658,9 @@ class ComputeConfidenceScore(Module):
         logits = rearrange(logits, "b plddt m -> b m plddt")
         num_bins = logits.shape[-1]
         bin_width = 1.0 / num_bins
-        bin_centers = torch.arange(0.5 * bin_width, 1.0, bin_width, device=logits.device)
+        bin_centers = torch.arange(
+            0.5 * bin_width, 1.0, bin_width, dtype=logits.dtype, device=logits.device
+        )
         probs = F.softmax(logits, dim=-1)
 
         predicted_lddt = einsum(probs, bin_centers, "b m plddt, plddt -> b m")
@@ -5333,13 +5335,15 @@ class ComputeModelSelectionScore(Module):
         :return: [b] global PDE
         """
 
+        dtype = pde_logits.dtype
+
         pde = self.compute_confidence_score.compute_pde(pde_logits, tok_repr_atm_mask)
 
         dist_logits = rearrange(dist_logits, "b dist i j -> b i j dist")
         dist_probs = F.softmax(dist_logits, dim=-1)
 
         # for distances greater than the last breaks
-        dist_breaks = F.pad(dist_breaks, (0, 1), value=1e6)
+        dist_breaks = F.pad(dist_breaks.float(), (0, 1), value=1e6).type(dtype)
         contact_mask = dist_breaks < self.contact_mask_threshold
 
         contact_prob = einx.where(
