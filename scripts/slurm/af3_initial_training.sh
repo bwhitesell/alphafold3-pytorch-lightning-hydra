@@ -29,7 +29,7 @@ mkdir -p "${MIOPEN_USER_DB_PATH}"
 export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.4.20_dev.sif"
 
 # Set number of PyTorch (GPU) processes per node to be spawned by torchrun - NOTE: One for each GCD
-NUM_PYTORCH_PROCESSES=4
+NUM_PYTORCH_PROCESSES=8
 # Set the number of threads to be generated for each PyTorch (GPU) process
 export OMP_NUM_THREADS=8
 
@@ -69,7 +69,7 @@ srun -c 64 singularity exec \
         experiment=af3_initial_training \
         data.batch_size=$((SLURM_JOB_NUM_NODES*NUM_PYTORCH_PROCESSES)) \
         trainer.num_nodes=$SLURM_JOB_NUM_NODES \
-        trainer.devices='[0, 2, 4, 6]'
+        trainer.devices=$NUM_PYTORCH_PROCESSES
     "
 
 # Inform user of run completion
