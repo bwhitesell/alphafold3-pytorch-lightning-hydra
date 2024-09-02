@@ -2715,7 +2715,7 @@ class ElucidatedAtomDiffusion(Module):
         ):
             sigma, sigma_next, gamma = tuple(t.item() for t in (sigma, sigma_next, gamma))
 
-            atom_pos = maybe_augment_fn(atom_pos).type(dtype)
+            atom_pos = maybe_augment_fn(atom_pos.float()).type(dtype)
 
             eps = self.S_noise * torch.randn(
                 shape, dtype=dtype, device=self.device
@@ -6968,11 +6968,13 @@ class Alphafold3(Module):
                     fa_atom_pos, atom_pos = atom_pos[:1], atom_pos[1:]
                     fa_atom_mask, aug_atom_mask = atom_mask[:1], atom_mask[1:]
 
-                    fa_atom_pos = self.frame_average(fa_atom_pos, frame_average_mask=fa_atom_mask)
+                    fa_atom_pos = self.frame_average(
+                        fa_atom_pos.float(), frame_average_mask=fa_atom_mask
+                    ).type(dtype)
 
                 # normal random augmentations, 48 times in paper
 
-                atom_pos = self.augmenter(atom_pos, mask=aug_atom_mask).type(dtype)
+                atom_pos = self.augmenter(atom_pos.float(), mask=aug_atom_mask).type(dtype)
 
                 # concat back the stochastic frame averaged position
 
