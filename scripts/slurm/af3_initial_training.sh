@@ -59,6 +59,7 @@ srun -c 64 singularity exec \
         WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID \
         CONDA_PREFIX=/opt/miniforge3 \
         TYPECHECK=False DEBUG=False \
+        PYTORCH_HIP_ALLOC_CONF=expandable_segments:True \
         torchrun \
         --nnodes=$SLURM_JOB_NUM_NODES \
         --nproc_per_node=$NUM_PYTORCH_PROCESSES \
