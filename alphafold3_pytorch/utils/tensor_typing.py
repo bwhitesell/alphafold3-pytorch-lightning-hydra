@@ -12,10 +12,7 @@ from Bio.PDB.Residue import DisorderedResidue, Residue
 from jaxtyping import Bool, Float, Int, Shaped, jaxtyped
 from torch import Tensor
 
-from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.utils import always, identity
-
-logger = RankedLogger(__name__, rank_zero_only=True)
 
 # environment
 
@@ -61,17 +58,13 @@ beartype_isinstance = is_bearable if should_typecheck else always(True)
 
 if should_typecheck:
     print("Type checking is enabled.")
-    logger.info("Type checking is enabled.")
 else:
     print("Type checking is disabled.")
-    logger.info("Type checking is disabled.")
 
 if IS_DEBUGGING:
     print("Debugging is enabled.")
-    logger.info("Debugging is enabled.")
 else:
     print("Debugging is disabled.")
-    logger.info("Debugging is disabled.")
 
 __all__ = [
     beartype_isinstance,
