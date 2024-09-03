@@ -43,6 +43,12 @@ model:
     dim_pairwise: 8
     dim_token: 8
     diffusion_num_augmentations: 4
+
+    checkpoint_trunk_pairformer: false
+    checkpoint_distogram_head: false
+    checkpoint_confidence_head: false
+    checkpoint_diffusion_token_transformer: false
+
     confidence_head_kwargs:
       pairformer_depth: 1
     template_embedder_kwargs:
@@ -66,4 +72,4 @@ model:
           dim_head: 4
 
 trainer:
-  precision: 32
+  precision: bf16-mixed

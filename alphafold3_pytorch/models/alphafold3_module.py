@@ -481,7 +481,7 @@ class Alphafold3LitModule(LightningModule):
             )
 
             example_atom_mask = atom_mask[b]
-            sampled_atom_positions = sampled_atom_pos[b][example_atom_mask].cpu().numpy()
+            sampled_atom_positions = sampled_atom_pos[b][example_atom_mask].float().cpu().numpy()
             example_b_factors = (
                 b_factors[b][example_atom_mask].float().cpu().numpy()
                 if exists(b_factors)
