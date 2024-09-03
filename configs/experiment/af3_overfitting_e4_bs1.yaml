@@ -58,10 +58,10 @@ model:
     dim_token: 192
     diffusion_num_augmentations: 12
 
-    checkpoint_trunk_pairformer: false
-    checkpoint_distogram_head: false
-    checkpoint_confidence_head: false
-    checkpoint_diffusion_token_transformer: false
+    checkpoint_trunk_pairformer: true
+    checkpoint_distogram_head: true
+    checkpoint_confidence_head: true
+    checkpoint_diffusion_token_transformer: true
 
     confidence_head_kwargs:
       pairformer_depth: 1
