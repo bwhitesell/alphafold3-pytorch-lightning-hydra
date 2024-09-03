@@ -60,9 +60,18 @@ typecheck = jaxtyped(typechecker=beartype) if should_typecheck else identity
 beartype_isinstance = is_bearable if should_typecheck else always(True)
 
 if should_typecheck:
+    print("Type checking is enabled.")
     logger.info("Type checking is enabled.")
+else:
+    print("Type checking is disabled.")
+    logger.info("Type checking is disabled.")
+
 if IS_DEBUGGING:
+    print("Debugging is enabled.")
     logger.info("Debugging is enabled.")
+else:
+    print("Debugging is disabled.")
+    logger.info("Debugging is disabled.")
 
 __all__ = [
     beartype_isinstance,
