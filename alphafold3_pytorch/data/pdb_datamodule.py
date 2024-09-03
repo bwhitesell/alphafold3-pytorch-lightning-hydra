@@ -35,7 +35,7 @@ def collate_inputs_to_batched_atom_input(
     int_pad_value=-1,
     atoms_per_window: int | None = None,
     map_input_fn: Callable | None = None,
-) -> BatchedAtomInput:
+) -> BatchedAtomInput | None:
     """Collate function for a list of AtomInput objects.
 
     :param inputs: A list of AtomInput objects.
@@ -51,6 +51,8 @@ def collate_inputs_to_batched_atom_input(
     # and for any that is not AtomInput, try to transform it with the registered input type to corresponding registered function
 
     atom_inputs = maybe_transform_to_atom_inputs(inputs)
+    if not atom_inputs:
+        return None
 
     # take care of windowing the atompair_inputs and atompair_ids if they are not windowed already
 

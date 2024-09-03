@@ -148,13 +148,16 @@ class Alphafold3LitModule(LightningModule):
         return loss, loss_breakdown
 
     @typecheck
-    def training_step(self, batch: BatchedAtomInput, batch_idx: int) -> Tensor:
+    def training_step(self, batch: BatchedAtomInput | None, batch_idx: int) -> Tensor:
         """Perform a single training step on a batch of data from the training set.
 
         :param batch: A batch of `AtomInput` data.
         :param batch_idx: The index of the current batch.
         :return: A tensor of losses.
         """
+        if not exists(batch):
+            return torch.tensor(0.0)
+
         loss, loss_breakdown = self.model_step(batch)
 
         # update and log metrics
@@ -187,12 +190,15 @@ class Alphafold3LitModule(LightningModule):
         return loss
 
     @typecheck
-    def validation_step(self, batch: BatchedAtomInput, batch_idx: int) -> None:
+    def validation_step(self, batch: BatchedAtomInput | None, batch_idx: int) -> None:
         """Perform a single validation step on a batch of data from the validation set.
 
         :param batch: A batch of `AtomInput` data.
         :param batch_idx: The index of the current batch.
         """
+        if not exists(batch):
+            return
+
         batch_dict = batch.dict()
         prepared_model_batch_dict = self.prepare_batch_dict(batch.model_forward_dict())
 
@@ -315,12 +321,15 @@ class Alphafold3LitModule(LightningModule):
         )
 
     @typecheck
-    def test_step(self, batch: BatchedAtomInput, batch_idx: int) -> None:
+    def test_step(self, batch: BatchedAtomInput | None, batch_idx: int) -> None:
         """Perform a single test step on a batch of data from the test set.
 
         :param batch: A batch of `AtomInput` data.
         :param batch_idx: The index of the current batch.
         """
+        if not exists(batch):
+            return
+
         batch_dict = batch.dict()
         prepared_model_batch_dict = self.prepare_batch_dict(batch.model_forward_dict())
 
