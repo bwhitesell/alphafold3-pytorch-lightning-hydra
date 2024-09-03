@@ -26,7 +26,7 @@ rm -rf "${MIOPEN_USER_DB_PATH}"
 mkdir -p "${MIOPEN_USER_DB_PATH}"
 
 # Define the container image path
-export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.4.20_dev.sif"
+export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.4.27_dev.sif"
 
 # Set number of PyTorch (GPU) processes per node to be spawned by torchrun - NOTE: One for each GCD
 NUM_PYTORCH_PROCESSES=8
@@ -54,8 +54,6 @@ srun -c 64 singularity exec \
     --pwd /alphafold3-pytorch-lightning-hydra \
     "$SINGULARITY_CONTAINER" \
     bash -c "
-        python3 -m pip install wandb==0.16.6 deepspeed==0.15.0 && \
-        cd /alphafold3-pytorch-lightning-hydra && \
         WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID \
         CONDA_PREFIX=/opt/miniforge3 \
         TYPECHECK=False DEBUG=False \
