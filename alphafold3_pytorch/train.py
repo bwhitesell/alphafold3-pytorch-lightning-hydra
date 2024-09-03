@@ -4,10 +4,10 @@ from typing import Any, Dict, List, Optional, Tuple
 import hydra
 import lightning as L
 import rootutils
+import torch
 from lightning import Callback, LightningDataModule, LightningModule, Trainer
 from lightning.fabric.plugins.environments.cluster_environment import ClusterEnvironment
 from lightning.pytorch.loggers import Logger
-from lightning.pytorch.loggers.wandb import WandbLogger
 from lightning.pytorch.strategies.strategy import Strategy
 from omegaconf import DictConfig
 
@@ -44,6 +44,8 @@ from alphafold3_pytorch.utils import (
 )
 
 log = RankedLogger(__name__, rank_zero_only=True)
+
+torch.set_float32_matmul_precision("high")
 
 
 @task_wrapper
