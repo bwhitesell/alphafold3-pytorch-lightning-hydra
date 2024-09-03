@@ -1,4 +1,5 @@
 import os
+import time
 from typing import Any, Dict, List, Literal, Tuple
 
 import rootutils
@@ -65,7 +66,6 @@ class Alphafold3LitModule(LightningModule):
 
     def __init__(
         self,
-        net: torch.nn.Module,
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler,
         compile: bool,
@@ -76,9 +76,8 @@ class Alphafold3LitModule(LightningModule):
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt
 
-        self.save_hyperparameters(ignore=["net"], logger=False)
-
-        self.net = net
+        self.net = None
+        self.save_hyperparameters(logger=False)
 
         # for averaging loss across batches
 
@@ -587,6 +586,22 @@ class Alphafold3LitModule(LightningModule):
         """
         if self.hparams.compile and stage == "fit":
             self.net = torch.compile(self.net)
+
+    def configure_model(self):
+        """Configure the model to be used for training, validation, testing, or prediction.
+
+        :return: The configured model.
+        """
+        if exists(self.net):
+            return
+
+        if exists(self.trainer):
+            sleep = self.trainer.global_rank * 4
+            log.info(f"Rank {self.trainer.global_rank}: Sleeping for {sleep}s to avoid CPU OOMs.")
+            time.sleep(sleep)
+
+        net_config = {k: v for k, v in self.hparams.net.items() if k != "target"}
+        self.net = self.hparams.net["target"](**net_config)
 
     def configure_optimizers(self):
         """Choose what optimizers and optional learning-rate schedulers to use during model

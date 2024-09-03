@@ -10,7 +10,7 @@ defaults:
   - override /data: pdb
   - override /logger: wandb
   - override /model: alphafold3
-  - override /trainer: fsdp
+  - override /trainer: deepspeed
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
@@ -66,5 +66,4 @@ model:
           dim_head: 4
 
 trainer:
-  gradient_clip_val: 0 # NOTE: indicates no clipping is performed, to work around FSDP's clipping limitations
-  precision: bf16-mixed
+  precision: 32
