@@ -301,9 +301,6 @@ class Alphafold3LitModule(LightningModule):
                     b_factors=top_sample_plddt,
                 )
 
-        # free up GPU memory
-        # garbage_collection_cuda()
-
     def on_validation_epoch_end(self) -> None:
         "Lightning hook that is called when a validation epoch ends."
         val_model_selection_score = (
@@ -322,6 +319,10 @@ class Alphafold3LitModule(LightningModule):
             sync_dist=True,
             prog_bar=True,
         )
+
+        # free up GPU memory
+
+        garbage_collection_cuda()
 
     @typecheck
     def test_step(self, batch: BatchedAtomInput | None, batch_idx: int) -> None:
@@ -438,9 +439,6 @@ class Alphafold3LitModule(LightningModule):
                     filename_suffixes=filename_suffixes,
                     b_factors=top_sample_plddt,
                 )
-
-        # free up GPU memory
-        # garbage_collection_cuda()
 
     @typecheck
     @torch.inference_mode()
