@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Literal, Tuple
 import rootutils
 import torch
 from lightning import LightningModule
+from lightning.pytorch.utilities.memory import garbage_collection_cuda
 from torch import Tensor
 from torchmetrics import MaxMetric, MeanMetric
 
@@ -259,7 +260,7 @@ class Alphafold3LitModule(LightningModule):
 
         # update and log metrics
 
-        self.val_model_selection_score(score_details.score)
+        self.val_model_selection_score(score_details.score.detach())
         self.log(
             "val/model_selection_score",
             self.val_model_selection_score,
@@ -269,7 +270,7 @@ class Alphafold3LitModule(LightningModule):
             batch_size=len(batch.atom_inputs),
         )
 
-        self.val_top_ranked_lddt(top_ranked_lddt)
+        self.val_top_ranked_lddt(top_ranked_lddt.detach())
         self.log(
             "val/top_ranked_lddt",
             self.val_top_ranked_lddt,
@@ -299,6 +300,9 @@ class Alphafold3LitModule(LightningModule):
                     filename_suffixes=filename_suffixes,
                     b_factors=top_sample_plddt,
                 )
+
+        # free up GPU memory
+        # garbage_collection_cuda()
 
     def on_validation_epoch_end(self) -> None:
         "Lightning hook that is called when a validation epoch ends."
@@ -394,7 +398,7 @@ class Alphafold3LitModule(LightningModule):
 
         # update and log metrics
 
-        self.test_model_selection_score(score_details.score)
+        self.test_model_selection_score(score_details.score.detach())
         self.log(
             "test/model_selection_score",
             self.test_model_selection_score,
@@ -404,7 +408,7 @@ class Alphafold3LitModule(LightningModule):
             batch_size=len(batch.atom_inputs),
         )
 
-        self.test_top_ranked_lddt(top_ranked_lddt)
+        self.test_top_ranked_lddt(top_ranked_lddt.detach())
         self.log(
             "test/top_ranked_lddt",
             self.test_top_ranked_lddt,
@@ -434,6 +438,9 @@ class Alphafold3LitModule(LightningModule):
                     filename_suffixes=filename_suffixes,
                     b_factors=top_sample_plddt,
                 )
+
+        # free up GPU memory
+        # garbage_collection_cuda()
 
     @typecheck
     @torch.inference_mode()
