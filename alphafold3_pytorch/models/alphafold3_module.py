@@ -165,14 +165,14 @@ class Alphafold3LitModule(LightningModule):
         self.log(
             "train/loss",
             self.train_loss,
-            on_step=True,
+            on_step=False,
             on_epoch=True,
             prog_bar=True,
             batch_size=len(batch.atom_inputs),
         )
         self.log_dict(
             loss_breakdown._asdict(),
-            on_step=True,
+            on_step=False,
             on_epoch=True,
             prog_bar=False,
             batch_size=len(batch.atom_inputs),
@@ -263,7 +263,7 @@ class Alphafold3LitModule(LightningModule):
         self.log(
             "val/model_selection_score",
             self.val_model_selection_score,
-            on_step=True,
+            on_step=False,
             on_epoch=True,
             prog_bar=True,
             batch_size=len(batch.atom_inputs),
@@ -273,7 +273,7 @@ class Alphafold3LitModule(LightningModule):
         self.log(
             "val/top_ranked_lddt",
             self.val_top_ranked_lddt,
-            on_step=True,
+            on_step=False,
             on_epoch=True,
             prog_bar=True,
             batch_size=len(batch.atom_inputs),
@@ -398,7 +398,7 @@ class Alphafold3LitModule(LightningModule):
         self.log(
             "test/model_selection_score",
             self.test_model_selection_score,
-            on_step=True,
+            on_step=False,
             on_epoch=True,
             prog_bar=True,
             batch_size=len(batch.atom_inputs),
@@ -408,7 +408,7 @@ class Alphafold3LitModule(LightningModule):
         self.log(
             "test/top_ranked_lddt",
             self.test_top_ranked_lddt,
-            on_step=True,
+            on_step=False,
             on_epoch=True,
             prog_bar=True,
             batch_size=len(batch.atom_inputs),
