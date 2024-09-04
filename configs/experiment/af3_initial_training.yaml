@@ -52,11 +52,11 @@ model:
     dim_token: 8
     diffusion_num_augmentations: 4
 
-    checkpoint_input_embedding: false
-    checkpoint_trunk_pairformer: false
+    checkpoint_input_embedding: true
+    checkpoint_trunk_pairformer: true
     checkpoint_distogram_head: false
     checkpoint_confidence_head: false
-    checkpoint_diffusion_token_transformer: false
+    checkpoint_diffusion_token_transformer: true
 
     confidence_head_kwargs:
       pairformer_depth: 1
