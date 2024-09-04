@@ -54,7 +54,6 @@ is_molecule_types: [*, 5]:
 
 from __future__ import annotations
 
-import os
 import random
 import tempfile
 from functools import partial, wraps
@@ -65,6 +64,7 @@ from typing import Dict, List, Literal, NamedTuple, Tuple
 
 import Bio
 import einx
+import rootutils
 import sh
 import torch
 import torch.nn as nn
@@ -75,6 +75,7 @@ from Bio.PDB.StructureBuilder import StructureBuilder
 from colt5_attention import ConditionalRoutedAttention
 from einops import einsum, pack, rearrange, reduce, repeat, unpack
 from einops.layers.torch import Rearrange
+from environs import Env
 from frame_averaging_pytorch import FrameAverage
 from huggingface_hub import PyTorchModelHubMixin, hf_hub_download
 from taylor_series_linear_attention import TaylorSeriesLinearAttn
@@ -151,15 +152,20 @@ LinearNoBias = partial(Linear, bias=False)
 
 logger = RankedLogger(__name__, rank_zero_only=False)
 
+# environment
+
+rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
+
+env = Env()
+env.read_env()
+
 # always use non reentrant checkpointing
 
-DEEPSPEED_CHECKPOINTING = os.getenv("DEEPSPEED_CHECKPOINTING", "False").lower() in (
-    "true",
-    "1",
-    "t",
-)
+DEEPSPEED_CHECKPOINTING = env.bool("DEEPSPEED_CHECKPOINTING", False)
 
 if DEEPSPEED_CHECKPOINTING:
+    assert package_available("deepspeed"), "DeepSpeed must be installed for checkpointing."
+
     import deepspeed
 
     checkpoint = deepspeed.checkpointing.checkpoint
