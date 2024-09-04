@@ -44,6 +44,7 @@ model:
     dim_token: 8
     diffusion_num_augmentations: 4
 
+    checkpoint_input_embedding: false
     checkpoint_trunk_pairformer: false
     checkpoint_distogram_head: false
     checkpoint_confidence_head: false
