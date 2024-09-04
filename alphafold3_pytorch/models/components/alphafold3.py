@@ -157,7 +157,7 @@ if package_available("deepspeed"):
 
     checkpoint = deepspeed.checkpointing.checkpoint
 else:
-    partial(torch.utils.checkpoint.checkpoint, use_reentrant=False)
+    checkpoint = partial(torch.utils.checkpoint.checkpoint, use_reentrant=False)
 
 
 # linear and outer sum
