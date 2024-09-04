@@ -280,6 +280,7 @@ class PDBDataModule(LightningDataModule):
         batch_size: int = 1,
         num_workers: int = 0,
         pin_memory: bool = False,
+        prefetch_factor: int | None = None,
     ) -> None:
         super().__init__()
 
