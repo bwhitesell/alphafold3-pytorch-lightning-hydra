@@ -29,7 +29,7 @@ mkdir -p "${MIOPEN_USER_DB_PATH}"
 export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.4.28_dev.sif"
 
 # Set the number of threads to be generated for each PyTorch (GPU) process
-export OMP_NUM_THREADS=8
+export OMP_NUM_THREADS=1
 
 # Define WandB run ID
 RUN_ID="frfxzk3w"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
