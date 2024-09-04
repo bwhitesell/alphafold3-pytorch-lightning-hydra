@@ -57,13 +57,7 @@ model:
     dim_single: 192
     dim_pairwise: 64
     dim_token: 192
-    diffusion_num_augmentations: 12
-
-    checkpoint_input_embedding: true
-    checkpoint_trunk_pairformer: true
-    checkpoint_distogram_head: true
-    checkpoint_confidence_head: true
-    checkpoint_diffusion_token_transformer: true
+    diffusion_num_augmentations: 8
 
     confidence_head_kwargs:
       pairformer_depth: 1
@@ -95,4 +89,3 @@ trainer:
   check_val_every_n_epoch: null
   val_check_interval: 50
   log_every_n_steps: 1
-  precision: bf16-mixed

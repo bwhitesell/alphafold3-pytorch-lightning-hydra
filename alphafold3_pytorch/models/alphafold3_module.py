@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Literal, Tuple
 import rootutils
 import torch
 from lightning import LightningModule
-from lightning.pytorch.utilities.memory import garbage_collection_cuda
 from torch import Tensor
 from torchmetrics import MaxMetric, MeanMetric
 
@@ -319,9 +318,6 @@ class Alphafold3LitModule(LightningModule):
             sync_dist=True,
             prog_bar=True,
         )
-
-        # free up GPU memory
-        garbage_collection_cuda()
 
     @typecheck
     def test_step(self, batch: BatchedAtomInput | None, batch_idx: int) -> None:
