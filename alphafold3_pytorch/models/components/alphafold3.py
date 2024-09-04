@@ -54,6 +54,7 @@ is_molecule_types: [*, 5]:
 
 from __future__ import annotations
 
+import os
 import random
 import tempfile
 from functools import partial, wraps
@@ -152,7 +153,13 @@ logger = RankedLogger(__name__, rank_zero_only=False)
 
 # always use non reentrant checkpointing
 
-if package_available("deepspeed"):
+DEEPSPEED_CHECKPOINTING = os.getenv("DEEPSPEED_CHECKPOINTING", "False").lower() in (
+    "true",
+    "1",
+    "t",
+)
+
+if DEEPSPEED_CHECKPOINTING:
     import deepspeed
 
     checkpoint = deepspeed.checkpointing.checkpoint
