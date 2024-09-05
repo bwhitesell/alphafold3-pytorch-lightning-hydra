@@ -119,7 +119,7 @@ from alphafold3_pytorch.utils.model_utils import (
     calculate_weighted_rigid_align_weights,
     compact,
     concat_previous_window,
-    distance_to_bins,
+    distance_to_dgram,
     exclusive_cumsum,
     l2norm,
     lens_to_mask,
@@ -4618,7 +4618,9 @@ class ConfidenceHead(Module):
 
         intermolecule_dist = torch.cdist(pred_molecule_pos, pred_molecule_pos, p=2)
 
-        dist_bin_indices = distance_to_bins(intermolecule_dist, self.atompair_dist_bins)
+        dist_bin_indices = distance_to_dgram(
+            intermolecule_dist, self.atompair_dist_bins, return_labels=True
+        )
         pairwise_repr = pairwise_repr + self.dist_bin_pairwise_embed(dist_bin_indices)
 
         # pairformer stack
@@ -6955,7 +6957,9 @@ class Alphafold3(Module):
                 distogram_mask = atom_mask
 
             distogram_dist = torch.cdist(distogram_pos, distogram_pos, p=2)
-            distance_labels = distance_to_bins(distogram_dist, self.distance_bins)
+            distance_labels = distance_to_dgram(
+                distogram_dist, self.distance_bins, return_labels=True
+            )
 
             # account for representative distogram atom missing from residue (-1 set on distogram_atom_indices field)
 
@@ -7240,9 +7244,9 @@ class Alphafold3(Module):
                     mask=align_error_mask,
                 )
 
-                # calculate pae labels as alignment error binned to 64 (0 - 32A) (TODO: double-check correctness of `distance_to_bins`'s bin assignments)
+                # calculate pae labels as alignment error binned to 64 (0 - 32A)
 
-                pae_labels = distance_to_bins(align_error, self.pae_bins)
+                pae_labels = distance_to_dgram(align_error, self.pae_bins, return_labels=True)
 
                 # set ignore index for invalid molecules or frames
 
@@ -7284,7 +7288,7 @@ class Alphafold3(Module):
                 # calculate pde labels as distance error binned to 64 (0 - 32A)
 
                 pde_dist = torch.abs(pde_pred_dist - pde_gt_dist)
-                pde_labels = distance_to_bins(pde_dist, self.pde_bins)
+                pde_labels = distance_to_dgram(pde_dist, self.pde_bins, return_labels=True)
 
                 # account for representative molecule atom missing from residue (-1 set on molecule_atom_indices field)
 
