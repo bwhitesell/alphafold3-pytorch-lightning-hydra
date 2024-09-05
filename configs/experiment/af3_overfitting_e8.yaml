@@ -1,9 +1,9 @@
 # @package _global_
 
-# lists the experiment parameters corresponding to an "Overfitting Experiment" with one training example and batch size of one
+# lists the experiment parameters corresponding to an "Overfitting Experiment" with 8 training examples
 
 # to execute this experiment run:
-# python train.py experiment=af3_overfitting_e1_bs1
+# python train.py experiment=af3_overfitting_e8
 
 defaults:
   - override /callbacks: default
@@ -15,7 +15,20 @@ defaults:
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 
-tags: ["pdb", "alphafold3", "overfitting", "7a4d", "batch_size_1"]
+tags:
+  [
+    "pdb",
+    "alphafold3",
+    "overfitting",
+    "721p",
+    "209d",
+    "7a4d",
+    "1a6a",
+    "1g5a",
+    "1js0",
+    "1pu0",
+    "4ulv",
+  ]
 
 seed: 12345
 
@@ -25,16 +38,25 @@ data:
   max_msas_per_chain: 128
   max_templates_per_chain: 20
   num_templates_per_chain: 4
-  batch_size: 1
   overfitting_train_examples: true
-  sample_only_pdb_ids: [7a4d-assembly1]
+  sample_only_pdb_ids:
+    [
+      721p-assembly1,
+      209d-assembly1,
+      7a4d-assembly1,
+      1a6a-assembly1,
+      "1g5a-assembly1",
+      1js0-assembly1,
+      1pu0-assembly1,
+      4ulv-assembly1,
+    ]
 
 logger:
   wandb:
     entity: bml-lab
     group: "af3-overfitting-experiments"
     tags: ${tags}
-    name: e1-bs1-${now:%Y%m%d%H%M%S}
+    name: e8-${now:%Y%m%d%H%M%S}
 
 model:
   diffusion_add_smooth_lddt_loss: true
