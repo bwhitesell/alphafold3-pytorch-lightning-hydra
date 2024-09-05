@@ -525,7 +525,9 @@ class PDBDataModule(LightningDataModule):
             batch_size=self.batch_size_per_device,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
+            multiprocessing_context=self.hparams.multiprocessing_context,
             prefetch_factor=self.hparams.prefetch_factor,
+            persistent_workers=self.hparams.persistent_workers,
             shuffle=True,
             drop_last=True,
         )
@@ -540,7 +542,9 @@ class PDBDataModule(LightningDataModule):
             batch_size=self.batch_size_per_device,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
+            multiprocessing_context=self.hparams.multiprocessing_context,
             prefetch_factor=self.hparams.prefetch_factor,
+            persistent_workers=self.hparams.persistent_workers,
             shuffle=False,
             drop_last=True,
         )
@@ -555,7 +559,9 @@ class PDBDataModule(LightningDataModule):
             batch_size=self.batch_size_per_device,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
+            multiprocessing_context=self.hparams.multiprocessing_context,
             prefetch_factor=self.hparams.prefetch_factor,
+            persistent_workers=self.hparams.persistent_workers,
             shuffle=False,
             drop_last=False,
         )
