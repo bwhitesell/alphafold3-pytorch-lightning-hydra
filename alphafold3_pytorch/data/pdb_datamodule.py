@@ -1,7 +1,8 @@
+import multiprocessing
 import os
 import random
 from functools import partial
-from typing import Any, Callable, Dict, List, Literal, Tuple
+from typing import Any, Callable, Dict, List, Literal, Tuple, Union
 
 import torch
 from lightning import LightningDataModule
@@ -280,7 +281,9 @@ class PDBDataModule(LightningDataModule):
         batch_size: int = 1,
         num_workers: int = 0,
         pin_memory: bool = False,
+        multiprocessing_context: Union[str, multiprocessing.context.BaseContext] | None = None,
         prefetch_factor: int | None = None,
+        persistent_workers: bool = False,
     ) -> None:
         super().__init__()
 
