@@ -4348,7 +4348,7 @@ class DistogramHead(Module):
         self,
         *,
         dim_pairwise: int = 128,
-        num_dist_bins: int = 38,
+        num_dist_bins: int = 64,
         dim_atom: int = 128,
         atom_resolution: bool = False,
         checkpoint: bool = False,
@@ -6040,7 +6040,9 @@ class Alphafold3(Module):
         num_atom_embeds: int | None = None,
         num_atompair_embeds: int | None = None,
         num_molecule_mods: int | None = DEFAULT_NUM_MOLECULE_MODS,
-        distance_bins: List[float] = torch.linspace(3, 20, 38).float().tolist(),
+        distance_bins: List[float] = torch.linspace(2, 22, 64)
+        .float()
+        .tolist(),  # NOTE: in paper, they reuse AF2's setup of having 64 bins from 2 to 22
         pae_bins: List[float] = torch.linspace(0.5, 32, 64).float().tolist(),
         pde_bins: List[float] = torch.linspace(0.5, 32, 64).float().tolist(),
         ignore_index=-1,
