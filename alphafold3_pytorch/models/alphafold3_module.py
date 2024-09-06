@@ -116,12 +116,19 @@ class Alphafold3LitModule(LightningModule):
         """
         batch_dict = batch.dict()
         batch_model_forward_dict = self.prepare_batch_dict(batch.model_forward_dict())
+
+        filepaths = (
+            list(batch_dict["filepath"])
+            if "filepath" in batch_dict and exists(batch_dict["filepath"])
+            else None
+        )
+
         return self.network(
             **batch_model_forward_dict,
             return_loss_breakdown=True,
             diffusion_add_bond_loss=self.hparams.diffusion_add_bond_loss,
             diffusion_add_smooth_lddt_loss=self.hparams.diffusion_add_smooth_lddt_loss,
-            filepaths=list(batch_dict["filepath"]),
+            filepaths=filepaths,
         )
 
     def on_train_start(self) -> None:
