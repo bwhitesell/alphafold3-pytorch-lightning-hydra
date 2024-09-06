@@ -2830,6 +2830,7 @@ class ElucidatedAtomDiffusion(Module):
         ligand_loss_weight=10.0,
         return_loss_breakdown=False,
         single_structure_input=False,
+        filepaths: List[str] | None = None,
     ) -> ElucidatedAtomDiffusionReturn:
         """Perform the forward pass.
 
@@ -2856,6 +2857,7 @@ class ElucidatedAtomDiffusion(Module):
         :param ligand_loss_weight: The ligand loss weight.
         :param return_loss_breakdown: Whether to return the loss breakdown.
         :param single_structure_input: Whether to the input(s) represent a single structure.
+        :param filepaths: The input filepaths.
         :return: The output tensor.
         """
 
@@ -2926,7 +2928,9 @@ class ElucidatedAtomDiffusion(Module):
                 )
             except Exception as e:
                 # NOTE: For many (random) unit test inputs, permutation alignment can be unstable
-                logger.warning(f"Skipping multi-chain permutation alignment due to: {e}")
+                logger.warning(
+                    f"Skipping multi-chain permutation alignment {f'for {filepaths}' if exists(filepaths) else ''} due to: {e}"
+                )
 
         # main diffusion mse loss
 
@@ -6526,6 +6530,7 @@ class Alphafold3(Module):
         min_conf_resolution: float = 0.1,
         max_conf_resolution: float = 4.0,
         hard_validate: bool = False,
+        filepaths: List[str] | None = None,
     ) -> (
         Float["b m 3"]  # type: ignore
         | Float["ts b m 3"]  # type: ignore
@@ -6579,6 +6584,7 @@ class Alphafold3(Module):
         :param max_conf_resolution: The maximum PDB training set resolution at which to supervise
             confidence head predictions.
         :param hard_validate: Whether to hard validate the input tensors.
+        :param filepaths: The input filepaths.
         :return: The atomic coordinates, the confidence head logits, the distogram head logits, the
             loss, or the loss breakdown.
         """
@@ -7097,6 +7103,7 @@ class Alphafold3(Module):
                 nucleotide_loss_weight=self.nucleotide_loss_weight,
                 ligand_loss_weight=self.ligand_loss_weight,
                 single_structure_input=single_structure_input,
+                filepaths=filepaths,
             )
 
         # confidence head
@@ -7168,7 +7175,9 @@ class Alphafold3(Module):
                         )
                     except Exception as e:
                         # NOTE: For many (random) unit test inputs, permutation alignment can be unstable
-                        logger.warning(f"Skipping multi-chain permutation alignment due to: {e}")
+                        logger.warning(
+                            f"Skipping multi-chain permutation alignment {f'for {filepaths}' if exists(filepaths) else ''} due to: {e}"
+                        )
 
                 assert exists(
                     distogram_atom_indices

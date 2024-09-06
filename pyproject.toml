@@ -60,6 +60,8 @@ dependencies = [
     "environs",        # for environment variable parsing
     "fastapi",         # for web APIs
     "frame-averaging-pytorch>=0.0.18", # for geometric data augmentation
+    "gradio",         # for web interfaces
+    "gradio_molecule3d", # for 3D molecule visualization
     "gemmi>=0.6.6",    # for mmCIF file metadata parsing
     "huggingface_hub>=0.21.4", # for downloading pretrained HuggingFace weights
     "ipykernel",       # for running Jupyter notebooks

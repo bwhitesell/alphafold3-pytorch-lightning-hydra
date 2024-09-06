@@ -9,6 +9,9 @@ RUN apt-get update \
         git \
         wget \
         libxrender1 \
+        libxtst6 \
+        libxext6 \
+        libxi6 \
         kalign \
     curl \
     && rm -rf /var/lib/apt/lists/* \

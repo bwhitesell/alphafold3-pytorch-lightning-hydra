@@ -114,12 +114,14 @@ class Alphafold3LitModule(LightningModule):
         :param x: A batch of `AtomInput` data.
         :return: A tensor of losses as well as a breakdown of the component losses.
         """
-        batch_dict = self.prepare_batch_dict(batch.model_forward_dict())
+        batch_dict = batch.dict()
+        batch_model_forward_dict = self.prepare_batch_dict(batch.model_forward_dict())
         return self.network(
-            **batch_dict,
+            **batch_model_forward_dict,
             return_loss_breakdown=True,
             diffusion_add_bond_loss=self.hparams.diffusion_add_bond_loss,
             diffusion_add_smooth_lddt_loss=self.hparams.diffusion_add_smooth_lddt_loss,
+            filepaths=list(batch_dict["filepath"]),
         )
 
     def on_train_start(self) -> None:
