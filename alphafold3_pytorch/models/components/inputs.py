@@ -13,7 +13,7 @@ from functools import partial
 from io import StringIO
 from itertools import groupby
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Literal, Set, Tuple, Type, Union
+from typing import Any, Callable, Dict, List, Literal, Set, Tuple, Type
 
 import einx
 import numpy as np
@@ -3373,7 +3373,7 @@ class PDBDataset(Dataset):
         """Return the number of PDB mmCIF files in the dataset."""
         return len(self.files)
 
-    def get_item(self, idx: int | str) -> Union[PDBInput, AtomInput] | None:
+    def get_item(self, idx: int | str) -> PDBInput | AtomInput | None:
         """Return either a PDBInput or an AtomInput object for the specified index."""
         sampled_id = None
 
@@ -3429,7 +3429,7 @@ class PDBDataset(Dataset):
 
         return i
 
-    def __getitem__(self, idx: int | str, max_attempts: int = 10) -> Union[PDBInput, AtomInput]:
+    def __getitem__(self, idx: int | str, max_attempts: int = 10) -> PDBInput | AtomInput:
         """Return either a PDBInput or an AtomInput object for the specified index."""
         i = self.get_item(idx)
 

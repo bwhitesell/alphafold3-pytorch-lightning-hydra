@@ -37,6 +37,7 @@ def collate_inputs_to_batched_atom_input(
     int_pad_value=-1,
     atoms_per_window: int | None = None,
     map_input_fn: Callable | None = None,
+    transform_to_atom_inputs: bool = True,
 ) -> BatchedAtomInput | None:
     """Collate function for a list of AtomInput objects.
 
@@ -44,6 +45,7 @@ def collate_inputs_to_batched_atom_input(
     :param int_pad_value: The padding value for integer tensors.
     :param atoms_per_window: The number of atoms per window.
     :param map_input_fn: A function to apply to each input before collation.
+    :param transform_to_atom_inputs: Whether to transform the inputs to AtomInput objects.
     :return: A collated BatchedAtomInput object.
     """
     if exists(map_input_fn):
@@ -52,9 +54,7 @@ def collate_inputs_to_batched_atom_input(
     # go through all the inputs
     # and for any that is not AtomInput, try to transform it with the registered input type to corresponding registered function
 
-    if all(isinstance(i, AtomInput) for i in inputs):
-        atom_inputs = inputs
-    else:
+    if transform_to_atom_inputs:
         atom_inputs = maybe_transform_to_atom_inputs(inputs)
 
         if len(atom_inputs) < len(inputs):
@@ -65,6 +65,14 @@ def collate_inputs_to_batched_atom_input(
                 len(atom_inputs) > 0
             ), "No `AtomInput` objects could be created for the current batch."
             atom_inputs = random.choices(atom_inputs, k=len(inputs))  # nosec
+    else:
+        atom_inputs = inputs
+
+    assert all(isinstance(i, AtomInput) for i in atom_inputs), (
+        "All inputs must be of type `AtomInput`. "
+        "If you want to transform the inputs to `AtomInput`, "
+        "set `transform_to_atom_inputs=True`."
+    )
 
     # take care of windowing the atompair_inputs and atompair_ids if they are not windowed already
 
@@ -208,6 +216,7 @@ def AF3DataLoader(
     *args,
     atoms_per_window: int | None = None,
     map_input_fn: Callable | None = None,
+    transform_to_atom_inputs: bool = True,
     **kwargs,
 ):
     """Create a `torch.utils.data.DataLoader` with the `collate_inputs_to_batched_atom_input` or
@@ -216,10 +225,15 @@ def AF3DataLoader(
     :param args: The arguments to pass to `torch.utils.data.DataLoader`.
     :param atoms_per_window: The number of atoms per window.
     :param map_input_fn: A function to apply to each input before collation.
+    :param transform_to_atom_inputs: Whether to transform the inputs to AtomInput objects.
     :param kwargs: The keyword arguments to pass to `torch.utils.data.DataLoader`.
     :return: A `torch.utils.data.DataLoader` with a custom AF3 collate function.
     """
-    collate_fn = partial(collate_inputs_to_batched_atom_input, atoms_per_window=atoms_per_window)
+    collate_fn = partial(
+        collate_inputs_to_batched_atom_input,
+        atoms_per_window=atoms_per_window,
+        transform_to_atom_inputs=transform_to_atom_inputs,
+    )
 
     if exists(map_input_fn):
         collate_fn = partial(collate_fn, map_input_fn=map_input_fn)
@@ -314,7 +328,11 @@ class PDBDataModule(LightningDataModule):
 
         # if map dataset function given, curry into DataLoader
 
-        self.dataloader_class = partial(AF3DataLoader, atoms_per_window=atoms_per_window)
+        self.dataloader_class = partial(
+            AF3DataLoader,
+            atoms_per_window=atoms_per_window,
+            transform_to_atom_inputs=False,
+        )
 
         if exists(map_dataset_input_fn):
             self.dataloader_class = partial(
