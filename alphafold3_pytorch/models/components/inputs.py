@@ -26,6 +26,7 @@ from rdkit import Chem, RDLogger, rdBase
 from rdkit.Chem import AllChem, rdDetermineBonds
 from rdkit.Chem.rdchem import Atom, Mol
 from rdkit.Geometry import Point3D
+from retrying import retry
 from torch import repeat_interleave, tensor
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
@@ -74,7 +75,7 @@ from alphafold3_pytorch.utils.model_utils import (
 )
 from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
-from alphafold3_pytorch.utils.utils import default, exists, first
+from alphafold3_pytorch.utils.utils import default, exists, first, not_exists
 
 logger = RankedLogger(__name__, rank_zero_only=False)
 
@@ -3429,23 +3430,11 @@ class PDBDataset(Dataset):
 
         return i
 
-    def __getitem__(self, idx: int | str, max_attempts: int = 10) -> PDBInput | AtomInput:
+    def __getitem__(self, idx: int | str, max_attempts: int = 5) -> PDBInput | AtomInput:
         """Return either a PDBInput or an AtomInput object for the specified index."""
-        i = self.get_item(idx)
-
-        # if the input could not be successfully constructed, try a new example up to `max_attempts` times
-        if exists(i):
-            return i
-        else:
-            attempts = 0
-            while not exists(i):
-                if attempts >= max_attempts:
-                    raise ValueError(
-                        f"Failed to retrieve a valid input after {attempts} attempts."
-                    )
-                i = self.get_item(idx)
-                attempts += 1
-            return i
+        retry_decorator = retry(retry_on_result=not_exists, stop_max_attempt_number=max_attempts)
+        i = retry_decorator(self.get_item)(idx)
+        return i
 
 
 # the config used for keeping track of all the disparate inputs and their transforms down to AtomInput
