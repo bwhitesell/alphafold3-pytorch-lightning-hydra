@@ -76,8 +76,8 @@ class Alphafold3LitModule(LightningModule):
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt
 
-        self.net = None
-        self.save_hyperparameters(logger=False)
+        self.network = None
+        self.save_hyperparameters(ignore=["network"], logger=False)
 
         # for averaging loss across batches
 
@@ -104,19 +104,19 @@ class Alphafold3LitModule(LightningModule):
         :param batch_dict: The input batch dictionary.
         :return: The prepared batch dictionary.
         """
-        if not self.net.has_molecule_mod_embeds:
+        if not self.network.has_molecule_mod_embeds:
             batch_dict["is_molecule_mod"] = None
         return batch_dict
 
     @typecheck
     def forward(self, batch: BatchedAtomInput) -> Tuple[Float[""], LossBreakdown]:  # type: ignore
-        """Perform a forward pass through the model `self.net`.
+        """Perform a forward pass through the model `self.network`.
 
         :param x: A batch of `AtomInput` data.
         :return: A tensor of losses as well as a breakdown of the component losses.
         """
         batch_dict = self.prepare_batch_dict(batch.model_forward_dict())
-        return self.net(
+        return self.network(
             **batch_dict,
             return_loss_breakdown=True,
             diffusion_add_bond_loss=self.hparams.diffusion_add_bond_loss,
@@ -196,7 +196,7 @@ class Alphafold3LitModule(LightningModule):
         samples: List[Sample] = []
 
         for _ in range(self.hparams.num_samples_per_example):
-            batch_sampled_atom_pos, logits = self.net(
+            batch_sampled_atom_pos, logits = self.network(
                 **prepared_model_batch_dict,
                 return_loss=False,
                 return_confidence_head_logits=True,
@@ -327,7 +327,7 @@ class Alphafold3LitModule(LightningModule):
         samples: List[Sample] = []
 
         for _ in range(self.hparams.num_samples_per_example):
-            batch_sampled_atom_pos, logits = self.net(
+            batch_sampled_atom_pos, logits = self.network(
                 **prepared_model_batch_dict,
                 return_loss=False,
                 return_confidence_head_logits=True,
@@ -506,7 +506,7 @@ class Alphafold3LitModule(LightningModule):
         batch_dict = batch.dict()
         prepared_model_batch_dict = self.prepare_batch_dict(batch.model_forward_dict())
 
-        batch_sampled_atom_pos = self.net(
+        batch_sampled_atom_pos = self.network(
             **prepared_model_batch_dict,
             return_loss=False,
         )
@@ -571,14 +571,14 @@ class Alphafold3LitModule(LightningModule):
         :param stage: Either `"fit"`, `"validate"`, `"test"`, or `"predict"`.
         """
         if self.hparams.compile and stage == "fit":
-            self.net = torch.compile(self.net)
+            self.network = torch.compile(self.network)
 
     def configure_model(self):
         """Configure the model to be used for training, validation, testing, or prediction.
 
         :return: The configured model.
         """
-        if exists(self.net):
+        if exists(self.network):
             return
 
         if exists(self.trainer):
@@ -587,7 +587,7 @@ class Alphafold3LitModule(LightningModule):
             time.sleep(sleep)
 
         net_config = {k: v for k, v in self.hparams.net.items() if k != "target"}
-        self.net = self.hparams.net["target"](**net_config)
+        self.network = self.hparams.net["target"](**net_config)
 
     def configure_optimizers(self):
         """Choose what optimizers and optional learning-rate schedulers to use during model
