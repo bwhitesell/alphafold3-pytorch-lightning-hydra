@@ -3,7 +3,7 @@ _target_: lightning.pytorch.trainer.Trainer
 default_root_dir: ${paths.output_dir}
 
 min_steps: 1 # prevents early stopping
-max_steps: ${divide:${multiply:1e6, 20}, 256} # NOTE: references values for "Initial training" in Table 6 of the paper
+max_steps: ${int_divide:${multiply:1.5e5, 20}, 256} # NOTE: references values for "Initial training" in Table 6 of the paper
 
 accelerator: gpu
 devices: 1

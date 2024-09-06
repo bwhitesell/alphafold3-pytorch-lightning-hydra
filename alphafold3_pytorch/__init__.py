@@ -218,10 +218,10 @@ def register_custom_omegaconf_resolvers():
         "resolve_classes",
         lambda module_name, class_names: resolve_omegaconf_classes(module_name, class_names),
     )
-    OmegaConf.register_new_resolver("add", lambda x, y: int(x) + int(y))
-    OmegaConf.register_new_resolver("subtract", lambda x, y: int(x) - int(y))
-    OmegaConf.register_new_resolver("multiply", lambda x, y: int(x) * int(y))
-    OmegaConf.register_new_resolver("divide", lambda x, y: int(x) / int(y))
+    OmegaConf.register_new_resolver("add", lambda x, y: x + y)
+    OmegaConf.register_new_resolver("subtract", lambda x, y: x - y)
+    OmegaConf.register_new_resolver("multiply", lambda x, y: x * y)
+    OmegaConf.register_new_resolver("divide", lambda x, y: x / y)
     OmegaConf.register_new_resolver("int_divide", lambda x, y: int_divide(int(x), int(y)))
     OmegaConf.register_new_resolver(
         "validate_gradient_accumulation_factor",
