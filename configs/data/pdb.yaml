@@ -24,6 +24,6 @@ sample_only_pdb_ids: null # if specified, a subset of  PDB IDs to sample from th
 batch_size: 1 # needs to be divisible by the number of devices (e.g., if in a distributed setup)
 num_workers: 0
 pin_memory: false
-multiprocessing_context: spawn
+multiprocessing_context: null
 prefetch_factor: null
 persistent_workers: false
