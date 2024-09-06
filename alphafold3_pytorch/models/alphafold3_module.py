@@ -586,6 +586,11 @@ class Alphafold3LitModule(LightningModule):
 
         :return: The configured model.
         """
+        if exists(self.trainer):
+            sleep = self.trainer.global_rank * 4
+            log.info(f"Rank {self.trainer.global_rank}: Sleeping for {sleep}s to avoid CPU OOMs.")
+            time.sleep(sleep)
+
         net_config = {k: v for k, v in self.hparams.net.items() if k != "target"}
         self.network = self.hparams.net["target"](**net_config)
 
