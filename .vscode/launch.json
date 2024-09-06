@@ -119,7 +119,7 @@
                 "trainer.devices=8",
                 // "trainer.max_steps=2",
                 // "trainer.val_check_interval=1",
-                // "trainer.precision=32",
+                "trainer.precision=32",
                 // "+trainer.detect_anomaly=true",
             ]
         },
