@@ -97,11 +97,6 @@ class Alphafold3LitModule(LightningModule):
         self.val_top_ranked_lddt = MeanMetric()
         self.test_top_ranked_lddt = MeanMetric()
 
-    @property
-    def is_main(self) -> bool:
-        """Check if the current process is the main process."""
-        return self.trainer.global_rank == 0
-
     @typecheck
     def prepare_batch_dict(self, batch_dict: Dict[str, Any]) -> Dict[str, Any]:
         """Prepare the input batch dictionary for the model.
@@ -159,18 +154,20 @@ class Alphafold3LitModule(LightningModule):
 
         # update and log metrics
 
-        self.train_loss(loss)
+        self.train_loss.update(loss)
         self.log(
             "train/loss",
             self.train_loss,
             on_step=False,
             on_epoch=True,
+            sync_dist=True,
             batch_size=len(batch.atom_inputs),
         )
         self.log_dict(
             loss_breakdown._asdict(),
             on_step=False,
             on_epoch=True,
+            sync_dist=True,
             batch_size=len(batch.atom_inputs),
         )
 
@@ -252,21 +249,23 @@ class Alphafold3LitModule(LightningModule):
 
         # update and log metrics
 
-        self.val_model_selection_score(score_details.score.detach())
+        self.val_model_selection_score.update(score_details.score.detach())
         self.log(
             "val/model_selection_score",
             self.val_model_selection_score,
             on_step=False,
             on_epoch=True,
+            sync_dist=True,
             batch_size=len(batch.atom_inputs),
         )
 
-        self.val_top_ranked_lddt(top_ranked_lddt.detach())
+        self.val_top_ranked_lddt.update(top_ranked_lddt.detach())
         self.log(
             "val/top_ranked_lddt",
             self.val_top_ranked_lddt,
             on_step=False,
             on_epoch=True,
+            sync_dist=True,
             batch_size=len(batch.atom_inputs),
         )
 
@@ -385,21 +384,23 @@ class Alphafold3LitModule(LightningModule):
 
         # update and log metrics
 
-        self.test_model_selection_score(score_details.score.detach())
+        self.test_model_selection_score.update(score_details.score.detach())
         self.log(
             "test/model_selection_score",
             self.test_model_selection_score,
             on_step=False,
             on_epoch=True,
+            sync_dist=True,
             batch_size=len(batch.atom_inputs),
         )
 
-        self.test_top_ranked_lddt(top_ranked_lddt.detach())
+        self.test_top_ranked_lddt.update(top_ranked_lddt.detach())
         self.log(
             "test/top_ranked_lddt",
             self.test_top_ranked_lddt,
             on_step=False,
             on_epoch=True,
+            sync_dist=True,
             batch_size=len(batch.atom_inputs),
         )
 
