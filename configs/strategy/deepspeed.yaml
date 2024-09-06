@@ -1,6 +1,6 @@
 _target_: lightning.pytorch.strategies.DeepSpeedStrategy
 zero_optimization: true
-stage: 3
+stage: 2
 allgather_bucket_size: 2e8
 reduce_bucket_size: 2e8
 offload_optimizer: false
