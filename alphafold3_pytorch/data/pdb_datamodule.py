@@ -18,6 +18,7 @@ from alphafold3_pytorch.models.components.inputs import (
     ATOM_DEFAULT_PAD_VALUES,
     UNCOLLATABLE_ATOM_INPUT_FIELDS,
     Alphafold3Input,
+    AtomInput,
     BatchedAtomInput,
     PDBDataset,
     PDBInput,
@@ -51,9 +52,19 @@ def collate_inputs_to_batched_atom_input(
     # go through all the inputs
     # and for any that is not AtomInput, try to transform it with the registered input type to corresponding registered function
 
-    atom_inputs = maybe_transform_to_atom_inputs(inputs)
-    if not atom_inputs:
-        return None
+    if all(isinstance(i, AtomInput) for i in inputs):
+        atom_inputs = inputs
+    else:
+        atom_inputs = maybe_transform_to_atom_inputs(inputs)
+
+        if len(atom_inputs) < len(inputs):
+            # if some of the `inputs` could not be converted into `atom_inputs`,
+            # randomly select a subset of the `atom_inputs` to duplicate to match
+            # the expected number of `atom_inputs`
+            assert (
+                len(atom_inputs) > 0
+            ), "No `AtomInput` objects could be created for the current batch."
+            atom_inputs = random.choices(atom_inputs, k=len(inputs))  # nosec
 
     # take care of windowing the atompair_inputs and atompair_ids if they are not windowed already
 
@@ -441,6 +452,7 @@ class PDBDataModule(LightningDataModule):
                 kalign_binary_path=self.hparams.kalign_binary_path,
                 training=True,
                 sample_only_pdb_ids=sample_only_pdb_ids,
+                return_atom_inputs=True,
                 msa_dir=self.train_msa_dir,
                 templates_dir=self.train_templates_dir,
             )
@@ -466,6 +478,7 @@ class PDBDataModule(LightningDataModule):
                 kalign_binary_path=self.hparams.kalign_binary_path,
                 training=False,
                 sample_only_pdb_ids=sample_only_pdb_ids,
+                return_atom_inputs=True,
                 msa_dir=self.val_msa_dir,
                 templates_dir=self.val_templates_dir,
             )
@@ -491,6 +504,7 @@ class PDBDataModule(LightningDataModule):
                 kalign_binary_path=self.hparams.kalign_binary_path,
                 training=False,
                 sample_only_pdb_ids=sample_only_pdb_ids,
+                return_atom_inputs=True,
                 msa_dir=self.test_msa_dir,
                 templates_dir=self.test_templates_dir,
             )

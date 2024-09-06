@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Literal, Tuple
 import rootutils
 import torch
 from lightning import LightningModule
+from lightning.pytorch.utilities.memory import garbage_collection_cuda
 from torch import Tensor
 from torchmetrics import MaxMetric, MeanMetric
 
@@ -147,16 +148,13 @@ class Alphafold3LitModule(LightningModule):
         return loss, loss_breakdown
 
     @typecheck
-    def training_step(self, batch: BatchedAtomInput | None, batch_idx: int) -> Tensor:
+    def training_step(self, batch: BatchedAtomInput, batch_idx: int) -> Tensor:
         """Perform a single training step on a batch of data from the training set.
 
         :param batch: A batch of `AtomInput` data.
         :param batch_idx: The index of the current batch.
         :return: A tensor of losses.
         """
-        if not exists(batch):
-            return torch.tensor(0.0)
-
         loss, loss_breakdown = self.model_step(batch)
 
         # update and log metrics
@@ -167,14 +165,12 @@ class Alphafold3LitModule(LightningModule):
             self.train_loss,
             on_step=False,
             on_epoch=True,
-            prog_bar=True,
             batch_size=len(batch.atom_inputs),
         )
         self.log_dict(
             loss_breakdown._asdict(),
             on_step=False,
             on_epoch=True,
-            prog_bar=False,
             batch_size=len(batch.atom_inputs),
         )
 
@@ -189,15 +185,12 @@ class Alphafold3LitModule(LightningModule):
         return loss
 
     @typecheck
-    def validation_step(self, batch: BatchedAtomInput | None, batch_idx: int) -> None:
+    def validation_step(self, batch: BatchedAtomInput, batch_idx: int) -> None:
         """Perform a single validation step on a batch of data from the validation set.
 
         :param batch: A batch of `AtomInput` data.
         :param batch_idx: The index of the current batch.
         """
-        if not exists(batch):
-            return
-
         batch_dict = batch.dict()
         prepared_model_batch_dict = self.prepare_batch_dict(batch.model_forward_dict())
 
@@ -265,7 +258,6 @@ class Alphafold3LitModule(LightningModule):
             self.val_model_selection_score,
             on_step=False,
             on_epoch=True,
-            prog_bar=True,
             batch_size=len(batch.atom_inputs),
         )
 
@@ -275,7 +267,6 @@ class Alphafold3LitModule(LightningModule):
             self.val_top_ranked_lddt,
             on_step=False,
             on_epoch=True,
-            prog_bar=True,
             batch_size=len(batch.atom_inputs),
         )
 
@@ -316,19 +307,19 @@ class Alphafold3LitModule(LightningModule):
             "val/val_model_selection_score_best",
             self.val_model_selection_score_best.compute(),
             sync_dist=True,
-            prog_bar=True,
         )
 
+        # free up GPU memory
+
+        garbage_collection_cuda()
+
     @typecheck
-    def test_step(self, batch: BatchedAtomInput | None, batch_idx: int) -> None:
+    def test_step(self, batch: BatchedAtomInput, batch_idx: int) -> None:
         """Perform a single test step on a batch of data from the test set.
 
         :param batch: A batch of `AtomInput` data.
         :param batch_idx: The index of the current batch.
         """
-        if not exists(batch):
-            return
-
         batch_dict = batch.dict()
         prepared_model_batch_dict = self.prepare_batch_dict(batch.model_forward_dict())
 
@@ -400,7 +391,6 @@ class Alphafold3LitModule(LightningModule):
             self.test_model_selection_score,
             on_step=False,
             on_epoch=True,
-            prog_bar=True,
             batch_size=len(batch.atom_inputs),
         )
 
@@ -410,7 +400,6 @@ class Alphafold3LitModule(LightningModule):
             self.test_top_ranked_lddt,
             on_step=False,
             on_epoch=True,
-            prog_bar=True,
             batch_size=len(batch.atom_inputs),
         )
 
