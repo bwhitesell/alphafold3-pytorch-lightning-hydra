@@ -76,7 +76,6 @@ class Alphafold3LitModule(LightningModule):
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt
 
-        self.network = None
         self.save_hyperparameters(ignore=["network"], logger=False)
 
         # for averaging loss across batches
@@ -578,14 +577,6 @@ class Alphafold3LitModule(LightningModule):
 
         :return: The configured model.
         """
-        if exists(self.network):
-            return
-
-        if exists(self.trainer):
-            sleep = self.trainer.global_rank * 4
-            log.info(f"Rank {self.trainer.global_rank}: Sleeping for {sleep}s to avoid CPU OOMs.")
-            time.sleep(sleep)
-
         net_config = {k: v for k, v in self.hparams.net.items() if k != "target"}
         self.network = self.hparams.net["target"](**net_config)
 
