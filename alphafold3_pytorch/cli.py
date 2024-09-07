@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import click
-from Bio.PDB.PDBIO import PDBIO
+from Bio.PDB.mmcifio import MMCIFIO
 
 from alphafold3_pytorch import (
     Alphafold3,
@@ -15,7 +15,7 @@ from alphafold3_pytorch import (
 @click.command()
 @click.option("-ckpt", "--checkpoint", type=str, help="Path to alphafold3 checkpoint")
 @click.option("-p", "--protein", type=str, help="One protein sequence")
-@click.option("-o", "--output", type=str, help="output path", default="output.pdb")
+@click.option("-o", "--output", type=str, help="output path", default="output.cif")
 def cli(checkpoint: str, protein: str, output: str):
     checkpoint_path = Path(checkpoint)
     assert checkpoint_path.exists(), f"Alphafold3 checkpoint must exist at {str(checkpoint_path)}"
@@ -38,8 +38,8 @@ def cli(checkpoint: str, protein: str, output: str):
     output_path = Path(output)
     output_path.parents[0].mkdir(exist_ok=True, parents=True)
 
-    pdb_writer = PDBIO()
+    pdb_writer = MMCIFIO()
     pdb_writer.set_structure(structure)
     pdb_writer.save(str(output_path))
 
-    print(f"PDB file saved to {str(output_path)}")
+    print(f"mmCIF file saved to {str(output_path)}")
