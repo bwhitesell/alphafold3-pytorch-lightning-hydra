@@ -173,7 +173,8 @@ class Alphafold3LitModule(LightningModule):
         )
 
         loss_breakdown_dict = {
-            (t.detach() if torch.is_tensor(t) else t) for t in loss_breakdown._asdict()
+            k: (v.detach() if torch.is_tensor(v) else v)
+            for (k, v) in loss_breakdown._asdict().items()
         }
         self.log_dict(
             loss_breakdown_dict,
