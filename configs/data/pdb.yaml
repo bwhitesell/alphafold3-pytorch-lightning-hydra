@@ -26,4 +26,4 @@ num_workers: 1
 pin_memory: true
 multiprocessing_context: spawn
 prefetch_factor: 1
-persistent_workers: true
+persistent_workers: false
