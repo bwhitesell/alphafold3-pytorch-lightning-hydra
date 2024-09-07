@@ -55,7 +55,7 @@ srun -c 64 singularity exec \
     "$SINGULARITY_CONTAINER" \
     bash -c "
         && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y \
-        export PATH=/root/.cargo/bin:\$PATH \
+        && export PATH=/root/.cargo/bin:\$PATH \
         && python3 -m pip install git+https://github.com/wandb/wandb.git@41c9cb0cee6f763931045c25bf2fbdba32699575 \
         && cd /alphafold3-pytorch-lightning-hydra \
         && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS \
