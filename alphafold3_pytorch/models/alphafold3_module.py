@@ -162,7 +162,7 @@ class Alphafold3LitModule(LightningModule):
 
         # update and log metrics
 
-        self.train_loss.update(loss)
+        self.train_loss.update(loss.detach())
         self.log(
             "train/loss",
             self.train_loss,
@@ -171,8 +171,12 @@ class Alphafold3LitModule(LightningModule):
             sync_dist=True,
             batch_size=len(batch.atom_inputs),
         )
+
+        loss_breakdown_dict = {
+            (t.detach() if torch.is_tensor(t) else t) for t in loss_breakdown._asdict()
+        }
         self.log_dict(
-            loss_breakdown._asdict(),
+            loss_breakdown_dict,
             on_step=False,
             on_epoch=True,
             sync_dist=True,
