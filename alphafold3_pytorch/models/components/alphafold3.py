@@ -71,6 +71,7 @@ import torch.nn.functional as F
 from beartype.typing import Dict, List, Literal, NamedTuple, Tuple
 from Bio.PDB.DSSP import DSSP
 from Bio.PDB.PDBIO import PDBIO
+from Bio.PDB.Structure import Structure
 from Bio.PDB.StructureBuilder import StructureBuilder
 from colt5_attention import ConditionalRoutedAttention
 from einops import einsum, pack, rearrange, reduce, repeat, unpack
@@ -5261,13 +5262,13 @@ def get_cid_molecule_type(
 
 
 @typecheck
-def _protein_structure_from_feature(
+def protein_structure_from_feature(
     asym_id: Int[" n"],  # type: ignore
     molecule_ids: Int[" n"],  # type: ignore
     molecule_atom_lens: Int[" n"],  # type: ignore
     atom_pos: Float["m 3"],  # type: ignore
     atom_mask: Bool[" m"],  # type: ignore
-) -> Bio.PDB.Structure.Structure:
+) -> Structure:
     """Create structure for unresolved proteins.
 
     :param atom_mask: True for valid atoms, False for missing/padding atoms
@@ -5767,7 +5768,7 @@ class ComputeModelSelectionScore(Module):
         chain_atom_pos = atom_pos[chain_mask_to_atom]
         chain_atom_mask = atom_mask[chain_mask_to_atom]
 
-        structure = _protein_structure_from_feature(
+        structure = protein_structure_from_feature(
             chain_asym_id,
             chain_molecule_ids,
             chain_molecule_atom_lens,
@@ -6536,6 +6537,7 @@ class Alphafold3(Module):
         return_all_diffused_atom_pos: bool = False,
         return_confidence_head_logits: bool = False,
         return_distogram_head_logits: bool = False,
+        return_bio_pdb_structures: bool = False,
         num_rollout_steps: int | None = None,
         rollout_show_tqdm_pbar: bool = False,
         detach_when_recycling: bool = None,
@@ -6546,7 +6548,7 @@ class Alphafold3(Module):
     ) -> (
         Float["b m 3"]  # type: ignore
         | Float["ts b m 3"]  # type: ignore
-        | Tuple[Float["b m 3"] | Float["ts b m 3"], ConfidenceHeadLogits | Alphafold3Logits]  # type: ignore
+        | Tuple[Float["b m 3"] | List[Structure] | Float["ts b m 3"], ConfidenceHeadLogits | Alphafold3Logits]  # type: ignore
         | Float[""]  # type: ignore
         | Tuple[Float[""], LossBreakdown]  # type: ignore
     ):
@@ -6906,6 +6908,24 @@ class Alphafold3(Module):
 
             if return_confidence_head_logits:
                 confidence_head_atom_pos_input = sampled_atom_pos.clone()
+
+            # convert sampled atom positions to Biopython PDB structures
+
+            if return_bio_pdb_structures:
+                assert (
+                    not return_all_diffused_atom_pos
+                ), "Cannot return Biopython PDB structures when `return_all_diffused_atom_pos` is set to True."
+
+                sampled_atom_pos = [
+                    protein_structure_from_feature(*args)
+                    for args in zip(
+                        additional_molecule_feats[..., 2],
+                        molecule_ids,
+                        molecule_atom_lens,
+                        sampled_atom_pos,
+                        atom_mask,
+                    )
+                ]
 
             if not return_confidence_head_logits:
                 return sampled_atom_pos
