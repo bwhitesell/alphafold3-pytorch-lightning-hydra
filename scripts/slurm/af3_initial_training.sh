@@ -54,7 +54,8 @@ srun -c 64 singularity exec \
     --pwd /alphafold3-pytorch-lightning-hydra \
     "$SINGULARITY_CONTAINER" \
     bash -c "
-        WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS \
+        python -m pip list | grep wandb \
+        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS \
         torchrun \
         --nnodes=$SLURM_JOB_NUM_NODES \
         --nproc_per_node=$NUM_PYTORCH_PROCESSES \
