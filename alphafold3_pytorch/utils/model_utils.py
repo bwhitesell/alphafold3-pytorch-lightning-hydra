@@ -661,7 +661,7 @@ def save_args_and_kwargs(fn):
     @wraps(fn)
     def inner(self, *args, **kwargs):
         self._args_and_kwargs = (args, kwargs)
-        self._version = importlib.metadata.version("alphafold3_pytorch")
+        self._version = importlib.metadata.version("alphafold3_pytorch_lightning_hydra")
 
         return fn(self, *args, **kwargs)
 

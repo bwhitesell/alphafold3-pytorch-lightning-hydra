@@ -6445,7 +6445,7 @@ class Alphafold3(Module):
         package = torch.load(str(path), map_location=map_location, weights_only=True)
 
         model_package = package["model"]
-        current_version = version("alphafold3_pytorch")
+        current_version = version("alphafold3_pytorch_lightning_hydra")
 
         if model_package["version"] != current_version:
             logger.info(
