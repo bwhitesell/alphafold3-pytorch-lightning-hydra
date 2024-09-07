@@ -134,6 +134,7 @@ from alphafold3_pytorch.utils.model_utils import (
     package_available,
     pad_and_window,
     pad_or_slice_to,
+    save_args_and_kwargs,
     should_checkpoint,
     symmetrize,
     to_pairwise_mask,
@@ -6031,6 +6032,7 @@ class LossBreakdown(NamedTuple):
 class Alphafold3(Module):
     """Algorithm 1."""
 
+    @save_args_and_kwargs
     @typecheck
     def __init__(
         self,
@@ -6547,6 +6549,7 @@ class Alphafold3(Module):
         filepaths: List[str] | None = None,
     ) -> (
         Float["b m 3"]  # type: ignore
+        | List[Structure]
         | Float["ts b m 3"]  # type: ignore
         | Tuple[Float["b m 3"] | List[Structure] | Float["ts b m 3"], ConfidenceHeadLogits | Alphafold3Logits]  # type: ignore
         | Float[""]  # type: ignore
