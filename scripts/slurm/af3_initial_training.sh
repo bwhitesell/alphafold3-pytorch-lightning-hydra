@@ -58,12 +58,14 @@ srun -c 64 singularity exec \
         torchrun \
         --nnodes=$SLURM_JOB_NUM_NODES \
         --nproc_per_node=$NUM_PYTORCH_PROCESSES \
+        --max-restarts=3
         --rdzv_id=$SLURM_JOB_ID \
         --rdzv_backend=c10d \
         --rdzv_endpoint=$RDZV_HOST:$RDZV_PORT \
         alphafold3_pytorch/train.py \
-        experiment=af3_initial_training \
         data.batch_size=$((SLURM_JOB_NUM_NODES*NUM_PYTORCH_PROCESSES)) \
+        environment=torch_elastic \
+        experiment=af3_initial_training \
         trainer.num_nodes=$SLURM_JOB_NUM_NODES \
         trainer.devices=$NUM_PYTORCH_PROCESSES
     "
