@@ -10,7 +10,6 @@
 #SBATCH --job-name=af3_overfitting_e1                         # job name
 #SBATCH --output=J-%x.%j.out                                  # output log file
 #SBATCH --error=J-%x.%j.err                                   # error log file
-#SBATCH --signal=SIGUSR1@90                                   # send SIGUSR1 90 seconds before job end to trigger job resubmission
 #################################################################
 
 # Load required modules

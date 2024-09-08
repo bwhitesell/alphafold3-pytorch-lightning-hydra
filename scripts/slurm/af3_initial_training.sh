@@ -10,7 +10,6 @@
 #SBATCH --output=J-%x.%j.out                                  # output log file
 #SBATCH --error=J-%x.%j.err                                   # error log file
 #SBATCH --exclusive                                           # request exclusive node access
-#SBATCH --signal=SIGUSR1@90                                   # send SIGUSR1 90 seconds before job end to trigger job resubmission
 #################################################################
 
 # Load required modules

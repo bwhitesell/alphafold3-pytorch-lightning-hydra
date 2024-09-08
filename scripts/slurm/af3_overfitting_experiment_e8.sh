@@ -10,7 +10,6 @@
 #SBATCH --output=J-%x.%j.out                                  # output log file
 #SBATCH --error=J-%x.%j.err                                   # error log file
 #SBATCH --exclusive                                           # request exclusive node access
-#SBATCH --signal=SIGUSR1@90                                   # send SIGUSR1 90 seconds before job end to trigger job resubmission
 #################################################################
 
 # Load required modules
@@ -44,7 +43,7 @@ export RDZV_PORT=29400
 # For what `srun` is concerned, only one task is created, the `torchrun` process.
 
 # Define WandB run ID
-RUN_ID="1erfnjb8"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="aitux8et"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun -c 64 singularity exec \
