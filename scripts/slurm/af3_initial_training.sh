@@ -43,7 +43,7 @@ export RDZV_PORT=29400
 # For what `srun` is concerned, only one task is created, the `torchrun` process.
 
 # Define WandB run ID
-RUN_ID="l7ofbbsi"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="y5evahy3"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun -c 64 singularity exec \
@@ -63,6 +63,7 @@ srun -c 64 singularity exec \
         --rdzv_endpoint=$RDZV_HOST:$RDZV_PORT \
         alphafold3_pytorch/train.py \
         data.batch_size=$((SLURM_JOB_NUM_NODES*NUM_PYTORCH_PROCESSES)) \
+        data.ablate_weighted_pdb_sampler=true \
         environment=torch_elastic \
         experiment=af3_initial_training \
         trainer.num_nodes=$SLURM_JOB_NUM_NODES \

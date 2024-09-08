@@ -302,6 +302,7 @@ class PDBDataModule(LightningDataModule):
         train_val_test_split: Tuple[int, int, int] | None = None,
         shuffle_train_val_test_subsets: bool = True,
         overfitting_train_examples: bool = False,
+        ablate_weighted_pdb_sampler: bool = False,
         sample_only_pdb_ids: List[str] | None = None,
         batch_size: int = 1,
         num_workers: int = 0,
@@ -413,14 +414,19 @@ class PDBDataModule(LightningDataModule):
             )
 
         # training set
-        self.data_train = PDBDataset(
-            folder=self.train_mmcifs_dir,
-            sampler=WeightedPDBSampler(
+        sampler_train = (
+            None
+            if self.hparams.ablate_weighted_pdb_sampler
+            else WeightedPDBSampler(
                 chain_mapping_paths=self.train_chain_mapping_paths,
                 interface_mapping_path=self.train_interface_mapping_path,
                 batch_size=1,
                 pdb_ids_to_keep=sample_only_pdb_ids_list,
-            ),
+            )
+        )
+        self.data_train = PDBDataset(
+            folder=self.train_mmcifs_dir,
+            sampler=sampler_train,
             sample_type=self.hparams.sample_type,
             contiguous_weight=self.hparams.contiguous_weight,
             spatial_weight=self.hparams.spatial_weight,
@@ -438,14 +444,19 @@ class PDBDataModule(LightningDataModule):
         )
 
         # validation set
-        self.data_val = PDBDataset(
-            folder=self.val_mmcifs_dir,
-            sampler=WeightedPDBSampler(
+        sampler_val = (
+            None
+            if self.hparams.ablate_weighted_pdb_sampler
+            else WeightedPDBSampler(
                 chain_mapping_paths=self.val_chain_mapping_paths,
                 interface_mapping_path=self.val_interface_mapping_path,
                 batch_size=1,
                 pdb_ids_to_keep=sample_only_pdb_ids_list,
-            ),
+            )
+        )
+        self.data_val = PDBDataset(
+            folder=self.val_mmcifs_dir,
+            sampler=sampler_val,
             sample_type=self.hparams.sample_type,
             contiguous_weight=self.hparams.contiguous_weight,
             spatial_weight=self.hparams.spatial_weight,
@@ -463,14 +474,19 @@ class PDBDataModule(LightningDataModule):
         )
 
         # evaluation set
-        self.data_test = PDBDataset(
-            folder=self.test_mmcifs_dir,
-            sampler=WeightedPDBSampler(
+        sampler_test = (
+            None
+            if self.hparams.ablate_weighted_pdb_sampler
+            else WeightedPDBSampler(
                 chain_mapping_paths=self.test_chain_mapping_paths,
                 interface_mapping_path=self.test_interface_mapping_path,
                 batch_size=1,
                 pdb_ids_to_keep=sample_only_pdb_ids_list,
-            ),
+            )
+        )
+        self.data_test = PDBDataset(
+            folder=self.test_mmcifs_dir,
+            sampler=sampler_test,
             sample_type=self.hparams.sample_type,
             contiguous_weight=self.hparams.contiguous_weight,
             spatial_weight=self.hparams.spatial_weight,
