@@ -3342,7 +3342,6 @@ class PDBDataset(Dataset):
         spatial_weight: float = 0.4,
         spatial_interface_weight: float = 0.4,
         crop_size: int = 384,
-        gc_every_n_retrievals: int | None = None,
         training: bool | None = None,  # extra training flag placed by Alex on PDBInput
         sample_only_pdb_ids: Set[str] | None = None,
         return_atom_inputs: bool = False,
@@ -3360,9 +3359,6 @@ class PDBDataset(Dataset):
         self.sample_only_pdb_ids = sample_only_pdb_ids
         self.return_atom_inputs = return_atom_inputs
         self.pdb_input_kwargs = pdb_input_kwargs
-
-        self.item_retrievals = 0
-        self.gc_every_n_retrievals = gc_every_n_retrievals
 
         self.cropping_config = {
             "contiguous_weight": contiguous_weight,
@@ -3460,16 +3456,6 @@ class PDBDataset(Dataset):
         """Return either a PDBInput or an AtomInput object for the specified index."""
         retry_decorator = retry(retry_on_result=not_exists, stop_max_attempt_number=max_attempts)
         i = retry_decorator(self.get_item)(idx)
-
-        # periodically trigger garbage collection to keep CPU memory usage in check
-
-        self.item_retrievals += 1
-        if (
-            exists(self.gc_every_n_retrievals)
-            and self.item_retrievals % self.gc_every_n_retrievals == 0
-        ):
-            gc.collect()
-
         return i
 
 
