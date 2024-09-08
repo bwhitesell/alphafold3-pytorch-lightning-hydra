@@ -3394,9 +3394,15 @@ class PDBDataset(Dataset):
         """Return the number of PDB mmCIF files in the dataset."""
         return len(self.files)
 
-    def get_item(self, idx: int | str) -> PDBInput | AtomInput | None:
+    def get_item(self, idx: int | str, random_idx: bool = False) -> PDBInput | AtomInput | None:
         """Return either a PDBInput or an AtomInput object for the specified index."""
         sampled_id = None
+
+        if random_idx:
+            if isinstance(idx, str):
+                idx = [*self.files.keys()][np.random.randint(0, len(self))]
+            else:
+                idx = np.random.randint(0, len(self))
 
         if exists(self.sampler):
             sample_fn = (
@@ -3454,8 +3460,16 @@ class PDBDataset(Dataset):
 
     def __getitem__(self, idx: int | str, max_attempts: int = 10) -> PDBInput | AtomInput:
         """Return either a PDBInput or an AtomInput object for the specified index."""
-        retry_decorator = retry(retry_on_result=not_exists, stop_max_attempt_number=max_attempts)
-        i = retry_decorator(self.get_item)(idx)
+        assert max_attempts > 0, "The maximum number of attempts must be greater than 0."
+
+        i = self.get_item(idx)
+
+        if not exists(i) and not exists(self.sampler):
+            retry_decorator = retry(
+                retry_on_result=not_exists, stop_max_attempt_number=max_attempts
+            )
+            i = retry_decorator()(idx, random_idx=True)
+
         return i
 
 
