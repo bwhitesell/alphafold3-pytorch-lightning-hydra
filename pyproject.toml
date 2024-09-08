@@ -71,7 +71,7 @@ dependencies = [
     "numpy==1.23.5",           # for numerical operations
     "pandas>=1.5.3",   # for data parsing and analysis
     "pdbeccdutils==0.8.5", # for parsing the Protein Data Bank's Chemical Component Dictionary (CCD)
-    "polars>=1.1.0",   # for faster data parsing and analysis
+    "polars>=1.6.0",   # for faster data parsing and analysis
     "pre-commit",      # hooks for applying linters on commit
     "pytest",          # tests
     "rdkit>=2023.9.6", # for parsing small molecule data files
