@@ -15,18 +15,22 @@ def test_cli():
     checkpoint_path = os.path.join("test-folder", "test-cli-alphafold3.pt")
     alphafold3.save(checkpoint_path, overwrite=True)
 
+    output_mmcif_filepath = os.path.join("test-folder", "output.cif")
+
     cli(
         [
             "--checkpoint",
             checkpoint_path,
-            "--protein",
+            "-prot",
             "AG",
+            "-prot",
+            "TC",
             "--output",
-            os.path.join("test-folder", "output.pdb"),
+            output_mmcif_filepath,
         ],
         standalone_mode=False,
     )
 
-    assert Path(os.path.join("test-folder", "output.pdb")).exists()
+    assert Path(output_mmcif_filepath).exists()
 
     rmtree("test-folder")

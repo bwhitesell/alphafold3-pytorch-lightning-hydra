@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 
 import click
@@ -14,14 +16,18 @@ from alphafold3_pytorch import (
 
 @click.command()
 @click.option("-ckpt", "--checkpoint", type=str, help="Path to alphafold3 checkpoint")
-@click.option("-p", "--protein", type=str, help="One protein sequence")
+@click.option("-prot", "--protein", type=str, multiple=True, help="Protein sequences")
+@click.option("-rna", "--rna", type=str, multiple=True, help="Single-stranded RNA sequences")
+@click.option("-dna", "--dna", type=str, multiple=True, help="Single-stranded DNA sequences")
 @click.option("-o", "--output", type=str, help="output path", default="output.cif")
-def cli(checkpoint: str, protein: str, output: str):
+def cli(checkpoint: str, protein: list[str], rna: list[str], dna: list[str], output: str):
     checkpoint_path = Path(checkpoint)
     assert checkpoint_path.exists(), f"Alphafold3 checkpoint must exist at {str(checkpoint_path)}"
 
     alphafold3_input = Alphafold3Input(
-        proteins=[protein],
+        proteins=protein,
+        ss_rna=rna,
+        ss_dna=dna,
     )
 
     alphafold3 = Alphafold3.init_and_load(checkpoint_path)
