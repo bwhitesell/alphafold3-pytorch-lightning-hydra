@@ -43,7 +43,7 @@ export RDZV_PORT=29400
 # For what `srun` is concerned, only one task is created, the `torchrun` process.
 
 # Define WandB run ID
-RUN_ID="gtudiij6"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="k7ot8w3s"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun -c 64 singularity exec \

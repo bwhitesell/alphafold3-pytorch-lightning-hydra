@@ -3316,7 +3316,7 @@ def pdb_input_to_molecule_input(
         resolved_labels=resolved_labels,
         resolution=resolution,
         chains=chains,
-        filepath=filepath,
+        # filepath=filepath,
         add_atom_ids=i.add_atom_ids,
         add_atompair_ids=i.add_atompair_ids,
         directed_bonds=i.directed_bonds,
