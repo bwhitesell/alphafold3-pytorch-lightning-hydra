@@ -115,7 +115,7 @@ from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.model_utils import (
     ExpressCoordinatesInFrame,
     RigidFrom3Points,
-    RigidFromReferenceThreePoints,
+    RigidFromReference3Points,
     batch_repeat_interleave,
     batch_repeat_interleave_pairwise,
     calculate_weighted_rigid_align_weights,
