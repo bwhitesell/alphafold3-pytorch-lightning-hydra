@@ -10,6 +10,7 @@ crop_size: 384 # NOTE: must be one of (initial_training: 384, fine_tuning_1: 640
 max_msas_per_chain: null # if specified, the maximum number of MSA sequences to include per chain (e.g., for throughput concerns)
 max_templates_per_chain: null # if specified, the maximum number of templates to include per chain (e.g., for throughput concerns)
 num_templates_per_chain: null # if specified, the effective number number of templates to include per chain (e.g., for throughput concerns)
+max_num_template_tokens: null # NOTE: must be one of (initial_training: 10240, fine_tuning_1: 10240, fine_tuning_2: 10240, fine_tuning_3: 10240), proceeding from left to right
 kalign_binary_path: ${oc.env:CONDA_PREFIX}/bin/kalign # if specified, the path to a local Kalign2 executable
 sampling_weight_for_disorder_pdb_distillation: 0.02 # NOTE: must be one of (initial_training: 0.02, fine_tuning_1: 0.01, fine_tuning_2: 0.02, fine_tuning_3: 0.02), proceeding from left to right following Table 6 in the paper
 train_on_transcription_factor_distillation_sets: false # NOTE: must be one of (initial_training: False, fine_tuning_1: False, fine_tuning_2: True, fine_tuning_3: True), proceeding from left to right following Table 6 in the paper
@@ -24,7 +25,7 @@ ablate_weighted_pdb_sampler: false # whether to ablate the WeightedPDBSampler
 sample_only_pdb_ids: null # if specified, a subset of  PDB IDs to sample from the training, validation, or testing sets
 batch_size: 1 # needs to be divisible by the number of devices (e.g., if in a distributed setup)
 num_workers: 1
-pin_memory: false
+pin_memory: true
 multiprocessing_context: spawn
 prefetch_factor: 1
-persistent_workers: false
+persistent_workers: true

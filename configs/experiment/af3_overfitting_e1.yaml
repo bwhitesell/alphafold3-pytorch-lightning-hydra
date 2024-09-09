@@ -17,18 +17,25 @@ defaults:
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 
-tags: ["pdb", "alphafold3", "overfitting", "7a4d"]
+tags: ["pdb", "alphafold3", "overfitting", "4v55"]
 
 seed: 12345
 
 # overfitting experiment parameters:
 
 data:
+  crop_size: 384
   max_msas_per_chain: 128
   max_templates_per_chain: 20
   num_templates_per_chain: 4
+  max_num_template_tokens: 10240
+
   overfitting_train_examples: true
-  sample_only_pdb_ids: [7a4d-assembly1]
+  sample_only_pdb_ids: [
+      # 7a4d-assembly1,
+      4v55-assembly1,
+      # 6lkq-assembly1,
+    ]
 
 logger:
   wandb:

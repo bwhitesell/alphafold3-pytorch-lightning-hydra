@@ -191,10 +191,6 @@ class Alphafold3LitModule(LightningModule):
         if filepaths_available and self.hparams.visualize_train_samples_every_n_steps > 0:
             if batch_idx % self.hparams.visualize_train_samples_every_n_steps == 0:
                 self.sample_and_visualize(batch, batch_idx, phase="train")
-        elif filepaths_available:
-            log.info(
-                f"Current training filepaths: {[os.path.splitext(os.path.basename(filepath))[0] for filepath in batch_dict['filepath']]}"
-            )
 
         # return loss or backpropagation will fail
 

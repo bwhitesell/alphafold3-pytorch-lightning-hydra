@@ -1838,6 +1838,7 @@ class PDBInput:
     max_msas_per_chain: int | None = None
     max_templates_per_chain: int | None = None
     num_templates_per_chain: int | None = None
+    max_num_template_tokens: int | None = None
     kalign_binary_path: str | None = None
     extract_atom_feats_fn: Callable[[Atom], Float["m dai"]] = default_extract_atom_feats_fn  # type: ignore
     extract_atompair_feats_fn: Callable[[Mol], Float["m m dapi"]] = default_extract_atompair_feats_fn  # type: ignore
@@ -2543,8 +2544,6 @@ def pdb_input_to_molecule_input(
     file_id = os.path.splitext(os.path.basename(filepath))[0] if exists(filepath) else None
     resolution = i.resolution
 
-    print(f"Converting PDB input to molecule input for file {file_id}.")
-
     # acquire a `Biomolecule` object for the given `PDBInput`
 
     if not exists(biomol) and exists(i.biomol):
@@ -2693,6 +2692,15 @@ def pdb_input_to_molecule_input(
     else:
         # NOTE: this is the template cutoff date for all inference tasks
         template_cutoff_date = datetime.strptime("2021-09-30", "%Y-%m-%d")
+
+    if (
+        exists(i.max_num_template_tokens)
+        and num_tokens * i.num_templates_per_chain > i.max_num_template_tokens
+    ):
+        raise ValueError(
+            f"The number of tokens ({num_tokens}) multiplied by the number of templates per structure ({i.num_templates_per_chain}) must not exceed the maximum total number of template tokens {(i.max_num_template_tokens)}. "
+            "Skipping this example."
+        )
 
     template_features = load_templates_from_templates_dir(
         # NOTE: if templates are not locally available, no template features will be used
@@ -3475,11 +3483,13 @@ class PDBDataset(Dataset):
 
         i = self.get_item(idx)
 
-        if not exists(i) and not exists(self.sampler):
+        if not exists(i):
+            random_idx = not exists(self.sampler)
+
             retry_decorator = retry(
                 retry_on_result=not_exists, stop_max_attempt_number=max_attempts
             )
-            i = retry_decorator(self.get_item)(idx, random_idx=True)
+            i = retry_decorator(self.get_item)(idx, random_idx=random_idx)
 
         return i
 

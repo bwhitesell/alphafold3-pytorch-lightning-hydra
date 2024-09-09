@@ -66,6 +66,10 @@ def collate_inputs_to_batched_atom_input(
             ), "No `AtomInput` objects could be created for the current batch."
             atom_inputs = random.choices(atom_inputs, k=len(inputs))  # nosec
     else:
+        assert all(isinstance(i, AtomInput) for i in inputs), (
+            "When `transform_to_atom_inputs=False`, all provided "
+            "inputs must be of type `AtomInput`."
+        )
         atom_inputs = inputs
 
     assert all(isinstance(i, AtomInput) for i in atom_inputs), (
@@ -292,6 +296,7 @@ class PDBDataModule(LightningDataModule):
         max_msas_per_chain: int | None = None,
         max_templates_per_chain: int | None = None,
         num_templates_per_chain: int | None = None,
+        max_num_template_tokens: int | None = None,
         kalign_binary_path: str | None = None,
         sampling_weight_for_disorder_pdb_distillation: float = 0.02,
         train_on_transcription_factor_distillation_sets: bool = False,
@@ -435,6 +440,7 @@ class PDBDataModule(LightningDataModule):
             max_msas_per_chain=self.hparams.max_msas_per_chain,
             max_templates_per_chain=self.hparams.max_templates_per_chain,
             num_templates_per_chain=self.hparams.num_templates_per_chain,
+            max_num_template_tokens=self.hparams.max_num_template_tokens,
             kalign_binary_path=self.hparams.kalign_binary_path,
             training=True,
             sample_only_pdb_ids=sample_only_pdb_ids,
@@ -465,6 +471,7 @@ class PDBDataModule(LightningDataModule):
             max_msas_per_chain=self.hparams.max_msas_per_chain,
             max_templates_per_chain=self.hparams.max_templates_per_chain,
             num_templates_per_chain=self.hparams.num_templates_per_chain,
+            max_num_template_tokens=self.hparams.max_num_template_tokens,
             kalign_binary_path=self.hparams.kalign_binary_path,
             training=False,
             sample_only_pdb_ids=sample_only_pdb_ids,
@@ -495,6 +502,7 @@ class PDBDataModule(LightningDataModule):
             max_msas_per_chain=self.hparams.max_msas_per_chain,
             max_templates_per_chain=self.hparams.max_templates_per_chain,
             num_templates_per_chain=self.hparams.num_templates_per_chain,
+            max_num_template_tokens=self.hparams.max_num_template_tokens,
             kalign_binary_path=self.hparams.kalign_binary_path,
             training=False,
             sample_only_pdb_ids=sample_only_pdb_ids,
