@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import copy
-import gc
 import glob
 import json
 import os
@@ -2544,6 +2543,8 @@ def pdb_input_to_molecule_input(
     file_id = os.path.splitext(os.path.basename(filepath))[0] if exists(filepath) else None
     resolution = i.resolution
 
+    logger.info(f"Converting PDB input to molecule input for file {file_id}.")
+
     # acquire a `Biomolecule` object for the given `PDBInput`
 
     if not exists(biomol) and exists(i.biomol):
@@ -3324,8 +3325,6 @@ def pdb_input_to_molecule_input(
         extract_atom_feats_fn=i.extract_atom_feats_fn,
         extract_atompair_feats_fn=i.extract_atompair_feats_fn,
     )
-
-    gc.collect()
 
     return molecule_input
 
