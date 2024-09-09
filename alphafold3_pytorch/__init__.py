@@ -63,6 +63,7 @@ from alphafold3_pytorch.models.components.inputs import (
 from alphafold3_pytorch.utils.model_utils import (
     ExpressCoordinatesInFrame,
     RigidFrom3Points,
+    RigidFromReferenceThreePoints,
 )
 
 __all__ = [
@@ -74,6 +75,7 @@ __all__ = [
     MultiChainPermutationAlignment,
     ExpressCoordinatesInFrame,
     RigidFrom3Points,
+    RigidFromReferenceThreePoints,
     ComputeAlignmentError,
     CentreRandomAugmentation,
     TemplateEmbedder,

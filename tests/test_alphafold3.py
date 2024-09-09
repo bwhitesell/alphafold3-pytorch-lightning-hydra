@@ -31,6 +31,7 @@ from alphafold3_pytorch import (
     PairformerStack,
     RelativePositionEncoding,
     RigidFrom3Points,
+    RigidFromReference3Points,
     SmoothLDDTLoss,
     TemplateEmbedder,
     WeightedRigidAlign,
@@ -261,6 +262,15 @@ def test_rigid_from_three_points():
 
     points = torch.randn(7, 11, 23, 3)
     rotation, _ = rigid_from_3_points((points, points, points))
+    assert rotation.shape == (7, 11, 23, 3, 3)
+
+
+def test_rigid_from_reference_three_points():
+    """Test the function to compute a rigid transformation from three reference points."""
+    rigid_from_reference_3_points = RigidFromReference3Points()
+
+    points = torch.randn(7, 11, 23, 3)
+    rotation, _ = rigid_from_reference_3_points((points, points, points))
     assert rotation.shape == (7, 11, 23, 3, 3)
 
 

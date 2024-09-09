@@ -125,7 +125,7 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "experiment=af3_overfitting_e1",
+                "experiment=af3_overfitting_e8",
                 "~callbacks.learning_rate_monitor",
                 // "data.ablate_weighted_pdb_sampler=true",
                 "data.num_workers=0",
@@ -147,7 +147,7 @@
                 "strategy=default",
                 // "strategy.stage=2",
                 "trainer=default",
-                "trainer.accelerator=cpu",
+                // "trainer.accelerator=cpu",
                 "trainer.devices=1",
                 // "trainer.max_steps=2",
                 // "trainer.val_check_interval=1",
