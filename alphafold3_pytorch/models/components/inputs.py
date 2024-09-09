@@ -2543,7 +2543,7 @@ def pdb_input_to_molecule_input(
     file_id = os.path.splitext(os.path.basename(filepath))[0] if exists(filepath) else None
     resolution = i.resolution
 
-    logger.info(f"Converting PDB input to molecule input for file {file_id}.")
+    print(f"Converting PDB input to molecule input for file {file_id}.")
 
     # acquire a `Biomolecule` object for the given `PDBInput`
 
