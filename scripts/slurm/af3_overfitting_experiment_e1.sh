@@ -41,9 +41,11 @@ srun singularity exec --rocm \
     --pwd /alphafold3-pytorch-lightning-hydra \
     "$SINGULARITY_CONTAINER" \
     bash -c "
-        WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS \
+        /usr/bin/kalign --version \
+        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS \
         python3 alphafold3_pytorch/train.py \
         data.batch_size=1 \
+        data.kalign_binary_path=/usr/bin/kalign \
         experiment=af3_overfitting_e1 \
         trainer.num_nodes=1 \
         trainer.devices=1
