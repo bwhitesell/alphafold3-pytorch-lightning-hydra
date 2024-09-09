@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import copy
-import gc
 import glob
 import json
 import os
@@ -3383,10 +3382,16 @@ class PDBDataset(Dataset):
             }
 
         if exists(sample_only_pdb_ids):
-            assert exists(self.sampler), "A sampler must be provided to use `sample_only_pdb_ids`."
-            assert all(
-                pdb_id in sampler_pdb_ids for pdb_id in sample_only_pdb_ids
-            ), "Some PDB IDs in `sample_only_pdb_ids` are not present in the dataset's sampler mappings."
+            if exists(self.sampler):
+                assert all(
+                    pdb_id in sampler_pdb_ids for pdb_id in sample_only_pdb_ids
+                ), "Some PDB IDs in `sample_only_pdb_ids` are not present in the dataset's sampler mappings."
+            else:
+                self.files = {
+                    pdb_id: file
+                    for pdb_id, file in self.files.items()
+                    if pdb_id in sample_only_pdb_ids
+                }
 
         assert len(self) > 0, f"No valid mmCIFs / PDBs found at {str(folder)}"
 
@@ -3468,7 +3473,7 @@ class PDBDataset(Dataset):
             retry_decorator = retry(
                 retry_on_result=not_exists, stop_max_attempt_number=max_attempts
             )
-            i = retry_decorator()(idx, random_idx=True)
+            i = retry_decorator(self.get_item)(idx, random_idx=True)
 
         return i
 
