@@ -32,7 +32,7 @@ export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hy
 export OMP_NUM_THREADS=8
 
 # Define WandB run ID
-RUN_ID="x5t4q1n9"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="r336ik5d"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun singularity exec --rocm \
@@ -46,6 +46,8 @@ srun singularity exec --rocm \
         python3 alphafold3_pytorch/train.py \
         data.batch_size=1 \
         experiment=af3_initial_training \
+        strategy=default \
+        trainer=default \
         trainer.num_nodes=1 \
         trainer.devices=1
     "
