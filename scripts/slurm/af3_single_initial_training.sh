@@ -10,6 +10,7 @@
 #SBATCH --job-name=af3_single_initial_training                # job name
 #SBATCH --output=J-%x.%j.out                                  # output log file
 #SBATCH --error=J-%x.%j.err                                   # error log file
+#SBATCH --exclusive                                           # request exclusive node access
 #################################################################
 
 # Load required modules
@@ -31,7 +32,7 @@ export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hy
 export OMP_NUM_THREADS=8
 
 # Define WandB run ID
-RUN_ID="a017p5si"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="x5t4q1n9"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun singularity exec --rocm \
