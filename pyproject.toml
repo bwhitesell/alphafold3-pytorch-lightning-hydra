@@ -74,7 +74,7 @@ dependencies = [
     "polars>=1.6.0",   # for faster data parsing and analysis
     "pre-commit",      # hooks for applying linters on commit
     "pytest",          # tests
-    "rdkit>=2023.9.6", # for parsing small molecule data files
+    "rdkit>=2024.3.5", # for parsing small molecule data files
     "retrying",        # for retrying failed operations
     "rich",            # beautiful text formatting in terminal
     "rootutils",       # standardizing the project root setup
