@@ -28,7 +28,7 @@ data:
   max_msas_per_chain: 128
   max_templates_per_chain: 20
   num_templates_per_chain: 4
-  max_num_template_tokens: 10240
+  max_num_template_tokens: 5120
 
   overfitting_train_examples: true
   sample_only_pdb_ids: [
