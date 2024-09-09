@@ -2515,6 +2515,7 @@ def load_templates_from_templates_dir(
             num_templates=num_templates_per_chain,
             template_cutoff_date=template_cutoff_date,
             randomly_sample_num_templates=randomly_sample_num_templates,
+            verbose=verbose,
         )
         templates[chain_id].extend(template_biomols)
 
@@ -2523,6 +2524,7 @@ def load_templates_from_templates_dir(
         chain_id_to_residue,
         num_templates=num_templates_per_chain,
         kalign_binary_path=kalign_binary_path,
+        verbose=verbose,
     )
 
     return features
@@ -2618,6 +2620,7 @@ def pdb_input_to_molecule_input(
         file_id,
         chain_id_to_residue,
         max_msas_per_chain=i.max_msas_per_chain,
+        verbose=verbose,
     )
 
     msa = msa_features.get("msa")
@@ -2700,6 +2703,7 @@ def pdb_input_to_molecule_input(
         kalign_binary_path=i.kalign_binary_path,
         template_cutoff_date=template_cutoff_date,
         randomly_sample_num_templates=exists(i.training) and i.training,
+        verbose=verbose,
     )
 
     templates = template_features.get("templates")

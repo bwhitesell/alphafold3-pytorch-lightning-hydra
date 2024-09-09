@@ -352,6 +352,7 @@ def make_template_features(
                     old_mapping=mapping,
                     kalign_binary_path=kalign_binary_path,
                     template_type=template_type,
+                    verbose=verbose,
                 )
 
                 # Extract features from aligned template.
@@ -363,6 +364,7 @@ def make_template_features(
                     query_chemtype=chain_chemtype,
                     num_restype_classes=num_restype_classes,
                     num_distogram_bins=num_distogram_bins,
+                    verbose=verbose,
                 )
 
                 template_restype_list[chain_index][template_index] = template_features[
