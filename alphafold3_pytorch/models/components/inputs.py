@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import gc
 import glob
 import json
 import os
@@ -3316,13 +3317,15 @@ def pdb_input_to_molecule_input(
         resolved_labels=resolved_labels,
         resolution=resolution,
         chains=chains,
-        # filepath=filepath,
+        filepath=filepath,
         add_atom_ids=i.add_atom_ids,
         add_atompair_ids=i.add_atompair_ids,
         directed_bonds=i.directed_bonds,
         extract_atom_feats_fn=i.extract_atom_feats_fn,
         extract_atompair_feats_fn=i.extract_atompair_feats_fn,
     )
+
+    gc.collect()
 
     return molecule_input
 
