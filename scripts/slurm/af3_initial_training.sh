@@ -37,9 +37,6 @@ RDZV_HOST=$(hostname)
 export RDZV_HOST
 export RDZV_PORT=29400
 
-# Disable peer-to-peer communication for NCCL
-export NCCL_P2P_DISABLE=1
-
 # Set debugging flags (optional)
 export NCCL_DEBUG=INFO
 export PYTHONFAULTHANDLER=1
@@ -50,7 +47,7 @@ export PYTHONFAULTHANDLER=1
 # For what `srun` is concerned, only one task is created, the `torchrun` process.
 
 # Define WandB run ID
-RUN_ID="um2glw0b"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="egcdnigq"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun -c 64 singularity exec \
@@ -61,7 +58,7 @@ srun -c 64 singularity exec \
     "$SINGULARITY_CONTAINER" \
     bash -c "
         /usr/bin/kalign --version \
-        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS NCCL_P2P_DISABLE=$NCCL_P2P_DISABLE \
+        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS \
         torchrun \
         --nnodes=$SLURM_JOB_NUM_NODES \
         --nproc_per_node=$NUM_PYTORCH_PROCESSES \
