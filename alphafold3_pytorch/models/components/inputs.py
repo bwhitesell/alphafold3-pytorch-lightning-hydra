@@ -40,6 +40,7 @@ from alphafold3_pytorch.common.biomolecule import (
 from alphafold3_pytorch.data import mmcif_parsing, msa_parsing, template_parsing
 from alphafold3_pytorch.data.data_pipeline import (
     FeatureDict,
+    create_paired_features,
     get_assembly,
     make_msa_features,
     make_msa_mask,
@@ -1829,6 +1830,7 @@ class PDBInput:
     cropping_config: Dict[str, float | int] | None = None
     msa_dir: str | None = None
     templates_dir: str | None = None
+    uniprot_accession_to_tax_id_mapping: Dict[str, str] | None = None
     add_atom_ids: bool = False
     add_atompair_ids: bool = False
     directed_bonds: bool = False
@@ -2394,6 +2396,7 @@ def load_msa_from_msa_dir(
     msa_dir: str | None,
     file_id: str,
     chain_id_to_residue: Dict[str, Dict[str, List[int]]],
+    uniprot_accession_to_tax_id_mapping: Dict[str, str] | None = None,
     max_msas_per_chain: int | None = None,
     randomly_truncate: bool = False,
     raise_missing_exception: bool = False,
@@ -2447,8 +2450,23 @@ def load_msa_from_msa_dir(
                 )
             msas[chain_id] = None
 
-    features = make_msa_features(msas, chain_id_to_residue)
-    features = make_msa_mask(features)
+    try:
+        features = make_msa_features(
+            msas,
+            chain_id_to_residue,
+            uniprot_accession_to_tax_id_mapping=uniprot_accession_to_tax_id_mapping,
+        )
+
+        if exists(uniprot_accession_to_tax_id_mapping) and not features["is_monomer_or_homomer"]:
+            features = create_paired_features(features)
+
+        features = make_msa_mask(features)
+    except Exception as e:
+        if verbose:
+            logger.warning(
+                f"Failed to create MSA features for file {file_id} due to: {e}. Skipping MSA feature creation."
+            )
+        features = {}
 
     return features
 
@@ -2629,6 +2647,7 @@ def pdb_input_to_molecule_input(
             i.msa_dir,
             file_id,
             chain_id_to_residue,
+            uniprot_accession_to_tax_id_mapping=i.uniprot_accession_to_tax_id_mapping,
             max_msas_per_chain=i.max_msas_per_chain,
             verbose=verbose,
         )

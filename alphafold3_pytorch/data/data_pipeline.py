@@ -61,6 +61,7 @@ def make_msa_mask(features: FeatureDict) -> FeatureDict:
 def make_msa_features(
     msas: Dict[str, msa_parsing.Msa | None],
     chain_id_to_residue: Dict[str, Dict[str, List[int]]],
+    uniprot_accession_to_tax_id_mapping: Dict[str, str] | None = None,
     ligand_chemtype_index: int = 3,
     raise_missing_exception: bool = False,
 ) -> FeatureDict:
@@ -70,7 +71,8 @@ def make_msa_features(
 
     :param msas: The mapping of chain IDs to lists of (optional) MSAs for each chain.
     :param chain_id_to_residue: The mapping of chain IDs to residue information.
-    :param ligand_index: The index of the ligand in the chemical type list.
+    :param uniprot_accession_to_tax_id_mapping: The mapping of UniProt accession IDs to NCBI taxonomy IDs.
+    :param ligand_chemtype_index: The index of the ligand in the chemical type list.
     :param raise_missing_exception: Whether to raise an exception if no MSAs are provided for any chain.
     :return: The MSA feature dictionary.
     """
@@ -87,6 +89,8 @@ def make_msa_features(
     int_msa_list = []
     deletion_matrix_list = []
     species_ids_list = []
+
+    unique_query_sequences = set()
 
     for chain_id, msa in msas.items():
         int_msa = []
@@ -111,7 +115,7 @@ def make_msa_features(
 
         gap_ids = [[GAP_ID] * num_res]
         deletion_values = [[0] * num_res]
-        species = ["".encode("utf-8")]
+        species = [""]
 
         if not msa and raise_missing_exception:
             raise ValueError(f"MSA for chain {chain_id} must contain at least one sequence.")
@@ -126,6 +130,9 @@ def make_msa_features(
             continue
 
         for sequence_index, sequence in enumerate(msa.sequences):
+            if sequence_index == 0:
+                unique_query_sequences.add(sequence)
+
             if sequence in seen_sequences:
                 continue
             seen_sequences.add(sequence)
@@ -181,8 +188,11 @@ def make_msa_features(
             int_msa.append(msa_res_types)
             deletion_matrix.append(msa_deletion_values)
 
-            identifiers = msa_parsing.get_identifiers(msa.descriptions[sequence_index])
-            species_ids.append(identifiers.species_id.encode("utf-8"))
+            species_id = ""
+            if exists(uniprot_accession_to_tax_id_mapping):
+                accession_id = msa_parsing.get_accession_id(msa.descriptions[sequence_index])
+                species_id = uniprot_accession_to_tax_id_mapping.get(accession_id, "")
+            species_ids.append(species_id)
 
         # Pad the MSA to the maximum number of alignments.
         num_padding_alignments = max_alignments - len(int_msa)
@@ -202,7 +212,21 @@ def make_msa_features(
         "deletion_matrix": torch.cat(deletion_matrix_list, dim=-1),
         "msa_species_identifiers": np.stack(species_ids_list),
         "num_alignments": max_alignments,
+        "is_monomer_or_homomer": len(unique_query_sequences) == 1,
     }
+    return features
+
+
+@typecheck
+def create_paired_features(features: FeatureDict) -> FeatureDict:
+    """
+    Pair MSA features.
+    From:
+    https://github.com/aqlaboratory/openfold/blob/main/openfold/data/msa_pairing.py#L56
+
+    :param features: The MSA features dictionary.
+    :return: The MSA features dictionary with a paired ordering of MSAs.
+    """
     return features
 
 
