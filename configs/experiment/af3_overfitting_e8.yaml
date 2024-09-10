@@ -38,7 +38,7 @@ seed: 12345
 
 data:
   crop_size: 384
-  max_msas_per_chain: 128
+  max_msas_per_chain: 16384
   max_templates_per_chain: 20
   num_templates_per_chain: 4
   max_num_template_tokens: 5120
