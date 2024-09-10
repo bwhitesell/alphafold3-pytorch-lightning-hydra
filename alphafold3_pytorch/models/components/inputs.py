@@ -2617,10 +2617,11 @@ def pdb_input_to_molecule_input(
     }
 
     if exists(i.max_num_msa_tokens) and num_tokens * i.max_msas_per_chain > i.max_num_msa_tokens:
-        logger.warning(
-            f"The number of tokens ({num_tokens}) multiplied by the maximum number of MSAs per structure ({i.max_msas_per_chain}) exceeds the maximum total number of MSA tokens {(i.max_num_msa_tokens)}. "
-            "Skipping curation of MSA features for this example."
-        )
+        if verbose:
+            logger.warning(
+                f"The number of tokens ({num_tokens}) multiplied by the maximum number of MSAs per structure ({i.max_msas_per_chain}) exceeds the maximum total number of MSA tokens {(i.max_num_msa_tokens)}. "
+                "Skipping curation of MSA features for this example."
+            )
         msa_features = {}
     else:
         msa_features = load_msa_from_msa_dir(
@@ -2705,10 +2706,11 @@ def pdb_input_to_molecule_input(
         exists(i.max_num_template_tokens)
         and num_tokens * i.num_templates_per_chain > i.max_num_template_tokens
     ):
-        logger.warning(
-            f"The number of tokens ({num_tokens}) multiplied by the number of templates per structure ({i.num_templates_per_chain}) exceeds the maximum total number of template tokens {(i.max_num_template_tokens)}. "
-            "Skipping curation of template features for this example."
-        )
+        if verbose:
+            logger.warning(
+                f"The number of tokens ({num_tokens}) multiplied by the number of templates per structure ({i.num_templates_per_chain}) exceeds the maximum total number of template tokens {(i.max_num_template_tokens)}. "
+                "Skipping curation of template features for this example."
+            )
         template_features = {}
     else:
         template_features = load_templates_from_templates_dir(
