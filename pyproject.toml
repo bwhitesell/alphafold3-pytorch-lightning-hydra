@@ -1,6 +1,6 @@
 [project]
 name = "alphafold3-pytorch-lightning-hydra"
-version = "0.4.54"
+version = "0.5.2"
 description = "AlphaFold 3 - Pytorch"
 authors = [
     { name = "Phil Wang", email = "lucidrains@gmail.com" },
@@ -100,6 +100,7 @@ test = [
 
 [project.scripts]
 alphafold3_pytorch = "alphafold3_pytorch.cli:cli"
+alphafold3_pytorch_app = "alphafold3_pytorch.app:app"
 
 [build-system]
 requires = ["hatchling"]
