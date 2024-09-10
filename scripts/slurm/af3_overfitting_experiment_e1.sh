@@ -30,9 +30,6 @@ export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hy
 # Set the number of threads to be generated for each PyTorch (GPU) process
 export OMP_NUM_THREADS=8
 
-# Disable peer-to-peer communication for NCCL
-export NCCL_P2P_DISABLE=1
-
 # Set debugging flags (optional)
 export NCCL_DEBUG=INFO
 export PYTHONFAULTHANDLER=1
@@ -49,7 +46,7 @@ srun singularity exec --rocm \
     "$SINGULARITY_CONTAINER" \
     bash -c "
         /usr/bin/kalign --version \
-        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS NCCL_P2P_DISABLE=$NCCL_P2P_DISABLE \
+        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS \
         python3 alphafold3_pytorch/train.py \
         data.batch_size=1 \
         data.kalign_binary_path=/usr/bin/kalign \
