@@ -20,12 +20,8 @@ def fold(protein):
     """Fold a biomolecule using AlphaFold 3."""
     alphafold3_input = Alphafold3Input(proteins=[protein])
 
-    batched_atom_input = alphafold3_inputs_to_batched_atom_input(
-        alphafold3_input, atoms_per_window=model.atoms_per_window
-    )
-
     model.eval()
-    (atom_pos,) = model(**batched_atom_input.model_forward_dict())
+    (atom_pos,) = model.forward_with_alphafold3_inputs(alphafold3_input)
 
     return str(atom_pos.tolist())
 

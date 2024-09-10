@@ -86,6 +86,9 @@ from torch.nn import Linear, Module, ModuleList, Sequential
 from tqdm import tqdm
 
 from alphafold3_pytorch.common.biomolecule import get_residue_constants
+from alphafold3_pytorch.data.pdb_datamodule import (
+    alphafold3_inputs_to_batched_atom_input,
+)
 from alphafold3_pytorch.models.components.attention import (
     Attention,
     full_attn_bias_to_windowed,
@@ -108,6 +111,7 @@ from alphafold3_pytorch.models.components.inputs import (
     IS_RNA_INDEX,
     NUM_MOLECULE_IDS,
     NUM_MSA_ONE_HOT,
+    Alphafold3Input,
     BatchedAtomInput,
     hard_validate_atom_indices_ascending,
 )
@@ -2750,20 +2754,21 @@ class ElucidatedAtomDiffusion(Module):
             self.P_mean + self.P_std * torch.randn((batch_size,), device=self.device)
         ).exp() * self.sigma_data
 
+    @typecheck
     def forward(
         self,
         atom_pos_ground_truth: Float["b m 3"],  # type: ignore
         atom_mask: Bool["b m"],  # type: ignore
         atom_feats: Float["b m da"],  # type: ignore
-        atompair_feats: Float["b m m dap"],  # type: ignore
+        atompair_feats: Float["b m m dap"] | Float["b nw w (w*2) dap"],  # type: ignore
         mask: Bool["b n"],  # type: ignore
         single_trunk_repr: Float["b n dst"],  # type: ignore
         single_inputs_repr: Float["b n dsi"],  # type: ignore
         pairwise_trunk: Float["b n n dpt"],  # type: ignore
         pairwise_rel_pos_feats: Float["b n n dpr"],  # type: ignore
         molecule_atom_lens: Int["b n"],  # type: ignore
-        molecule_atom_indices: Int["b n"],  # type: ignore
         token_bonds: Bool["b n n"],  # type: ignore
+        molecule_atom_indices: Int["b n"] | None = None,  # type: ignore
         missing_atom_mask: Bool["b m"] | None = None,  # type: ignore
         atom_parent_ids: Int["b m"] | None = None,  # type: ignore
         return_denoised_pos=False,
@@ -2789,8 +2794,8 @@ class ElucidatedAtomDiffusion(Module):
         :param pairwise_trunk: The pairwise trunk tensor.
         :param pairwise_rel_pos_feats: The pairwise relative position features tensor.
         :param molecule_atom_lens: The molecule atom lengths tensor.
-        :param molecule_atom_indices: The molecule atom indices tensor.
         :param token_bonds: The token bonds tensor.
+        :param molecule_atom_indices: The molecule atom indices tensor.
         :param missing_atom_mask: The missing atom mask tensor.
         :param atom_parent_ids: The atom parent IDs tensor.
         :param return_denoised_pos: Whether to return the denoised position.
@@ -2859,7 +2864,7 @@ class ElucidatedAtomDiffusion(Module):
 
         # section 4.2 - multi-chain permutation alignment
 
-        if single_structure_input:
+        if exists(molecule_atom_indices) and single_structure_input:
             try:
                 atom_pos_aligned_ground_truth = self.multi_chain_permutation_alignment(
                     pred_coords=denoised_atom_pos,
@@ -6443,6 +6448,19 @@ class Alphafold3(Module):
         return self
 
     @typecheck
+    def forward_with_alphafold3_inputs(
+        self, alphafold3_inputs: Alphafold3Input | list[Alphafold3Input], **kwargs
+    ):
+        """Run the forward pass of AlphaFold 3 with Alphafold3Inputs."""
+        if not isinstance(alphafold3_inputs, list):
+            alphafold3_inputs = [alphafold3_inputs]
+
+        batched_atom_inputs = alphafold3_inputs_to_batched_atom_input(
+            alphafold3_inputs, atoms_per_window=self.w
+        )
+        return self.forward(**batched_atom_inputs.model_forward_dict(), **kwargs)
+
+    @typecheck
     def forward(
         self,
         *,
@@ -6640,6 +6658,7 @@ class Alphafold3(Module):
 
         # get atom sequence length and molecule sequence length depending on whether using packed atomic seq
 
+        batch_size = molecule_atom_lens.shape[0]
         seq_len = molecule_atom_lens.shape[-1]
 
         # embed inputs
@@ -6739,6 +6758,7 @@ class Alphafold3(Module):
         else:
             seq_arange = torch.arange(seq_len, device=self.device)
             token_bonds = einx.subtract("i, j -> i j", seq_arange, seq_arange).abs() == 1
+            token_bonds = repeat(token_bonds, "i j -> b i j", b=batch_size)
 
         token_bonds_feats = self.token_bond_to_pairwise_feat(token_bonds.type(dtype))
 
@@ -6968,7 +6988,6 @@ class Alphafold3(Module):
 
         # otherwise, noise and make it learn to denoise
 
-        batch_size = atom_inputs.shape[0]
         calc_diffusion_loss = exists(atom_pos)
 
         if calc_diffusion_loss:
