@@ -5,7 +5,7 @@ import os
 import numpy as np
 import torch
 import torch.nn.functional as F
-from beartype.typing import Dict, List, MutableMapping, Optional, Tuple
+from beartype.typing import Dict, List, MutableMapping, Optional, Set, Tuple
 from torch import Tensor
 
 from alphafold3_pytorch.common.biomolecule import (
@@ -20,6 +20,7 @@ from alphafold3_pytorch.data.template_parsing import (
     TEMPLATE_TYPE,
     _extract_template_features,
 )
+from alphafold3_pytorch.utils.data_utils import make_one_hot
 from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import typecheck
 from alphafold3_pytorch.utils.utils import exists
@@ -43,6 +44,35 @@ def make_sequence_features(sequence: str, description: str) -> FeatureDict:
 
 
 @typecheck
+def merge_chain_features(chains: List[Dict[str, Tensor | np.ndarray]]) -> FeatureDict:
+    """Merge MSA chain features.
+
+    :param features: The MSA chain features dictionary.
+    :return: The merged MSA chain features dictionary.
+    """
+    msa_list = []
+    has_deletion_list = []
+    deletion_value_list = []
+    profile_list = []
+    deletion_mean_list = []
+
+    for chain in chains:
+        msa_list.append(chain["msa"])
+        has_deletion_list.append(chain["has_deletion"])
+        deletion_value_list.append(chain["deletion_value"])
+        profile_list.append(chain["profile"])
+        deletion_mean_list.append(chain["deletion_mean"])
+
+    return {
+        "msa": torch.cat(msa_list, dim=-1),
+        "has_deletion": torch.cat(has_deletion_list, dim=-1),
+        "deletion_value": torch.cat(deletion_value_list, dim=-1),
+        "profile": torch.cat(profile_list, dim=-2),
+        "deletion_mean": torch.cat(deletion_mean_list, dim=-1),
+    }
+
+
+@typecheck
 def make_msa_mask(features: FeatureDict) -> FeatureDict:
     """
     Make MSA mask features.
@@ -52,7 +82,7 @@ def make_msa_mask(features: FeatureDict) -> FeatureDict:
     :param features: The features dictionary.
     :return: The features dictionary with new MSA mask features.
     """
-    features["msa_mask"] = torch.ones(features["msa"].shape[1], dtype=torch.float32)
+    features["msa_col_mask"] = torch.ones(features["msa"].shape[1], dtype=torch.float32)
     features["msa_row_mask"] = torch.ones((features["msa"].shape[0]), dtype=torch.float32)
     return features
 
@@ -62,9 +92,10 @@ def make_msa_features(
     msas: Dict[str, msa_parsing.Msa | None],
     chain_id_to_residue: Dict[str, Dict[str, List[int]]],
     uniprot_accession_to_tax_id_mapping: Dict[str, str] | None = None,
+    num_msa_one_hot: int = 32,
     ligand_chemtype_index: int = 3,
     raise_missing_exception: bool = False,
-) -> FeatureDict:
+) -> Tuple[List[Dict[str, Tensor | np.ndarray]], Set[str]]:
     """
     Construct a feature dictionary of MSA features.
     From: https://github.com/aqlaboratory/openfold/blob/6f63267114435f94ac0604b6d89e82ef45d94484/openfold/data/data_pipeline.py#L224
@@ -72,9 +103,10 @@ def make_msa_features(
     :param msas: The mapping of chain IDs to lists of (optional) MSAs for each chain.
     :param chain_id_to_residue: The mapping of chain IDs to residue information.
     :param uniprot_accession_to_tax_id_mapping: The mapping of UniProt accession IDs to NCBI taxonomy IDs.
+    :param num_msa_one_hot: The number of one-hot classes for MSA features.
     :param ligand_chemtype_index: The index of the ligand in the chemical type list.
     :param raise_missing_exception: Whether to raise an exception if no MSAs are provided for any chain.
-    :return: The MSA feature dictionary.
+    :return: The MSA chain feature dictionaries and the unique query sequences.
     """
     if not msas:
         raise ValueError("At least one chain's MSA must be provided.")
@@ -86,10 +118,7 @@ def make_msa_features(
             max_alignments = max(max_alignments, len(msa.sequences) if msa else 1)
 
     # Collect MSAs.
-    int_msa_list = []
-    deletion_matrix_list = []
-    species_ids_list = []
-
+    chains = []
     unique_query_sequences = set()
 
     for chain_id, msa in msas.items():
@@ -114,19 +143,30 @@ def make_msa_features(
         )
 
         gap_ids = [[GAP_ID] * num_res]
-        deletion_values = [[0] * num_res]
         species = [""]
+        deletion_values = [[0] * num_res]
+        profiles = [[[0] * num_msa_one_hot] * num_res]
 
         if not msa and raise_missing_exception:
             raise ValueError(f"MSA for chain {chain_id} must contain at least one sequence.")
         elif not msa:
             # Pad the MSA to the maximum number of alignments
             # if the chain does not have any associated alignments.
-            int_msa_list.append(torch.tensor(gap_ids * max_alignments, dtype=torch.long))
-            deletion_matrix_list.append(
-                torch.tensor(deletion_values * max_alignments, dtype=torch.float32)
-            )
-            species_ids_list.append(np.array(species * max_alignments, dtype=object))
+            chain = {
+                "msa": torch.tensor(gap_ids * max_alignments, dtype=torch.long),
+                "msa_species_identifiers": np.array(species * max_alignments, dtype=object),
+                "has_deletion": torch.tensor(
+                    deletion_values * max_alignments, dtype=torch.float32
+                ),
+                "deletion_value": torch.tensor(
+                    deletion_values * max_alignments, dtype=torch.float32
+                ),
+                "profile": torch.tensor(profiles * max_alignments, dtype=torch.float32).mean(0),
+                "deletion_mean": torch.tensor(
+                    deletion_values * max_alignments, dtype=torch.float32
+                ).mean(0),
+            }
+            chains.append(chain)
             continue
 
         for sequence_index, sequence in enumerate(msa.sequences):
@@ -201,33 +241,25 @@ def make_msa_features(
         padding_deletion_matrix = deletion_values * num_padding_alignments
         padding_species_ids = species * num_padding_alignments
 
-        int_msa_list.append(torch.tensor(int_msa + padding_msa, dtype=torch.long))
-        deletion_matrix_list.append(
-            torch.tensor(deletion_matrix + padding_deletion_matrix, dtype=torch.float32)
+        # Construct MSA features for the chain.
+        chain = {
+            "msa": torch.tensor(int_msa + padding_msa, dtype=torch.long),
+            "msa_species_identifiers": np.array(species_ids + padding_species_ids, dtype=object),
+        }
+        deletion_matrix = torch.tensor(
+            deletion_matrix + padding_deletion_matrix, dtype=torch.float32
         )
-        species_ids_list.append(np.array(species_ids + padding_species_ids, dtype=object))
 
-    features = {
-        "msa": torch.cat(int_msa_list, dim=-1),
-        "deletion_matrix": torch.cat(deletion_matrix_list, dim=-1),
-        "msa_species_identifiers": np.stack(species_ids_list),
-        "num_alignments": max_alignments,
-        "is_monomer_or_homomer": len(unique_query_sequences) == 1,
-    }
-    return features
+        chain["has_deletion"] = torch.clip(deletion_matrix, 0.0, 1.0)
+        chain["deletion_value"] = torch.atan(deletion_matrix / 3.0) * (2.0 / torch.pi)
 
+        # NOTE: assumes each aligned sequence has the same (unitary) mask values
+        chain["profile"] = make_one_hot(chain["msa"], num_msa_one_hot).mean(0)
+        chain["deletion_mean"] = chain["deletion_value"].mean(0)
 
-@typecheck
-def create_paired_features(features: FeatureDict) -> FeatureDict:
-    """
-    Pair MSA features.
-    From:
-    https://github.com/aqlaboratory/openfold/blob/main/openfold/data/msa_pairing.py#L56
+        chains.append(chain)
 
-    :param features: The MSA features dictionary.
-    :return: The MSA features dictionary with a paired ordering of MSAs.
-    """
-    return features
+    return chains, unique_query_sequences
 
 
 @typecheck

@@ -37,14 +37,19 @@ from alphafold3_pytorch.common.biomolecule import (
     _from_mmcif_object,
     get_residue_constants,
 )
-from alphafold3_pytorch.data import mmcif_parsing, msa_parsing, template_parsing
+from alphafold3_pytorch.data import (
+    mmcif_parsing,
+    msa_pairing,
+    msa_parsing,
+    template_parsing,
+)
 from alphafold3_pytorch.data.data_pipeline import (
     FeatureDict,
-    create_paired_features,
     get_assembly,
     make_msa_features,
     make_msa_mask,
     make_template_features,
+    merge_chain_features,
 )
 from alphafold3_pytorch.data.life import (
     ATOM_BONDS,
@@ -2451,16 +2456,21 @@ def load_msa_from_msa_dir(
             msas[chain_id] = None
 
     try:
-        features = make_msa_features(
+        chains, unique_query_sequences = make_msa_features(
             msas,
             chain_id_to_residue,
+            num_msa_one_hot=NUM_MSA_ONE_HOT,
             uniprot_accession_to_tax_id_mapping=uniprot_accession_to_tax_id_mapping,
         )
+        is_monomer_or_homomer = len(unique_query_sequences) == 1
 
-        if exists(uniprot_accession_to_tax_id_mapping) and not features["is_monomer_or_homomer"]:
-            features = create_paired_features(features)
+        if exists(uniprot_accession_to_tax_id_mapping) and not is_monomer_or_homomer:
+            chains = msa_pairing.create_paired_features(chains)
+            chains = msa_pairing.deduplicate_unpaired_sequences(chains)
 
+        features = merge_chain_features(chains)
         features = make_msa_mask(features)
+
     except Exception as e:
         if verbose:
             logger.warning(
@@ -2653,8 +2663,13 @@ def pdb_input_to_molecule_input(
         )
 
     msa = msa_features.get("msa")
-    msa_col_mask = msa_features.get("msa_mask")
     msa_row_mask = msa_features.get("msa_row_mask")
+
+    has_deletion = msa_features.get("has_deletion")
+    deletion_value = msa_features.get("deletion_value")
+
+    profile = msa_features.get("profile")
+    deletion_mean = msa_features.get("deletion_mean")
 
     # collect additional MSA and token features
     # 0: has_deletion (msa)
@@ -2667,13 +2682,14 @@ def pdb_input_to_molecule_input(
 
     num_msas = len(msa) if exists(msa) else 1
 
-    if exists(msa):
+    all_msa_features_exist = all(
+        exists(feat)
+        for feat in [msa, msa_row_mask, has_deletion, deletion_value, profile, deletion_mean]
+    )
+    if all_msa_features_exist:
         assert (
             msa.shape[-1] == num_tokens
         ), f"The number of tokens in the MSA ({msa.shape[-1]}) does not match the number of tokens in the biomolecule ({num_tokens}). "
-
-        has_deletion = torch.clip(msa_features["deletion_matrix"], 0.0, 1.0)
-        deletion_value = torch.atan(msa_features["deletion_matrix"] / 3.0) * (2.0 / torch.pi)
 
         additional_msa_feats = torch.stack(
             [
@@ -2681,16 +2697,6 @@ def pdb_input_to_molecule_input(
                 deletion_value,
             ],
             dim=-1,
-        )
-
-        # NOTE: assumes each aligned sequence has the same mask values
-        profile_msa_mask = torch.repeat_interleave(msa_col_mask[None, ...], len(msa), dim=0)
-        msa_sum = (profile_msa_mask[:, :, None] * make_one_hot(msa, NUM_MSA_ONE_HOT)).sum(0)
-        mask_counts = 1e-6 + profile_msa_mask.sum(0)
-
-        profile = msa_sum / mask_counts[:, None]
-        deletion_mean = torch.atan(msa_features["deletion_matrix"].mean(0) / 3.0) * (
-            2.0 / torch.pi
         )
 
         additional_token_feats = torch.cat(

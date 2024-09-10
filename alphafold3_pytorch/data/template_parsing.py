@@ -161,7 +161,7 @@ def _extract_template_features(
     alignment mapping provided.
 
     Adapted from:
-    https://github.com/aqlaboratory/openfold/blob/main/openfold/data/templates.py
+    https://github.com/aqlaboratory/openfold/blob/6f63267114435f94ac0604b6d89e82ef45d94484/openfold/data/templates.py#L16
 
     :param template_biomol: `Biomolecule` representing the template.
     :param mapping: Dictionary mapping indices in the query sequence to indices in
