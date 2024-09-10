@@ -2,6 +2,7 @@ _target_: alphafold3_pytorch.data.pdb_datamodule.PDBDataModule
 data_dir: ${paths.data_dir}/pdb_data/ # NOTE: this is the directory where the PDB data should be set up
 msa_dir: ${paths.data_dir}/pdb_data/data_caches/msa # NOTE: this is the directory where the MSA data should be set up
 templates_dir: ${paths.data_dir}/pdb_data/data_caches/template # NOTE: this is the directory where the template data should be set up
+uniprot_accession_to_tax_id_mapping_filepath: ${paths.data_dir}/pdb_data/data_caches/uniref30_2202_accession_mapping.tsv
 sample_type: default # NOTE: must be one of (`default`, `clustered`)
 contiguous_weight: 0.2 # NOTE: the sum of `contiguous_weight`, `spatial_weight`, and `spatial_interface_weight` should be 1
 spatial_weight: 0.4
