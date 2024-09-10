@@ -5,7 +5,7 @@
 #SBATCH --account=pawsey1018-gpu                              # IMPORTANT: use your own project and the -gpu suffix
 #SBATCH --nodes=2                                             # NOTE: this needs to match Lightning's `Trainer(num_nodes=...)`
 #SBATCH --ntasks-per-node=1                                   # NOTE: this needs to be `1` on SLURM clusters when using Lightning's `ddp_spawn` strategy`; otherwise, set to match Lightning's quantity of `Trainer(devices=...)`
-#SBATCH --time 0-00:05:00                                     # time limit for the job (up to 24 hours: `0-24:00:00`)
+#SBATCH --time 0-04:00:00                                     # time limit for the job (up to 24 hours: `0-24:00:00`)
 #SBATCH --job-name=af3_overfitting_e8                         # job name
 #SBATCH --output=J-%x.%j.out                                  # output log file
 #SBATCH --error=J-%x.%j.err                                   # error log file
@@ -47,7 +47,7 @@ export PYTHONFAULTHANDLER=1
 # For what `srun` is concerned, only one task is created, the `torchrun` process.
 
 # Define WandB run ID
-RUN_ID="aitux8et"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="ctfw4w3o"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun -c 64 singularity exec \
@@ -72,7 +72,6 @@ srun -c 64 singularity exec \
         experiment=af3_overfitting_e8 \
         trainer.num_nodes=$SLURM_JOB_NUM_NODES \
         trainer.devices=$NUM_PYTORCH_PROCESSES \
-        +trainer.max_time='00:00:15:00'
     "
 
 # Inform user of run completion
