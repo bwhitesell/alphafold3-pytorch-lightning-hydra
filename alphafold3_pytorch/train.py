@@ -3,6 +3,7 @@ import os
 
 import hydra
 import lightning as L
+import polars as pl
 import rootutils
 import torch
 from beartype.typing import Any, Dict, List, Optional, Tuple
@@ -64,7 +65,27 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         L.seed_everything(cfg.seed, workers=True)
 
     log.info(f"Instantiating datamodule <{cfg.data._target_}>")
-    datamodule: LightningDataModule = hydra.utils.instantiate(cfg.data)
+
+    # load UniProt accession ID to taxonomic ID mapping
+    log.info(
+        "Loading UniProt accession ID to taxonomic ID mapping. This may take several minutes to complete."
+    )
+    uniprot_accession_to_tax_id_mapping = dict(
+        pl.read_csv(
+            cfg.data.uniprot_accession_to_tax_id_mapping_filepath,
+            has_header=False,
+            separator="\t",
+            infer_schema_length=0,  # read all column values as strings
+            n_rows=cfg.data.num_tax_id_mappings_to_keep,
+            batch_size=cfg.data.uniprot_accession_to_tax_id_mapping_loading_batch_size,
+        ).iter_rows()
+    )
+    log.info("Finished loading UniProt accession ID to taxonomic ID mapping.")
+
+    datamodule: LightningDataModule = hydra.utils.instantiate(
+        cfg.data,
+        uniprot_accession_to_tax_id_mapping=uniprot_accession_to_tax_id_mapping,
+    )
 
     log.info(f"Instantiating model <{cfg.model._target_}>")
     model: LightningModule = hydra.utils.instantiate(cfg.model, _convert_="partial")

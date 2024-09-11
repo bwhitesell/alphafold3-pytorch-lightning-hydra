@@ -325,6 +325,7 @@ class PDBDataModule(LightningDataModule):
         multiprocessing_context: Union[str, multiprocessing.context.BaseContext] | None = None,
         prefetch_factor: int | None = None,
         persistent_workers: bool = False,
+        uniprot_accession_to_tax_id_mapping: Dict[str, str] | None = None,
     ) -> None:
         super().__init__()
 
@@ -429,20 +430,21 @@ class PDBDataModule(LightningDataModule):
             )
 
         # load UniProt accession ID to taxonomic ID mapping
-        log.info(
-            "Loading UniProt accession ID to taxonomic ID mapping. This may take several minutes to complete."
-        )
-        uniprot_accession_to_tax_id_mapping = dict(
-            pl.read_csv(
-                self.hparams.uniprot_accession_to_tax_id_mapping_filepath,
-                has_header=False,
-                separator="\t",
-                infer_schema_length=0,  # read all column values as strings
-                n_rows=self.hparams.num_tax_id_mappings_to_keep,
-                batch_size=uniprot_accession_to_tax_id_mapping_loading_batch_size,
-            ).iter_rows()
-        )
-        log.info("Finished loading UniProt accession ID to taxonomic ID mapping.")
+        if not_exists(uniprot_accession_to_tax_id_mapping):
+            log.info(
+                "Loading UniProt accession ID to taxonomic ID mapping. This may take several minutes to complete."
+            )
+            uniprot_accession_to_tax_id_mapping = dict(
+                pl.read_csv(
+                    self.hparams.uniprot_accession_to_tax_id_mapping_filepath,
+                    has_header=False,
+                    separator="\t",
+                    infer_schema_length=0,  # read all column values as strings
+                    n_rows=self.hparams.num_tax_id_mappings_to_keep,
+                    batch_size=uniprot_accession_to_tax_id_mapping_loading_batch_size,
+                ).iter_rows()
+            )
+            log.info("Finished loading UniProt accession ID to taxonomic ID mapping.")
 
         # training set
         sampler_train = (
