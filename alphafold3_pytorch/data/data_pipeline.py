@@ -45,25 +45,52 @@ def make_sequence_features(sequence: str, description: str) -> FeatureDict:
 
 
 @typecheck
+def convert_numpy_chains_to_tensors(chains: Dict[str, np.ndarray]) -> FeatureDict:
+    """Convert NumPy chain features to PyTorch Tensors.
+
+    :param chains: The NumPy chain features dictionary.
+    :return: The PyTorch chain features dictionary.
+    """
+    tensor_chains = {}
+
+    for key, value in chains.items():
+        base_key = key.removesuffix("_all_seq")
+
+        if isinstance(value, np.ndarray) and value.dtype != np.object_:
+            tensor_chains[base_key] = torch.from_numpy(value)
+
+            if tensor_chains[base_key].dtype == torch.float64:
+                tensor_chains[base_key] = tensor_chains[base_key].float()
+
+    return tensor_chains
+
+
+@typecheck
 def merge_chain_features(
     chains: List[Dict[str, np.ndarray]],
     pair_msa_sequences: bool,
+    max_msas_per_chain: int,
 ) -> FeatureDict:
     """Merge MSA chain features.
 
     :param features: The MSA chain features dictionary.
     :param pair_msa_sequences: Whether to merge paired MSAs.
+    :param max_msas_per_chain: The maximum number of MSAs per chain.
     :return: The merged MSA chain features dictionary.
     """
     chains = msa_pairing.merge_homomers_dense_msa(chains)
 
-    # NOTE: Unpaired MSA features will be always block-diagonalised, while
-    # paired MSA features will be concatenated.
+    # NOTE: Unpaired and paired MSA features will simply be concatenated,
+    # following Section 2.3 of the AlphaFold 3 supplement.
     chains_merged = msa_pairing.merge_features_from_multiple_chains(
-        chains, pair_msa_sequences=False
+        chains, pair_msa_sequences=True
     )
     if pair_msa_sequences:
-        chains_merged = msa_pairing.concatenate_paired_and_unpaired_features(chains_merged)
+        chains_merged = msa_pairing.concatenate_paired_and_unpaired_features(
+            chains_merged, max_msas_per_chain
+        )
+
+    chains_merged = convert_numpy_chains_to_tensors(chains_merged)
 
     return chains_merged
 
@@ -78,8 +105,8 @@ def make_msa_mask(features: FeatureDict) -> FeatureDict:
     :param features: The features dictionary.
     :return: The features dictionary with new MSA mask features.
     """
-    features["msa_col_mask"] = torch.ones(features["msa_all_seq"].shape[1], dtype=torch.float32)
-    features["msa_row_mask"] = torch.ones((features["msa_all_seq"].shape[0]), dtype=torch.float32)
+    features["msa_col_mask"] = torch.ones(features["msa"].shape[1], dtype=torch.float32)
+    features["msa_row_mask"] = torch.ones((features["msa"].shape[0]), dtype=torch.float32)
     return features
 
 

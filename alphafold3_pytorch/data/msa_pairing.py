@@ -187,9 +187,10 @@ def reorder_paired_rows(all_paired_msa_rows_dict: Dict[int, np.ndarray]) -> np.n
     """Create a list of indices of paired MSA rows across chains.
 
     :param all_paired_msa_rows_dict: A mapping from the number of paired chains to the paired
-        indices. :return A NumPy array, with inner arrays containing indices of paired MSA rows
-        across chains. The paired-index lists are ordered by: 1) the number of chains in the paired
-        alignment, i.e, all-chain pairings will come first, and 2) e-values
+        indices.
+    :return: A NumPy array, with inner arrays containing indices of paired MSA rows across chains.
+        The paired-index lists are ordered by: 1) the number of chains in the paired alignment,
+        i.e, all-chain pairings will come first, and 2) e-values
     """
     all_paired_msa_rows = []
 
@@ -279,45 +280,18 @@ def create_paired_features(
             new_chain = {k: v for k, v in chain.items() if "_all_seq" not in k}
 
             for feature_name in chain_keys:
-                if feature_name.endswith("_all_seq"):
+                if feature_name in (
+                    "profile_all_seq",
+                    "deletion_mean_all_seq",
+                ):
+                    new_chain[feature_name] = chain[feature_name]
+                elif feature_name.endswith("_all_seq"):
                     feats_padded = pad_features(chain[feature_name], feature_name)
                     new_chain[feature_name] = feats_padded[paired_rows[:, chain_num]]
 
             updated_chains.append(new_chain)
 
         return updated_chains
-
-
-@typecheck
-def deduplicate_unpaired_sequences(
-    chains: List[Dict[str, np.ndarray]]
-) -> List[Dict[str, np.ndarray]]:
-    """Remove unpaired sequences which duplicate a paired sequence.
-
-    From:
-    https://github.com/aqlaboratory/openfold/blob/6f63267114435f94ac0604b6d89e82ef45d94484/openfold/data/msa_pairing.py#L462
-
-    :param chains: The MSA chain feature dictionaries.
-    :return: The MSA chain feature dictionaries with duplicate unpaired sequences removed.
-    """
-    chain_keys = chains[0].keys()
-
-    for chain in chains:
-        # Convert the msa_all_seq numpy array to a tuple for hashing.
-        sequence_set = set(tuple(s) for s in chain["msa_all_seq"])
-        keep_rows = []
-
-        # Go through unpaired MSA seqs and remove any rows that correspond to the
-        # sequences that are already present in the paired MSA.
-        for row_num, seq in enumerate(chain["msa"]):
-            if tuple(seq) not in sequence_set:
-                keep_rows.append(row_num)
-
-        for feature_name in chain_keys:
-            if feature_name in MSA_FEATURES:
-                chain[feature_name] = chain[feature_name][keep_rows]
-
-    return chains
 
 
 @typecheck
@@ -374,43 +348,46 @@ def merge_features_from_multiple_chains(
     """
     chain_keys = chains[0].keys()
 
-    merged_example = {}
+    chains_merged = {}
     for feature_name in chain_keys:
         feats = [x[feature_name] for x in chains]
         unpaired_feature_name = feature_name.removesuffix("_all_seq")
 
         if unpaired_feature_name in MSA_FEATURES:
             if pair_msa_sequences or "_all_seq" in feature_name:
-                axis = 0 if "profile" in feature_name else -1
-                merged_example[feature_name] = np.concatenate(feats, axis=axis)
+                chains_merged[feature_name] = np.concatenate(feats, axis=-1)
             else:
-                merged_example[feature_name] = block_diag(
+                chains_merged[feature_name] = block_diag(
                     *feats, pad_value=MSA_PAD_VALUES[feature_name]
                 )
+        elif feature_name in ("profile_all_seq", "deletion_mean_all_seq"):
+            chains_merged[feature_name] = np.concatenate(feats, axis=0)
         else:
-            merged_example[feature_name] = feats[0]
+            chains_merged[feature_name] = feats[0]
 
-    return merged_example
+    return chains_merged
 
 
 @typecheck
 def concatenate_paired_and_unpaired_features(
     chains: Dict[str, np.ndarray],
-    max_msa_paired_rows: int = 8192,
-    max_msa_rows: int = 16384,
+    max_msas_per_chain: int,
 ) -> Dict[str, np.ndarray]:
-    """Merge paired and block-diagonalised features.
+    """Merge paired and unpaired features.
 
     :param chains: The MSA chain feature dictionaries.
-    :param max_msa_paired_rows: The maximum number of paired MSA rows.
-    :param max_msa_rows: The maximum number of MSA rows.
-    :return: The MSA chain feature dictionaries with paired and block-diagonalised features merged.
+    :param max_msas_per_chain: The maximum number of MSAs per chain.
+    :return: The MSA chain feature dictionaries with paired and unpaired features merged.
     """
+    max_paired_msa_per_chain = max_msas_per_chain // 2
+
     for feature_name in MSA_FEATURES:
         if feature_name in chains:
             feat = chains[feature_name]
             feat_all_seq = chains[feature_name + "_all_seq"]
-            merged_feat = np.concatenate([feat_all_seq[:max_msa_paired_rows], feat], axis=0)
-            chains[feature_name] = merged_feat[:max_msa_rows]
+            chain_merged = np.concatenate([feat_all_seq[:max_paired_msa_per_chain], feat], axis=0)
+            chains[feature_name + "_all_seq"] = chain_merged[:max_msas_per_chain]
+
+            del chains[feature_name]
 
     return chains

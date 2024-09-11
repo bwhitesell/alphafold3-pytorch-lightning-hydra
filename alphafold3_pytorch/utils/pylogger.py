@@ -1,9 +1,16 @@
 import logging
 
-from beartype.typing import Mapping, Optional
+from beartype.typing import Any, Mapping, Optional
 from lightning_utilities.core.rank_zero import rank_prefixed_message, rank_zero_only
 
-from alphafold3_pytorch.utils.utils import not_exists
+
+def not_exists(val: Any) -> bool:
+    """Check if a value does not exist.
+
+    :param val: The value to check.
+    :return: `True` if the value does not exist, otherwise `False`.
+    """
+    return val is None
 
 
 class RankedLogger(logging.LoggerAdapter):
