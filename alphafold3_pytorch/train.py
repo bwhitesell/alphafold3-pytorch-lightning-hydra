@@ -50,7 +50,7 @@ log = RankedLogger(__name__, rank_zero_only=True)
 
 
 # load UniProt accession ID to taxonomic ID mapping globally
-log.info(
+print(
     "Loading UniProt accession ID to taxonomic ID mapping. This may take several minutes to complete."
 )
 UNIPROT_ACCESSION_TO_TAX_ID_MAPPING_FILEPATH = os.path.join(
@@ -63,7 +63,7 @@ assert os.path.exists(UNIPROT_ACCESSION_TO_TAX_ID_MAPPING_FILEPATH), (
 UNIPROT_ACCESSION_TO_TAX_ID_MAPPING = load_tsv_to_dict(
     UNIPROT_ACCESSION_TO_TAX_ID_MAPPING_FILEPATH
 )
-log.info("Finished loading UniProt accession ID to taxonomic ID mapping.")
+print("Finished loading UniProt accession ID to taxonomic ID mapping.")
 
 
 @task_wrapper
