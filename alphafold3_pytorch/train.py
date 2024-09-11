@@ -3,7 +3,6 @@ import os
 
 import hydra
 import lightning as L
-import polars as pl
 import rootutils
 import torch
 from beartype.typing import Any, Dict, List, Optional, Tuple
@@ -45,6 +44,7 @@ from alphafold3_pytorch.utils import (
     log_hyperparameters,
     task_wrapper,
 )
+from alphafold3_pytorch.utils.data_utils import load_tsv_with_multiprocessing
 
 log = RankedLogger(__name__, rank_zero_only=True)
 
@@ -70,15 +70,9 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     log.info(
         "Loading UniProt accession ID to taxonomic ID mapping. This may take several minutes to complete."
     )
-    uniprot_accession_to_tax_id_mapping = dict(
-        pl.read_csv(
-            cfg.data.uniprot_accession_to_tax_id_mapping_filepath,
-            has_header=False,
-            separator="\t",
-            infer_schema_length=0,  # read all column values as strings
-            n_rows=cfg.data.num_tax_id_mappings_to_keep,
-            batch_size=cfg.data.uniprot_accession_to_tax_id_mapping_loading_batch_size,
-        ).iter_rows()
+    uniprot_accession_to_tax_id_mapping = load_tsv_with_multiprocessing(
+        cfg.data.uniprot_accession_to_tax_id_mapping_filepath,
+        num_workers=1,
     )
     log.info("Finished loading UniProt accession ID to taxonomic ID mapping.")
 

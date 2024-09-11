@@ -25,6 +25,7 @@ from alphafold3_pytorch.models.components.inputs import (
     PDBInput,
     maybe_transform_to_atom_inputs,
 )
+from alphafold3_pytorch.utils.data_utils import load_tsv_with_multiprocessing
 from alphafold3_pytorch.utils.model_utils import pad_at_dim
 from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import typecheck
@@ -430,19 +431,12 @@ class PDBDataModule(LightningDataModule):
             )
 
         # load UniProt accession ID to taxonomic ID mapping
-        if not_exists(uniprot_accession_to_tax_id_mapping):
+        if not exists(uniprot_accession_to_tax_id_mapping):
             log.info(
                 "Loading UniProt accession ID to taxonomic ID mapping. This may take several minutes to complete."
             )
-            uniprot_accession_to_tax_id_mapping = dict(
-                pl.read_csv(
-                    self.hparams.uniprot_accession_to_tax_id_mapping_filepath,
-                    has_header=False,
-                    separator="\t",
-                    infer_schema_length=0,  # read all column values as strings
-                    n_rows=self.hparams.num_tax_id_mappings_to_keep,
-                    batch_size=uniprot_accession_to_tax_id_mapping_loading_batch_size,
-                ).iter_rows()
+            uniprot_accession_to_tax_id_mapping = load_tsv_with_multiprocessing(
+                uniprot_accession_to_tax_id_mapping_filepath,
             )
             log.info("Finished loading UniProt accession ID to taxonomic ID mapping.")
 
