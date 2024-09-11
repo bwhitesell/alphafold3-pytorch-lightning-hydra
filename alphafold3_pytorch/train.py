@@ -13,8 +13,6 @@ from lightning.pytorch.loggers.wandb import WandbLogger
 from lightning.pytorch.strategies.strategy import Strategy
 from omegaconf import DictConfig
 
-from alphafold3_pytorch.utils.utils import exists
-
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 # ------------------------------------------------------------------------------------ #
 # the setup_root above is equivalent to:
@@ -93,22 +91,23 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     if "_target_" in cfg.strategy:
         log.info(f"Instantiating strategy <{cfg.strategy._target_}>")
         strategy: Strategy = hydra.utils.instantiate(cfg.strategy)
-        if "mixed_precision" in strategy.__dict__ and exists(
-            getattr(strategy, "mixed_precision", None)
+        if (
+            "mixed_precision" in strategy.__dict__
+            and getattr(strategy, "mixed_precision", None) is not None
         ):
             strategy.mixed_precision.param_dtype = (
                 resolve_omegaconf_variable(cfg.strategy.mixed_precision.param_dtype)
-                if exists(getattr(cfg.strategy.mixed_precision, "param_dtype", None))
+                if getattr(cfg.strategy.mixed_precision, "param_dtype", None) is not None
                 else None
             )
             strategy.mixed_precision.reduce_dtype = (
                 resolve_omegaconf_variable(cfg.strategy.mixed_precision.reduce_dtype)
-                if exists(getattr(cfg.strategy.mixed_precision, "reduce_dtype", None))
+                if getattr(cfg.strategy.mixed_precision, "reduce_dtype", None) is not None
                 else None
             )
             strategy.mixed_precision.buffer_dtype = (
                 resolve_omegaconf_variable(cfg.strategy.mixed_precision.buffer_dtype)
-                if exists(getattr(cfg.strategy.mixed_precision, "buffer_dtype", None))
+                if getattr(cfg.strategy.mixed_precision, "buffer_dtype", None) is not None
                 else None
             )
 
@@ -121,7 +120,7 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
             plugins=plugins,
             strategy=strategy,
         )
-        if exists(strategy)
+        if strategy is not None
         else hydra.utils.instantiate(
             cfg.trainer,
             callbacks=callbacks,
