@@ -2460,7 +2460,11 @@ def load_msa_from_msa_dir(
             msa_type=chain_msa_type,
         )
 
-        msa_fpaths = glob.glob(os.path.join(msa_dir, f"{file_id}{chain_id}_*.a3m"))
+        msa_fpaths = (
+            glob.glob(os.path.join(msa_dir, f"{file_id}{chain_id}_*.a3m"))
+            if exists(msa_dir)
+            else []
+        )
         if not msa_fpaths:
             if verbose:
                 logger.warning(
@@ -2684,23 +2688,28 @@ def pdb_input_to_molecule_input(
         for chain_id in biomol_chain_ids
     }
 
+    msa_dir = i.msa_dir
+    max_msas_per_chain = i.max_msas_per_chain
+
     if exists(i.max_num_msa_tokens) and num_tokens * i.max_msas_per_chain > i.max_num_msa_tokens:
+        msa_dir = None
+        max_msas_per_chain = 1
+
         if verbose:
             logger.warning(
                 f"The number of tokens ({num_tokens}) multiplied by the maximum number of MSAs per structure ({i.max_msas_per_chain}) exceeds the maximum total number of MSA tokens {(i.max_num_msa_tokens)}. "
-                "Skipping curation of MSA features for this example."
+                "Skipping curation of MSA features for this example by installing a dummy MSA for each chain."
             )
-        msa_features = {}
-    else:
-        msa_features = load_msa_from_msa_dir(
-            # NOTE: if MSAs are not locally available, no MSA features will be used
-            i.msa_dir,
-            file_id,
-            chain_id_to_residue,
-            uniprot_accession_to_tax_id_mapping=i.uniprot_accession_to_tax_id_mapping,
-            max_msas_per_chain=i.max_msas_per_chain,
-            verbose=verbose,
-        )
+
+    msa_features = load_msa_from_msa_dir(
+        # NOTE: if MSAs are not locally available, no MSA features will be used
+        msa_dir,
+        file_id,
+        chain_id_to_residue,
+        uniprot_accession_to_tax_id_mapping=i.uniprot_accession_to_tax_id_mapping,
+        max_msas_per_chain=max_msas_per_chain,
+        verbose=verbose,
+    )
 
     msa = msa_features.get("msa")
     msa_row_mask = msa_features.get("msa_row_mask")
