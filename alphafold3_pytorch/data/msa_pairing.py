@@ -382,17 +382,12 @@ def merge_features_from_multiple_chains(
         unpaired_feature_name = feature_name.removesuffix("_all_seq")
 
         if unpaired_feature_name in MSA_FEATURES:
-            present_feats = [x for x in feats if len(x) > 0]
-            if not present_feats:
-                merged_example[feature_name] = np.array([], dtype=feats[0].dtype)
-                continue
-
             if pair_msa_sequences or "_all_seq" in feature_name:
                 axis = 0 if "profile" in feature_name else -1
-                merged_example[feature_name] = np.concatenate(present_feats, axis=axis)
+                merged_example[feature_name] = np.concatenate(feats, axis=axis)
             else:
                 merged_example[feature_name] = block_diag(
-                    *present_feats, pad_value=MSA_PAD_VALUES[feature_name]
+                    *feats, pad_value=MSA_PAD_VALUES[feature_name]
                 )
         else:
             merged_example[feature_name] = feats[0]
@@ -402,18 +397,22 @@ def merge_features_from_multiple_chains(
 
 @typecheck
 def concatenate_paired_and_unpaired_features(
-    chains: Dict[str, np.ndarray]
+    chains: Dict[str, np.ndarray],
+    max_msa_paired_rows: int = 8192,
+    max_msa_rows: int = 16384,
 ) -> Dict[str, np.ndarray]:
     """Merge paired and block-diagonalised features.
 
     :param chains: The MSA chain feature dictionaries.
+    :param max_msa_paired_rows: The maximum number of paired MSA rows.
+    :param max_msa_rows: The maximum number of MSA rows.
     :return: The MSA chain feature dictionaries with paired and block-diagonalised features merged.
     """
     for feature_name in MSA_FEATURES:
         if feature_name in chains:
             feat = chains[feature_name]
             feat_all_seq = chains[feature_name + "_all_seq"]
-            merged_feat = np.concatenate([feat_all_seq, feat], axis=0)
-            chains[feature_name] = merged_feat
+            merged_feat = np.concatenate([feat_all_seq[:max_msa_paired_rows], feat], axis=0)
+            chains[feature_name] = merged_feat[:max_msa_rows]
 
     return chains

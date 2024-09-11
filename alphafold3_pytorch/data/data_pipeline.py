@@ -45,61 +45,22 @@ def make_sequence_features(sequence: str, description: str) -> FeatureDict:
 
 
 @typecheck
-def compute_msa_features(
-    chains: List[Dict[str, np.ndarray]], num_msa_one_hot: int
-) -> List[Dict[str, np.ndarray]]:
-    """Compute per-chain MSA features."""
-    chain_keys = chains[0].keys()
-
-    new_chains = []
-    for chain in chains:
-        new_chain = copy.deepcopy(chain)
-
-        for key in chain_keys:
-            # Ensure all empty arrays are of the same shape.
-            if not len(chain[key]):
-                new_chain[key] = np.array([], dtype=chain[key].dtype)
-
-            # NOTE: These assume each aligned sequence has the same (unitary) mask values
-            if key in ("msa", "msa_all_seq"):
-                new_chain[key.replace("msa", "profile")] = (
-                    make_one_hot_np(chain[key], num_msa_one_hot).mean(0)
-                    if len(chain[key])
-                    else np.array([], dtype=np.float32)
-                )
-            elif key in ("deletion_value", "deletion_value_all_seq"):
-                new_chain[key.replace("deletion_value", "deletion_mean")] = (
-                    chain[key].mean(0) if len(chain[key]) else np.array([], dtype=np.float32)
-                )
-
-        new_chains.append(new_chain)
-
-    return new_chains
-
-
-@typecheck
 def merge_chain_features(
     chains: List[Dict[str, np.ndarray]],
     pair_msa_sequences: bool,
-    num_tokens: int,
-    num_msa_one_hot: int,
 ) -> FeatureDict:
     """Merge MSA chain features.
 
     :param features: The MSA chain features dictionary.
     :param pair_msa_sequences: Whether to merge paired MSAs.
-    :param num_tokens: The number of tokens in each MSA sequence.
-    :param num_msa_one_hot: The number of one-hot classes for MSA features.
     :return: The merged MSA chain features dictionary.
     """
-    chains = compute_msa_features(chains, num_msa_one_hot)
-
-    chains = msa_pairing.merge_homomers_dense_msa(chains, num_tokens=num_tokens)
+    chains = msa_pairing.merge_homomers_dense_msa(chains)
 
     # NOTE: Unpaired MSA features will be always block-diagonalised, while
     # paired MSA features will be concatenated.
     chains_merged = msa_pairing.merge_features_from_multiple_chains(
-        chains, num_tokens=num_tokens, pair_msa_sequences=False
+        chains, pair_msa_sequences=False
     )
     if pair_msa_sequences:
         chains_merged = msa_pairing.concatenate_paired_and_unpaired_features(chains_merged)
@@ -124,26 +85,23 @@ def make_msa_mask(features: FeatureDict) -> FeatureDict:
 
 @typecheck
 def make_msa_features(
-    msas: Dict[str, msa_parsing.Msa | None],
+    msas: Dict[str, msa_parsing.Msa],
     chain_id_to_residue: Dict[str, Dict[str, List[int]]],
+    num_msa_one_hot: int,
     uniprot_accession_to_tax_id_mapping: Dict[str, str] | None = None,
     ligand_chemtype_index: int = 3,
-    raise_missing_exception: bool = False,
 ) -> List[Dict[str, np.ndarray]]:
     """
     Construct a feature dictionary of MSA features.
     From: https://github.com/aqlaboratory/openfold/blob/6f63267114435f94ac0604b6d89e82ef45d94484/openfold/data/data_pipeline.py#L224
 
-    :param msas: The mapping of chain IDs to lists of (optional) MSAs for each chain.
+    :param msas: The mapping of chain IDs to lists of MSAs for each chain.
     :param chain_id_to_residue: The mapping of chain IDs to residue information.
+    :param num_msa_one_hot: The number of one-hot classes for MSA features.
     :param uniprot_accession_to_tax_id_mapping: The mapping of UniProt accession IDs to NCBI taxonomy IDs.
     :param ligand_chemtype_index: The index of the ligand in the chemical type list.
-    :param raise_missing_exception: Whether to raise an exception if no MSAs are provided for any chain.
     :return: The MSA chain feature dictionaries.
     """
-    if not msas:
-        raise ValueError("At least one chain's MSA must be provided.")
-
     # Infer MSA metadata.
     max_alignments = 1
     for msa in msas.values():
@@ -171,38 +129,9 @@ def make_msa_features(
             f"{num_res} != {len(chain_residue_index)}"
         )
 
-        msa_residue_constants = (
-            get_residue_constants(msa.msa_type.replace("protein", "peptide"))
-            if exists(msa)
-            else None
-        )
-
         gap_ids = [[GAP_ID] * num_res]
-        species = [""]
         deletion_values = [[0] * num_res]
-
-        if not msa and raise_missing_exception:
-            raise ValueError(f"MSA for chain {chain_id} must contain at least one sequence.")
-        elif not msa:
-            # Pad the MSA to the maximum number of alignments
-            # if the chain does not have any associated alignments.
-            chain = {
-                "msa_all_seq": np.array(gap_ids * max_alignments, dtype=np.int64),
-                "msa_species_identifiers_all_seq": np.array(
-                    species * max_alignments, dtype=object
-                ),
-                "has_deletion_all_seq": np.array(
-                    deletion_values * max_alignments, dtype=np.float32
-                ),
-                "deletion_value_all_seq": np.array(
-                    deletion_values * max_alignments, dtype=np.float32
-                ),
-            }
-            chain["msa_species_identifiers_all_seq"][
-                0
-            ] = "-1"  # Tag target sequence for filtering.
-            chains.append(chain)
-            continue
+        species = [""]
 
         for sequence_index, sequence in enumerate(msa.sequences):
             if sequence_index == 0:
@@ -241,17 +170,14 @@ def make_msa_features(
                     msa_res_type = chem_residue_constants.restype_num
                     msa_deletion_value = 0
                 else:
-                    # NOTE: For polymer residues of a different chemical type than the chain's MSA,
-                    # we use the unknown residue type of the corresponding chemical type
-                    # (e.g., `DN` for DNA residues in a protein chain's MSA). This should
-                    # provide the model with partial information about the residue's identity.
-                    if chem_residue_constants != msa_residue_constants:
-                        msa_res_type = chem_residue_constants.restype_num
-                    else:
-                        res = sequence[polymer_residue_index]
-                        msa_res_type = msa_residue_constants.MSA_CHAR_TO_ID.get(
-                            res, msa_residue_constants.restype_num
-                        )
+                    # NOTE: For polymer residues of a different chemical type than the
+                    # chain's MSA, we use the residue type of the corresponding chemical type
+                    # (e.g., `DA` for adenine DNA residues in a protein chain's MSA). This should
+                    # provide the model with complete information about the outlier residue's identity.
+                    res = sequence[polymer_residue_index]
+                    msa_res_type = chem_residue_constants.MSA_CHAR_TO_ID.get(
+                        res, chem_residue_constants.restype_num
+                    )
 
                     msa_deletion_value = msa.deletion_matrix[sequence_index][polymer_residue_index]
 
@@ -273,7 +199,7 @@ def make_msa_features(
                 species_id = "-1"  # Tag target sequence for filtering.
             species_ids.append(species_id)
 
-        # Pad the MSA to the maximum number of alignments.
+        # Pad the MSA to the maximum number of alignments across all chains for dataloading.
         num_padding_alignments = max_alignments - len(int_msa)
 
         padding_msa = gap_ids * num_padding_alignments
@@ -287,12 +213,22 @@ def make_msa_features(
                 species_ids + padding_species_ids, dtype=object
             ),
         }
-        deletion_matrix = np.array(deletion_matrix + padding_deletion_matrix, dtype=np.float32)
+        padded_deletion_matrix = np.array(
+            deletion_matrix + padding_deletion_matrix, dtype=np.float32
+        )
 
-        chain["has_deletion_all_seq"] = np.clip(deletion_matrix, 0.0, 1.0)
-        chain["deletion_value_all_seq"] = np.arctan(deletion_matrix / 3.0) * (2.0 / np.pi)
+        chain["has_deletion_all_seq"] = np.clip(padded_deletion_matrix, 0.0, 1.0)
+        chain["deletion_value_all_seq"] = np.arctan(padded_deletion_matrix / 3.0) * (2.0 / np.pi)
 
         chain["entity_id"] = np.array([entity_ids[msa.sequences[0]]], dtype=np.int64)
+
+        # NOTE: Here, we compute the profile and deletion average features for the unpadded MSA.
+        chain["profile_all_seq"] = make_one_hot_np(
+            np.array(int_msa, dtype=np.int64), num_msa_one_hot
+        ).mean(0)
+        chain["deletion_mean_all_seq"] = (
+            np.clip(np.array(deletion_matrix, dtype=np.float32), 0.0, 1.0)
+        ).mean(0)
 
         chains.append(chain)
 

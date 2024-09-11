@@ -54,6 +54,19 @@ class Identifiers:
 
 
 @typecheck
+def get_msa_type(msa_chem_type: int) -> MSA_TYPE:
+    """Get the molecule type of a residue."""
+    if msa_chem_type == 0:
+        return "protein"
+    elif msa_chem_type == 1:
+        return "rna"
+    elif msa_chem_type == 2:
+        return "dna"
+    else:
+        raise ValueError(f"Unknown MSA chemical type: {msa_chem_type}")
+
+
+@typecheck
 def _parse_sequence_identifier(msa_sequence_identifier: str) -> Identifiers:
     """Gets species from an msa sequence identifier.
 

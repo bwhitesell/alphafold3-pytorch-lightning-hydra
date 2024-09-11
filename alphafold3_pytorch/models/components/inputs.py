@@ -4,6 +4,7 @@ import copy
 import glob
 import json
 import os
+import statistics
 from collections import defaultdict
 from collections.abc import Iterable
 from contextlib import redirect_stderr
@@ -2397,6 +2398,31 @@ def find_mismatched_symmetry(
 
 
 @typecheck
+def extract_polymer_sequence_from_chain_residues(
+    chain_chemtype: List[int],
+    chain_restype: List[str],
+    ligand_chemtype_index: int = 3,
+) -> str:
+    """Extract a polymer sequence string from a chain's chemical types and residue types.
+
+    :param chain_chemtype: A list of chemical types for each residue in the chain.
+    :param chain_restype: A list of residue types for each residue in the chain.
+    :param ligand_chemtype_index: The index of the ligand chemical type.
+    :return: A polymer sequence string representing the chain's residues.
+    """
+    polymer_sequence = []
+
+    for chemtype, restype in zip(chain_chemtype, chain_restype):
+        if chemtype == ligand_chemtype_index:
+            continue
+        rc = get_residue_constants(res_chem_index=chemtype)
+        rc_restypes = rc.restypes + ["X"]
+        polymer_sequence.append(rc_restypes[restype - rc.min_restype_num])
+
+    return "".join(polymer_sequence)
+
+
+@typecheck
 def load_msa_from_msa_dir(
     msa_dir: str | None,
     file_id: str,
@@ -2404,23 +2430,43 @@ def load_msa_from_msa_dir(
     uniprot_accession_to_tax_id_mapping: Dict[str, str] | None = None,
     max_msas_per_chain: int | None = None,
     randomly_truncate: bool = False,
-    raise_missing_exception: bool = False,
     verbose: bool = False,
 ) -> FeatureDict:
     """Load MSA from a directory containing MSA files."""
-    if (not exists(msa_dir) or not os.path.exists(msa_dir)) and raise_missing_exception:
-        raise FileNotFoundError(f"{msa_dir} does not exist.")
-    elif not exists(msa_dir) or not os.path.exists(msa_dir):
-        if verbose:
-            logger.warning(f"{msa_dir} does not exist. Skipping MSA loading by returning `Nones`.")
-        return {}
+    if verbose and (not exists(msa_dir) or not os.path.exists(msa_dir)):
+        logger.warning(
+            f"{msa_dir} does not exist. Dummy MSA features for each chain of file {file_id} will instead be loaded."
+        )
 
     msas = {}
     for chain_id in chain_id_to_residue:
-        msa_fpaths = glob.glob(os.path.join(msa_dir, f"{file_id}{chain_id}_*.a3m"))
+        # Construct a length-1 MSA containing only the query sequence as a fallback.
+        chain_chemtype = chain_id_to_residue[chain_id]["chemtype"]
+        chain_restype = chain_id_to_residue[chain_id]["restype"]
 
+        chain_sequences = [
+            extract_polymer_sequence_from_chain_residues(chain_chemtype, chain_restype)
+        ]
+        chain_deletion_matrix = [[0] * len(sequence) for sequence in chain_sequences]
+        chain_descriptions = ["101" for _ in chain_sequences]
+
+        majority_msa_chem_type = statistics.mode(chain_chemtype)
+        chain_msa_type = msa_parsing.get_msa_type(majority_msa_chem_type)
+
+        dummy_msa = msa_parsing.Msa(
+            sequences=chain_sequences,
+            deletion_matrix=chain_deletion_matrix,
+            descriptions=chain_descriptions,
+            msa_type=chain_msa_type,
+        )
+
+        msa_fpaths = glob.glob(os.path.join(msa_dir, f"{file_id}{chain_id}_*.a3m"))
         if not msa_fpaths:
-            msas[chain_id] = None
+            if verbose:
+                logger.warning(
+                    f"Could not find MSA for chain {chain_id} of file {file_id}. A dummy MSA will be installed for this chain."
+                )
+            msas[chain_id] = dummy_msa
             continue
 
         try:
@@ -2432,11 +2478,10 @@ def load_msa_from_msa_dir(
                 "Please ensure that one MSA file is present for each chain."
             )
             msa_fpath = msa_fpaths[0]
-            msa_type = os.path.splitext(os.path.basename(msa_fpath))[0].split("_")[-1]
 
             with open(msa_fpath, "r") as f:
                 msa = f.read()
-                msa = msa_parsing.parse_a3m(msa, msa_type)
+                msa = msa_parsing.parse_a3m(msa, chain_msa_type)
                 msa = (
                     (
                         msa.random_truncate(max_msas_per_chain)
@@ -2451,39 +2496,28 @@ def load_msa_from_msa_dir(
         except Exception as e:
             if verbose:
                 logger.warning(
-                    f"Failed to load MSA for chain {chain_id} of file {file_id} due to: {e}. Skipping MSA loading."
+                    f"Failed to load MSA for chain {chain_id} of file {file_id} due to: {e}. A dummy MSA will be installed for this chain."
                 )
-            msas[chain_id] = None
+            msas[chain_id] = dummy_msa
 
-    try:
-        chains = make_msa_features(
-            msas,
-            chain_id_to_residue,
-            uniprot_accession_to_tax_id_mapping=uniprot_accession_to_tax_id_mapping,
-        )
-        unique_entity_ids = set(chain["entity_id"][0] for chain in chains)
+    chains = make_msa_features(
+        msas,
+        chain_id_to_residue,
+        num_msa_one_hot=NUM_MSA_ONE_HOT,
+        uniprot_accession_to_tax_id_mapping=uniprot_accession_to_tax_id_mapping,
+    )
+    unique_entity_ids = set(chain["entity_id"][0] for chain in chains)
 
-        is_monomer_or_homomer = len(unique_entity_ids) == 1
-        pair_msa_sequences = (
-            exists(uniprot_accession_to_tax_id_mapping) and not is_monomer_or_homomer
-        )
+    is_monomer_or_homomer = len(unique_entity_ids) == 1
+    pair_msa_sequences = exists(uniprot_accession_to_tax_id_mapping) and not is_monomer_or_homomer
 
-        if pair_msa_sequences:
-            chains = msa_pairing.copy_unpaired_features(chains)
-            chains = msa_pairing.create_paired_features(chains)
-            chains = msa_pairing.deduplicate_unpaired_sequences(chains)
+    if pair_msa_sequences:
+        chains = msa_pairing.copy_unpaired_features(chains)
+        chains = msa_pairing.create_paired_features(chains)
+        chains = msa_pairing.deduplicate_unpaired_sequences(chains)
 
-        features = merge_chain_features(
-            chains, pair_msa_sequences, num_msa_one_hot=NUM_MSA_ONE_HOT
-        )
-        features = make_msa_mask(features)
-
-    except Exception as e:
-        if verbose:
-            logger.warning(
-                f"Failed to create MSA features for file {file_id} due to: {e}. Skipping MSA feature creation."
-            )
-        features = {}
+    features = merge_chain_features(chains, pair_msa_sequences)
+    features = make_msa_mask(features)
 
     return features
 
