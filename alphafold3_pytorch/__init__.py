@@ -3,6 +3,8 @@ import importlib
 from beartype.typing import Any, List, Set
 from omegaconf import OmegaConf
 
+from alphafold3_pytorch.app import app
+from alphafold3_pytorch.cli import cli
 from alphafold3_pytorch.data.pdb_datamodule import (
     alphafold3_inputs_to_batched_atom_input,
     collate_inputs_to_batched_atom_input,
@@ -110,7 +112,9 @@ __all__ = [
     PDBInput,
     PDBDataset,
     alphafold3_inputs_to_batched_atom_input,
+    app,
     atom_input_to_file,
+    cli,
     collate_inputs_to_batched_atom_input,
     file_to_atom_input,
     full_pairwise_repr_to_windowed,
