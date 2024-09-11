@@ -125,7 +125,7 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "experiment=af3_overfitting_e1",
+                "experiment=af3_overfitting_e8",
                 "~callbacks.learning_rate_monitor",
                 // "data.ablate_weighted_pdb_sampler=true",
                 // "data.uniprot_accession_to_tax_id_mapping_loading_batch_size=8192",

@@ -2400,7 +2400,7 @@ def find_mismatched_symmetry(
 @typecheck
 def extract_polymer_sequence_from_chain_residues(
     chain_chemtype: List[int],
-    chain_restype: List[str],
+    chain_restype: List[int],
     ligand_chemtype_index: int = 3,
 ) -> str:
     """Extract a polymer sequence string from a chain's chemical types and residue types.
