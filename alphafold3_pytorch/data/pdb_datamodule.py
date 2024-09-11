@@ -28,7 +28,7 @@ from alphafold3_pytorch.models.components.inputs import (
 from alphafold3_pytorch.utils.model_utils import pad_at_dim
 from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import typecheck
-from alphafold3_pytorch.utils.utils import exists
+from alphafold3_pytorch.utils.utils import exists, not_exists
 
 log = RankedLogger(__name__, rank_zero_only=False)
 
@@ -160,7 +160,7 @@ def collate_inputs_to_batched_atom_input(
         padded_inputs = []
 
         for inp in grouped:
-            if not exists(inp):
+            if not_exists(inp):
                 padded_inputs.append(default_tensor)
                 continue
 
@@ -585,7 +585,7 @@ class PDBDataModule(LightningDataModule):
         :param stage: The stage to setup. Either `"fit"`, `"validate"`, `"test"`, or `"predict"`. Defaults to ``None``.
         """
         # Divide batch size by the number of devices.
-        if self.trainer is not None:
+        if exists(self.trainer):
             if self.hparams.batch_size % self.trainer.world_size != 0:
                 raise RuntimeError(
                     f"Batch size ({self.hparams.batch_size}) is not divisible by the number of devices ({self.trainer.world_size})."

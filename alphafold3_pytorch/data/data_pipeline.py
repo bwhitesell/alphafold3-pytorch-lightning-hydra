@@ -24,7 +24,7 @@ from alphafold3_pytorch.data.template_parsing import (
 from alphafold3_pytorch.utils.data_utils import make_one_hot_np
 from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import typecheck
-from alphafold3_pytorch.utils.utils import exists
+from alphafold3_pytorch.utils.utils import exists, not_exists
 
 # Constants
 
@@ -329,7 +329,7 @@ def make_template_features(
         )
         chain_index_list.append(torch.full((max_templates, num_res), chain_index))
 
-        if not templates[chain_id] or not exists(kalign_binary_path):
+        if not templates[chain_id] or not_exists(kalign_binary_path):
             if raise_missing_exception:
                 raise ValueError(
                     f"Templates for chain {chain_id} must contain at least one template and must be aligned with Kalign3."
@@ -538,7 +538,7 @@ def get_assembly(biomol: Biomolecule, assembly_id: Optional[str] = None) -> Biom
         return biomol
 
     assembly_ids = sorted(list(assembly_gen_category.keys()))
-    if assembly_id is None:
+    if not_exists(assembly_id):
         # NOTE: Sorting ensures that the default assembly is the first biological assembly.
         assembly_id = assembly_ids[0]
     elif assembly_id not in assembly_ids:
@@ -568,7 +568,7 @@ def get_assembly(biomol: Biomolecule, assembly_id: Optional[str] = None) -> Biom
             )
             # Merge the chains with asym IDs for this operation
             # with chains from other operations
-            if assembly is None:
+            if not_exists(assembly):
                 assembly = sub_assembly
             else:
                 assembly += sub_assembly

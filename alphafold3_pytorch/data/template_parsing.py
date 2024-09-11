@@ -28,7 +28,7 @@ from alphafold3_pytorch.utils.model_utils import (
 )
 from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import typecheck
-from alphafold3_pytorch.utils.utils import exists
+from alphafold3_pytorch.utils.utils import exists, not_exists
 
 logger = RankedLogger(__name__, rank_zero_only=False)
 
@@ -128,7 +128,7 @@ def parse_m8(
                 and datetime.strptime(template_release_date, "%Y-%m-%d") <= template_cutoff_date
             ):
                 continue
-            elif not exists(template_cutoff_date):
+            elif not_exists(template_cutoff_date):
                 pass
             template_biomol = _from_mmcif_object(
                 template_mmcif_object, chain_ids=set(template_chain)
@@ -306,7 +306,7 @@ def _extract_template_features(
             filter_colinear_pos=True,
         )
         for token_index, frame_token_indices in enumerate(template_three_atom_indices_for_frame):
-            if not exists(frame_token_indices):
+            if not_exists(frame_token_indices):
                 # Track invalid ligand frames.
                 if (new_frame_token_indices[token_index] == -1).any():
                     template_backbone_frame_atom_mask[token_index] = False

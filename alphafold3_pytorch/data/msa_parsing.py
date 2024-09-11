@@ -10,6 +10,7 @@ import string
 from beartype.typing import Literal, Optional, Sequence, Tuple
 
 from alphafold3_pytorch.utils.tensor_typing import typecheck
+from alphafold3_pytorch.utils.utils import not_exists
 
 DeletionMatrix = Sequence[Sequence[int]]
 
@@ -117,7 +118,7 @@ def _extract_sequence_accession_id(description: str) -> Optional[str]:
 def get_identifiers(description: str) -> Identifiers:
     """Computes extra MSA features from the description."""
     sequence_identifier = _extract_sequence_identifier(description)
-    if sequence_identifier is None:
+    if not_exists(sequence_identifier):
         return Identifiers()
     else:
         return _parse_sequence_identifier(sequence_identifier)
@@ -127,7 +128,7 @@ def get_identifiers(description: str) -> Identifiers:
 def get_accession_id(description: str) -> str:
     """Computes extra MSA features from the description."""
     sequence_accession_id = _extract_sequence_accession_id(description)
-    if sequence_accession_id is None:
+    if not_exists(sequence_accession_id):
         return ""
     else:
         return sequence_accession_id

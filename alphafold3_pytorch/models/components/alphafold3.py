@@ -151,7 +151,7 @@ from alphafold3_pytorch.utils.tensor_typing import (
     Int,
     typecheck,
 )
-from alphafold3_pytorch.utils.utils import default, exists, identity
+from alphafold3_pytorch.utils.utils import default, exists, identity, not_exists
 
 # constants
 
@@ -277,7 +277,7 @@ class Dropout(Module):
                 t.ndim == 4
             ), "Tensor `t` must consist of 4 dimensions for row/col structured dropout."
 
-        if not exists(self.dropout_type):
+        if not_exists(self.dropout_type):
             return self.dropout(t)
 
         if self.dropout_type == "row":
@@ -534,7 +534,7 @@ class AttentionPairBias(Module):
                 not windowed_pairwise
             ), "Cannot pass in windowed pairwise representation if no `window_size` given to `AttentionPairBias`."
             assert (
-                not exists(windowed_attn_bias) or not windowed_attn_bias
+                not_exists(windowed_attn_bias) or not windowed_attn_bias
             ), "Cannot pass in windowed attention bias if no `window_size` is set for `AttentionPairBias`."
 
         # attention bias preparation with further addition from pairwise repr
@@ -1824,7 +1824,7 @@ class DiffusionTransformer(Module):
         self.num_registers = num_register_tokens
 
         if self.has_registers:
-            assert not exists(
+            assert not_exists(
                 attn_window_size
             ), "Register tokens are disabled for windowed attention."
             self.registers = nn.Parameter(torch.zeros(num_register_tokens, dim))
@@ -3067,7 +3067,7 @@ class WeightedRigidAlign(Module):
 
         batch_size, num_points, dim = pred_coords.shape
 
-        if not exists(weights):
+        if not_exists(weights):
             # if no weights are provided, assume uniform weights
             weights = torch.ones_like(pred_coords[..., 0])
 
@@ -3847,7 +3847,7 @@ class MultiChainPermutationAlignment(Module):
         """
         num_atoms = pred_coords.shape[1]
 
-        if not exists(additional_molecule_feats) or not exists(is_molecule_types):
+        if not_exists(additional_molecule_feats) or not_exists(is_molecule_types):
             # NOTE: If no chains or no molecule types are specified,
             # we cannot perform multi-chain permutation alignment.
             true_coords.detach_()
@@ -4749,7 +4749,7 @@ class ComputeConfidenceScore(Module):
         :return: pTM
         """
 
-        if not exists(residue_weights):
+        if not_exists(residue_weights):
             residue_weights = torch.ones_like(has_frame)
 
         residue_weights = residue_weights * has_frame
@@ -5496,7 +5496,7 @@ class ComputeModelSelectionScore(Module):
         :return: [b] lddt
         """
 
-        if not exists(coords_mask):
+        if not_exists(coords_mask):
             coords_mask = torch.ones_like(asym_mask_a)
 
         if asym_mask_a.ndim == 1:
@@ -6944,7 +6944,7 @@ class Alphafold3(Module):
 
         molecule_pos = None
 
-        if not exists(distance_labels) and atom_pos_given and exists(distogram_atom_indices):
+        if not_exists(distance_labels) and atom_pos_given and exists(distogram_atom_indices):
             distogram_pos = atom_pos
 
             if not self.distogram_atom_resolution:
@@ -7204,7 +7204,7 @@ class Alphafold3(Module):
             if atom_pos_given and exists(atom_indices_for_frame):
                 denoised_molecule_pos = None
 
-                if not exists(molecule_pos):
+                if not_exists(molecule_pos):
                     assert exists(
                         distogram_atom_indices
                     ), "`distogram_atom_indices` must be passed in for calculating non-atomic PAE labels"

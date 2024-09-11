@@ -16,8 +16,6 @@ MSA_FEATURES = (
     "msa",
     "has_deletion",
     "deletion_value",
-    "profile",
-    "deletion_mean",
 )
 
 MSA_PAD_VALUES = {
@@ -96,11 +94,11 @@ def _match_rows_by_sequence_similarity(
     """
     all_paired_msa_rows = []
 
-    num_seqs = [len(species_df) for species_df in this_species_msa_dfs if species_df is not None]
+    num_seqs = [len(species_df) for species_df in this_species_msa_dfs if exists(species_df)]
     take_num_seqs = np.min(num_seqs)
 
     for species_df in this_species_msa_dfs:
-        if species_df is not None:
+        if exists(species_df):
             species_df_sorted = species_df.sort("msa_similarity", descending=True)
             msa_rows = species_df_sorted.get_column("msa_row").head(take_num_seqs).to_list()
         else:

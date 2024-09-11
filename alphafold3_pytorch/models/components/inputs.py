@@ -352,17 +352,17 @@ def default_none_fields_atom_input(i: AtomInput) -> AtomInput:
     """Set default None fields in AtomInput to their default values."""
     # if templates given but template mask isn't given, default to all True
 
-    if exists(i.templates) and not exists(i.template_mask):
+    if exists(i.templates) and not_exists(i.template_mask):
         i.template_mask = torch.ones(i.templates.shape[0], dtype=torch.bool)
 
     # if msa given but msa mask isn't given default to all True
 
-    if exists(i.msa) and not exists(i.msa_mask):
+    if exists(i.msa) and not_exists(i.msa_mask):
         i.msa_mask = torch.ones(i.msa.shape[0], dtype=torch.bool)
 
     # default missing atom mask should be all False
 
-    if not exists(i.missing_atom_mask):
+    if not_exists(i.missing_atom_mask):
         i.missing_atom_mask = torch.zeros(i.atom_inputs.shape[0], dtype=torch.bool)
 
     return i
@@ -380,7 +380,7 @@ def pdb_dataset_to_atom_inputs(
     overwrite_existing: bool = False,
 ) -> Path | AtomDataset:
     """Convert a PDBDataset to AtomInputs stored on disk."""
-    if not exists(output_atom_folder):
+    if not_exists(output_atom_folder):
         pdb_folder = Path(pdb_dataset.folder).resolve()
         parent_folder = pdb_folder.parents[0]
         output_atom_folder = parent_folder / f"{pdb_folder.stem}.atom-inputs"
@@ -388,7 +388,7 @@ def pdb_dataset_to_atom_inputs(
     if isinstance(output_atom_folder, str):
         output_atom_folder = Path(output_atom_folder)
 
-    if not exists(indices):
+    if not_exists(indices):
         indices = torch.randperm(len(pdb_dataset)).tolist()
 
     to_atom_input_fn = compose(pdb_input_to_molecule_input, molecule_to_atom_input)
@@ -1862,7 +1862,7 @@ class PDBInput:
                 raise ValueError(
                     f"mmCIF file `{self.mmcif_filepath}` must have a `.cif` file extension."
                 )
-        elif not exists(self.biomol):
+        elif not_exists(self.biomol):
             raise ValueError("Either an mmCIF file or a `Biomolecule` object must be provided.")
 
         if exists(self.cropping_config):
@@ -2433,7 +2433,7 @@ def load_msa_from_msa_dir(
     verbose: bool = False,
 ) -> FeatureDict:
     """Load MSA from a directory containing MSA files."""
-    if verbose and (not exists(msa_dir) or not os.path.exists(msa_dir)):
+    if verbose and (not_exists(msa_dir) or not os.path.exists(msa_dir)):
         logger.warning(
             f"{msa_dir} does not exist. Dummy MSA features for each chain of file {file_id} will instead be loaded."
         )
@@ -2538,19 +2538,19 @@ def load_templates_from_templates_dir(
 ) -> FeatureDict:
     """Load templates from a directory containing template PDB mmCIF files."""
     if (
-        not exists(templates_dir) or not os.path.exists(templates_dir)
+        not_exists(templates_dir) or not os.path.exists(templates_dir)
     ) and raise_missing_exception:
         raise FileNotFoundError(f"{templates_dir} does not exist.")
-    elif not exists(templates_dir) or not os.path.exists(templates_dir):
+    elif not_exists(templates_dir) or not os.path.exists(templates_dir):
         if verbose:
             logger.warning(
                 f"{templates_dir} does not exist. Skipping template loading by returning `Nones`."
             )
         return {}
 
-    if (not exists(mmcif_dir) or not os.path.exists(mmcif_dir)) and raise_missing_exception:
+    if (not_exists(mmcif_dir) or not os.path.exists(mmcif_dir)) and raise_missing_exception:
         raise FileNotFoundError(f"{mmcif_dir} does not exist.")
-    elif not exists(mmcif_dir) or not os.path.exists(mmcif_dir):
+    elif not_exists(mmcif_dir) or not os.path.exists(mmcif_dir):
         if verbose:
             logger.warning(
                 f"{mmcif_dir} does not exist. Skipping template loading by returning `Nones`."
@@ -2616,7 +2616,7 @@ def pdb_input_to_molecule_input(
 
     # acquire a `Biomolecule` object for the given `PDBInput`
 
-    if not exists(biomol) and exists(i.biomol):
+    if not_exists(biomol) and exists(i.biomol):
         biomol = i.biomol
     else:
         # construct a `Biomolecule` object from the input PDB mmCIF file
@@ -2635,7 +2635,7 @@ def pdb_input_to_molecule_input(
             else get_assembly(_from_mmcif_object(mmcif_object))
         )
 
-        if not exists(resolution) and exists(mmcif_resolution):
+        if not_exists(resolution) and exists(mmcif_resolution):
             resolution = mmcif_resolution
 
     # record PDB resolution value if available
@@ -3041,7 +3041,7 @@ def pdb_input_to_molecule_input(
     }
 
     for token_index in range(len(atom_indices_for_frame)):
-        if not exists(atom_indices_for_frame[token_index]):
+        if not_exists(atom_indices_for_frame[token_index]):
             atom_indices_for_frame[token_index] = tuple(
                 token_index_to_frames[token_index].tolist()
             )
@@ -3529,7 +3529,7 @@ class PDBDataset(Dataset):
 
         # get the mmCIF file corresponding to the sampled structure
 
-        if not exists(mmcif_filepath):
+        if not_exists(mmcif_filepath):
             logger.warning(f"mmCIF file for PDB ID {pdb_id} not found.")
             return None
         elif not os.path.exists(mmcif_filepath):
@@ -3560,8 +3560,8 @@ class PDBDataset(Dataset):
 
         i = self.get_item(idx)
 
-        if not exists(i):
-            random_idx = not exists(self.sampler)
+        if not_exists(i):
+            random_idx = not_exists(self.sampler)
 
             retry_decorator = retry(
                 retry_on_result=not_exists, stop_max_attempt_number=max_attempts
@@ -3607,7 +3607,7 @@ def maybe_transform_to_atom_input(i: Any, raise_exception: bool = False) -> Atom
     """Convert an input to an AtomInput."""
     maybe_to_atom_fn = INPUT_TO_ATOM_TRANSFORM.get(type(i), None)
 
-    if not exists(maybe_to_atom_fn):
+    if not_exists(maybe_to_atom_fn):
         raise TypeError(
             f"Invalid input type {type(i)} being passed into Trainer that is not converted to AtomInput correctly"
         )

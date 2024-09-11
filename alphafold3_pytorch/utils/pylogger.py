@@ -3,6 +3,8 @@ import logging
 from beartype.typing import Mapping, Optional
 from lightning_utilities.core.rank_zero import rank_prefixed_message, rank_zero_only
 
+from alphafold3_pytorch.utils.utils import not_exists
+
 
 class RankedLogger(logging.LoggerAdapter):
     """A multi-GPU-friendly python command line logger that logs on all processes with their rank
@@ -37,14 +39,14 @@ class RankedLogger(logging.LoggerAdapter):
         if self.isEnabledFor(level):
             msg, kwargs = self.process(msg, kwargs)
             current_rank = getattr(rank_zero_only, "rank", None)
-            if current_rank is None:
+            if not_exists(current_rank):
                 raise RuntimeError("The `rank_zero_only.rank` needs to be set before use")
             msg = rank_prefixed_message(msg, current_rank)
             if self.rank_zero_only:
                 if current_rank == 0:
                     self.logger.log(level, msg, *args, **kwargs)
             else:
-                if rank is None:
+                if not_exists(rank):
                     self.logger.log(level, msg, *args, **kwargs)
                 elif current_rank == rank:
                     self.logger.log(level, msg, *args, **kwargs)
