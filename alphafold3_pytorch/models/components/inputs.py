@@ -2456,19 +2456,26 @@ def load_msa_from_msa_dir(
             msas[chain_id] = None
 
     try:
-        chains, unique_query_sequences = make_msa_features(
+        chains = make_msa_features(
             msas,
             chain_id_to_residue,
-            num_msa_one_hot=NUM_MSA_ONE_HOT,
             uniprot_accession_to_tax_id_mapping=uniprot_accession_to_tax_id_mapping,
         )
-        is_monomer_or_homomer = len(unique_query_sequences) == 1
+        unique_entity_ids = set(chain["entity_id"][0] for chain in chains)
 
-        if exists(uniprot_accession_to_tax_id_mapping) and not is_monomer_or_homomer:
+        is_monomer_or_homomer = len(unique_entity_ids) == 1
+        pair_msa_sequences = (
+            exists(uniprot_accession_to_tax_id_mapping) and not is_monomer_or_homomer
+        )
+
+        if pair_msa_sequences:
+            chains = msa_pairing.copy_unpaired_features(chains)
             chains = msa_pairing.create_paired_features(chains)
             chains = msa_pairing.deduplicate_unpaired_sequences(chains)
 
-        features = merge_chain_features(chains)
+        features = merge_chain_features(
+            chains, pair_msa_sequences, num_msa_one_hot=NUM_MSA_ONE_HOT
+        )
         features = make_msa_mask(features)
 
     except Exception as e:

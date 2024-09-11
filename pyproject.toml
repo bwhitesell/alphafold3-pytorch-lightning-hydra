@@ -79,6 +79,7 @@ dependencies = [
     "rich",            # beautiful text formatting in terminal
     "rootutils",       # standardizing the project root setup
     "scikit-learn>=1.5.0", # for basic machine learning utilities
+    "scipy==1.13.1",   # for scientific computing
     "setuptools",      # for packaging
     "sh>=2.0.7",       # for running bash commands in some tests (linux/macos only)
     "shortuuid",       # for generating random IDs
