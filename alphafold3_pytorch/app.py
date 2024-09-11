@@ -3,11 +3,8 @@ from pathlib import Path
 import click
 import gradio as gr
 
-from alphafold3_pytorch import (
-    Alphafold3,
-    Alphafold3Input,
-    alphafold3_inputs_to_batched_atom_input,
-)
+from alphafold3_pytorch.models.components.alphafold3 import Alphafold3
+from alphafold3_pytorch.models.components.inputs import Alphafold3Input
 
 # constants
 
