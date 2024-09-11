@@ -3,7 +3,6 @@ import os
 import random
 from functools import partial
 
-import polars as pl
 import torch
 from beartype.typing import Any, Callable, Dict, List, Literal, Tuple, Union
 from lightning import LightningDataModule
@@ -25,7 +24,7 @@ from alphafold3_pytorch.models.components.inputs import (
     PDBInput,
     maybe_transform_to_atom_inputs,
 )
-from alphafold3_pytorch.utils.data_utils import load_tsv_with_multiprocessing
+from alphafold3_pytorch.utils.data_utils import load_tsv_to_dict
 from alphafold3_pytorch.utils.model_utils import pad_at_dim
 from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import typecheck
@@ -435,7 +434,7 @@ class PDBDataModule(LightningDataModule):
             log.info(
                 "Loading UniProt accession ID to taxonomic ID mapping. This may take several minutes to complete."
             )
-            uniprot_accession_to_tax_id_mapping = load_tsv_with_multiprocessing(
+            uniprot_accession_to_tax_id_mapping = load_tsv_to_dict(
                 uniprot_accession_to_tax_id_mapping_filepath,
             )
             log.info("Finished loading UniProt accession ID to taxonomic ID mapping.")

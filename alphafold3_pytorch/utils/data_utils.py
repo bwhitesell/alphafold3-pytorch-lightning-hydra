@@ -1,6 +1,4 @@
 import csv
-import os
-from multiprocessing import Pool
 
 import numpy as np
 import torch
@@ -283,50 +281,16 @@ def get_sorted_tuple_indices(
     return sorted_indices
 
 
-def load_tsv_chunk(chunk):
-    """Load a chunk of a TSV file into a dictionary.
-
-    :param chunk: A chunk of a TSV file.
-    :return: A dictionary containing the chunk data.
-    """
-    chunk_dict = {}
-    for row in csv.reader(chunk, delimiter="\t"):
-        chunk_dict[row[0]] = row[1]
-    return chunk_dict
-
-
-def chunkify(file, size=1024 * 1024):
-    """Yield file chunks of approximately 'size' bytes.
-
-    :param file: The file to chunkify.
-    :param size: The size of each chunk.
-    :return: A generator yielding file chunks.
-    """
-    while True:
-        data = file.readlines(size)
-        if not data:
-            break
-        yield data
-
-
-def load_tsv_with_multiprocessing(filepath, num_workers=4):
-    """Load a TSV file into a dictionary using multiprocessing.
+@typecheck
+def load_tsv_to_dict(filepath):
+    """Load a two-column TSV file into a dictionary.
 
     :param filepath: The path to the TSV file.
-    :param num_workers: The number of workers to use.
     :return: A dictionary containing the TSV data.
     """
-    file_size = os.path.getsize(filepath)
-    chunk_size = file_size // num_workers
-
-    with open(filepath, "r") as f:
-        with Pool(processes=num_workers) as pool:
-            chunks = chunkify(f, chunk_size)
-            results = pool.map(load_tsv_chunk, chunks)
-
-    # Merge results into a single dictionary
-    final_dict = {}
-    for result in results:
-        final_dict.update(result)
-
-    return final_dict
+    result = {}
+    with open(filepath, mode="r", newline="") as file:
+        reader = csv.reader(file, delimiter="\t")
+        for row in reader:
+            result[row[0]] = row[1]
+    return result

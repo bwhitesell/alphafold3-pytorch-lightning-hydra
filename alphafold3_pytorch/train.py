@@ -44,9 +44,26 @@ from alphafold3_pytorch.utils import (
     log_hyperparameters,
     task_wrapper,
 )
-from alphafold3_pytorch.utils.data_utils import load_tsv_with_multiprocessing
+from alphafold3_pytorch.utils.data_utils import load_tsv_to_dict
 
 log = RankedLogger(__name__, rank_zero_only=True)
+
+
+# load UniProt accession ID to taxonomic ID mapping globally
+log.info(
+    "Loading UniProt accession ID to taxonomic ID mapping. This may take several minutes to complete."
+)
+UNIPROT_ACCESSION_TO_TAX_ID_MAPPING_FILEPATH = os.path.join(
+    "data", "pdb_data", "data_caches", "uniref30_2202_accession_mapping.tsv"
+)
+assert os.path.exists(UNIPROT_ACCESSION_TO_TAX_ID_MAPPING_FILEPATH), (
+    f"UniProt accession ID to taxonomic ID mapping file not found at "
+    f"{UNIPROT_ACCESSION_TO_TAX_ID_MAPPING_FILEPATH}. "
+)
+UNIPROT_ACCESSION_TO_TAX_ID_MAPPING = load_tsv_to_dict(
+    UNIPROT_ACCESSION_TO_TAX_ID_MAPPING_FILEPATH
+)
+log.info("Finished loading UniProt accession ID to taxonomic ID mapping.")
 
 
 @task_wrapper
@@ -65,20 +82,9 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         L.seed_everything(cfg.seed, workers=True)
 
     log.info(f"Instantiating datamodule <{cfg.data._target_}>")
-
-    # load UniProt accession ID to taxonomic ID mapping
-    log.info(
-        "Loading UniProt accession ID to taxonomic ID mapping. This may take several minutes to complete."
-    )
-    uniprot_accession_to_tax_id_mapping = load_tsv_with_multiprocessing(
-        cfg.data.uniprot_accession_to_tax_id_mapping_filepath,
-        num_workers=1,
-    )
-    log.info("Finished loading UniProt accession ID to taxonomic ID mapping.")
-
     datamodule: LightningDataModule = hydra.utils.instantiate(
         cfg.data,
-        uniprot_accession_to_tax_id_mapping=uniprot_accession_to_tax_id_mapping,
+        uniprot_accession_to_tax_id_mapping=UNIPROT_ACCESSION_TO_TAX_ID_MAPPING,
     )
 
     log.info(f"Instantiating model <{cfg.model._target_}>")
