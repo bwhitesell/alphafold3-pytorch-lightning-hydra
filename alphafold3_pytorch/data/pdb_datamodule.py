@@ -3,6 +3,7 @@ import os
 import random
 from functools import partial
 
+import polars as pl
 import torch
 from beartype.typing import Any, Callable, Dict, List, Literal, Tuple, Union
 from lightning import LightningDataModule
@@ -25,8 +26,11 @@ from alphafold3_pytorch.models.components.inputs import (
     maybe_transform_to_atom_inputs,
 )
 from alphafold3_pytorch.utils.model_utils import pad_at_dim
+from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import typecheck
-from alphafold3_pytorch.utils.utils import exists
+from alphafold3_pytorch.utils.utils import exists, not_exists
+
+log = RankedLogger(__name__, rank_zero_only=False)
 
 # dataloader and collation fn
 
@@ -156,7 +160,7 @@ def collate_inputs_to_batched_atom_input(
         padded_inputs = []
 
         for inp in grouped:
-            if not exists(inp):
+            if not_exists(inp):
                 padded_inputs.append(default_tensor)
                 continue
 
@@ -288,11 +292,16 @@ class PDBDataModule(LightningDataModule):
         data_dir: str = os.path.join("data", "pdb_data"),
         msa_dir: str = os.path.join("data", "pdb_data", "data_caches", "msa"),
         templates_dir: str = os.path.join("data", "pdb_data", "data_caches", "template"),
+        uniprot_accession_to_tax_id_mapping_filepath: str = os.path.join(
+            "data", "pdb_data", "data_caches", "uniref30_2202_accession_mapping.tsv"
+        ),
         sample_type: Literal["default", "clustered"] = "default",
         contiguous_weight: float = 0.2,
         spatial_weight: float = 0.4,
         spatial_interface_weight: float = 0.4,
         crop_size: int = 384,
+        uniprot_accession_to_tax_id_mapping_loading_batch_size: int = 8192,
+        num_tax_id_mappings_to_keep: int | None = None,
         max_msas_per_chain: int | None = None,
         max_num_msa_tokens: int | None = None,
         max_templates_per_chain: int | None = None,
@@ -325,7 +334,7 @@ class PDBDataModule(LightningDataModule):
 
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt
-        self.save_hyperparameters(logger=False)
+        self.save_hyperparameters(ignore=["uniprot_accession_to_tax_id_mapping"], logger=False)
 
         self.data_train: Dataset | None = None
         self.data_val: Dataset | None = None
@@ -419,6 +428,22 @@ class PDBDataModule(LightningDataModule):
                 ),
             )
 
+        # load UniProt accession ID to taxonomic ID mapping
+        log.info(
+            "Loading UniProt accession ID to taxonomic ID mapping. This may take several minutes to complete."
+        )
+        uniprot_accession_to_tax_id_mapping = dict(
+            pl.read_csv(
+                self.hparams.uniprot_accession_to_tax_id_mapping_filepath,
+                has_header=False,
+                separator="\t",
+                infer_schema_length=0,  # read all column values as strings
+                n_rows=self.hparams.num_tax_id_mappings_to_keep,
+                batch_size=uniprot_accession_to_tax_id_mapping_loading_batch_size,
+            ).iter_rows()
+        )
+        log.info("Finished loading UniProt accession ID to taxonomic ID mapping.")
+
         # training set
         sampler_train = (
             None
@@ -449,6 +474,7 @@ class PDBDataModule(LightningDataModule):
             return_atom_inputs=True,
             msa_dir=self.train_msa_dir,
             templates_dir=self.train_templates_dir,
+            uniprot_accession_to_tax_id_mapping=uniprot_accession_to_tax_id_mapping,
         )
 
         # validation set
@@ -481,6 +507,7 @@ class PDBDataModule(LightningDataModule):
             return_atom_inputs=True,
             msa_dir=self.val_msa_dir,
             templates_dir=self.val_templates_dir,
+            uniprot_accession_to_tax_id_mapping=uniprot_accession_to_tax_id_mapping,
         )
 
         # evaluation set
@@ -513,6 +540,7 @@ class PDBDataModule(LightningDataModule):
             return_atom_inputs=True,
             msa_dir=self.test_msa_dir,
             templates_dir=self.test_templates_dir,
+            uniprot_accession_to_tax_id_mapping=uniprot_accession_to_tax_id_mapping,
         )
 
         # subsample dataset splits as requested
@@ -557,7 +585,7 @@ class PDBDataModule(LightningDataModule):
         :param stage: The stage to setup. Either `"fit"`, `"validate"`, `"test"`, or `"predict"`. Defaults to ``None``.
         """
         # Divide batch size by the number of devices.
-        if self.trainer is not None:
+        if exists(self.trainer):
             if self.hparams.batch_size % self.trainer.world_size != 0:
                 raise RuntimeError(
                     f"Batch size ({self.hparams.batch_size}) is not divisible by the number of devices ({self.trainer.world_size})."

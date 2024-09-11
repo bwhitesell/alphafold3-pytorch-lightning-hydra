@@ -2,11 +2,14 @@ _target_: alphafold3_pytorch.data.pdb_datamodule.PDBDataModule
 data_dir: ${paths.data_dir}/pdb_data/ # NOTE: this is the directory where the PDB data should be set up
 msa_dir: ${paths.data_dir}/pdb_data/data_caches/msa # NOTE: this is the directory where the MSA data should be set up
 templates_dir: ${paths.data_dir}/pdb_data/data_caches/template # NOTE: this is the directory where the template data should be set up
+uniprot_accession_to_tax_id_mapping_filepath: ${paths.data_dir}/pdb_data/data_caches/uniref30_2202_accession_mapping.tsv
 sample_type: default # NOTE: must be one of (`default`, `clustered`)
 contiguous_weight: 0.2 # NOTE: the sum of `contiguous_weight`, `spatial_weight`, and `spatial_interface_weight` should be 1
 spatial_weight: 0.4
 spatial_interface_weight: 0.4
 crop_size: 384 # NOTE: must be one of (initial_training: 384, fine_tuning_1: 640, fine_tuning_2: 768, fine_tuning_3: 768), proceeding from left to right following Table 6 in the paper
+uniprot_accession_to_tax_id_mapping_loading_batch_size: ${multiply:8192,1} # NOTE: this is the batch size to use when loading the UniProt accession to taxonomy ID mapping
+num_tax_id_mappings_to_keep: null # NOTE: if specified, the number of UniProt ID to taxonomy ID mappings to keep
 max_msas_per_chain: null # if specified, the maximum number of MSA sequences to include per chain (e.g., for throughput concerns)
 max_num_msa_tokens: null # if specified, the maximum number of MSA sequence tokens to include per structure (e.g., for throughput concerns)
 max_templates_per_chain: null # if specified, the maximum number of templates to include per chain (e.g., for throughput concerns)

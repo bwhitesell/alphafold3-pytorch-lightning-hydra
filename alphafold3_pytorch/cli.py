@@ -5,7 +5,8 @@ from pathlib import Path
 import click
 from Bio.PDB.mmcifio import MMCIFIO
 
-from alphafold3_pytorch import Alphafold3, Alphafold3Input
+from alphafold3_pytorch.models.components.alphafold3 import Alphafold3
+from alphafold3_pytorch.models.components.inputs import Alphafold3Input
 
 # simple cli using click
 

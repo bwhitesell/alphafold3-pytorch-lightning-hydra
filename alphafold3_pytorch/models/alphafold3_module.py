@@ -19,7 +19,7 @@ from alphafold3_pytorch.models.components.inputs import BatchedAtomInput
 from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.model_utils import default_lambda_lr_fn
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, typecheck
-from alphafold3_pytorch.utils.utils import exists
+from alphafold3_pytorch.utils.utils import exists, not_exists
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
@@ -575,7 +575,7 @@ class Alphafold3LitModule(LightningModule):
         if self.hparams.skip_invalid_gradient_updates:
             valid_gradients = True
             for _, param in self.named_parameters():
-                if param.grad is not None:
+                if exists(param.grad):
                     valid_gradients = not (
                         torch.isnan(param.grad).any() or torch.isinf(param.grad).any()
                     )
@@ -625,7 +625,7 @@ class Alphafold3LitModule(LightningModule):
         except TypeError:
             # NOTE: Trainer strategies such as DeepSpeed require `params` to instead be specified as `model_params`
             optimizer = self.hparams.optimizer(model_params=self.trainer.model.parameters())
-        if self.hparams.scheduler is None:
+        if not_exists(self.hparams.scheduler):
             scheduler = torch.optim.lr_scheduler.LambdaLR(
                 optimizer, lr_lambda=default_lambda_lr_fn, verbose=True
             )

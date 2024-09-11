@@ -10,7 +10,7 @@ from torch import Tensor
 from torch.nn import Module
 
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, Shaped, typecheck
-from alphafold3_pytorch.utils.utils import default, exists
+from alphafold3_pytorch.utils.utils import default, exists, not_exists
 
 # constants
 
@@ -185,7 +185,7 @@ def maybe(fn):
     @wraps(fn)
     def inner(t, *args, **kwargs):
         """Inner function to check if a Tensor exists before running a function on it."""
-        if not exists(t):
+        if not_exists(t):
             return None
         return fn(t, *args, **kwargs)
 
@@ -331,7 +331,7 @@ def lens_to_mask(
     :return: The mask Tensor.
     """
     device = lens.device
-    if not exists(max_len):
+    if not_exists(max_len):
         max_len = lens.amax()
     arange = torch.arange(max_len, device=device)
     return einx.less("m, ... -> ... m", arange, lens)
@@ -632,7 +632,7 @@ def should_checkpoint(
     return (
         self.training
         and any([i.requires_grad for i in inputs])
-        and (not exists(check_instance_variable) or getattr(self, check_instance_variable, False))
+        and (not_exists(check_instance_variable) or getattr(self, check_instance_variable, False))
     )
 
 

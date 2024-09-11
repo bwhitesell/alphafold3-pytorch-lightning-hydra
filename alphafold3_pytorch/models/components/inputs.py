@@ -4,6 +4,7 @@ import copy
 import glob
 import json
 import os
+import statistics
 from collections import defaultdict
 from collections.abc import Iterable
 from contextlib import redirect_stderr
@@ -37,13 +38,19 @@ from alphafold3_pytorch.common.biomolecule import (
     _from_mmcif_object,
     get_residue_constants,
 )
-from alphafold3_pytorch.data import mmcif_parsing, msa_parsing, template_parsing
+from alphafold3_pytorch.data import (
+    mmcif_parsing,
+    msa_pairing,
+    msa_parsing,
+    template_parsing,
+)
 from alphafold3_pytorch.data.data_pipeline import (
     FeatureDict,
     get_assembly,
     make_msa_features,
     make_msa_mask,
     make_template_features,
+    merge_chain_features,
 )
 from alphafold3_pytorch.data.life import (
     ATOM_BONDS,
@@ -345,17 +352,17 @@ def default_none_fields_atom_input(i: AtomInput) -> AtomInput:
     """Set default None fields in AtomInput to their default values."""
     # if templates given but template mask isn't given, default to all True
 
-    if exists(i.templates) and not exists(i.template_mask):
+    if exists(i.templates) and not_exists(i.template_mask):
         i.template_mask = torch.ones(i.templates.shape[0], dtype=torch.bool)
 
     # if msa given but msa mask isn't given default to all True
 
-    if exists(i.msa) and not exists(i.msa_mask):
+    if exists(i.msa) and not_exists(i.msa_mask):
         i.msa_mask = torch.ones(i.msa.shape[0], dtype=torch.bool)
 
     # default missing atom mask should be all False
 
-    if not exists(i.missing_atom_mask):
+    if not_exists(i.missing_atom_mask):
         i.missing_atom_mask = torch.zeros(i.atom_inputs.shape[0], dtype=torch.bool)
 
     return i
@@ -373,7 +380,7 @@ def pdb_dataset_to_atom_inputs(
     overwrite_existing: bool = False,
 ) -> Path | AtomDataset:
     """Convert a PDBDataset to AtomInputs stored on disk."""
-    if not exists(output_atom_folder):
+    if not_exists(output_atom_folder):
         pdb_folder = Path(pdb_dataset.folder).resolve()
         parent_folder = pdb_folder.parents[0]
         output_atom_folder = parent_folder / f"{pdb_folder.stem}.atom-inputs"
@@ -381,7 +388,7 @@ def pdb_dataset_to_atom_inputs(
     if isinstance(output_atom_folder, str):
         output_atom_folder = Path(output_atom_folder)
 
-    if not exists(indices):
+    if not_exists(indices):
         indices = torch.randperm(len(pdb_dataset)).tolist()
 
     to_atom_input_fn = compose(pdb_input_to_molecule_input, molecule_to_atom_input)
@@ -1829,6 +1836,7 @@ class PDBInput:
     cropping_config: Dict[str, float | int] | None = None
     msa_dir: str | None = None
     templates_dir: str | None = None
+    uniprot_accession_to_tax_id_mapping: Dict[str, str] | None = None
     add_atom_ids: bool = False
     add_atompair_ids: bool = False
     directed_bonds: bool = False
@@ -1854,7 +1862,7 @@ class PDBInput:
                 raise ValueError(
                     f"mmCIF file `{self.mmcif_filepath}` must have a `.cif` file extension."
                 )
-        elif not exists(self.biomol):
+        elif not_exists(self.biomol):
             raise ValueError("Either an mmCIF file or a `Biomolecule` object must be provided.")
 
         if exists(self.cropping_config):
@@ -2390,29 +2398,88 @@ def find_mismatched_symmetry(
 
 
 @typecheck
+def extract_polymer_sequence_from_chain_residues(
+    chain_chemtype: List[int],
+    chain_restype: List[int],
+    unique_chain_residue_indices: List[int],
+    ligand_chemtype_index: int = 3,
+) -> str:
+    """Extract a polymer sequence string from a chain's chemical types and residue types.
+
+    :param chain_chemtype: A list of chemical types for each residue in the chain.
+    :param chain_restype: A list of residue types for each residue in the chain.
+    :param unique_chain_residue_indices: A list of unique residue indices in the chain.
+    :param ligand_chemtype_index: The index of the ligand chemical type.
+    :return: A polymer sequence string representing the chain's residues.
+    """
+    polymer_sequence = []
+
+    for unique_chain_res_index in unique_chain_residue_indices:
+        chemtype = chain_chemtype[unique_chain_res_index]
+        restype = chain_restype[unique_chain_res_index]
+
+        if chemtype != ligand_chemtype_index:
+            rc = get_residue_constants(res_chem_index=chemtype)
+            rc_restypes = rc.restypes + ["X"]
+            polymer_sequence.append(rc_restypes[restype - rc.min_restype_num])
+
+    return "".join(polymer_sequence)
+
+
+@typecheck
 def load_msa_from_msa_dir(
     msa_dir: str | None,
     file_id: str,
     chain_id_to_residue: Dict[str, Dict[str, List[int]]],
+    uniprot_accession_to_tax_id_mapping: Dict[str, str] | None = None,
     max_msas_per_chain: int | None = None,
     randomly_truncate: bool = False,
-    raise_missing_exception: bool = False,
     verbose: bool = False,
 ) -> FeatureDict:
     """Load MSA from a directory containing MSA files."""
-    if (not exists(msa_dir) or not os.path.exists(msa_dir)) and raise_missing_exception:
-        raise FileNotFoundError(f"{msa_dir} does not exist.")
-    elif not exists(msa_dir) or not os.path.exists(msa_dir):
-        if verbose:
-            logger.warning(f"{msa_dir} does not exist. Skipping MSA loading by returning `Nones`.")
-        return {}
+    if verbose and (not_exists(msa_dir) or not os.path.exists(msa_dir)):
+        logger.warning(
+            f"{msa_dir} does not exist. Dummy MSA features for each chain of file {file_id} will instead be loaded."
+        )
 
     msas = {}
     for chain_id in chain_id_to_residue:
-        msa_fpaths = glob.glob(os.path.join(msa_dir, f"{file_id}{chain_id}_*.a3m"))
+        # Construct a length-1 MSA containing only the query sequence as a fallback.
+        chain_chemtype = chain_id_to_residue[chain_id]["chemtype"]
+        chain_restype = chain_id_to_residue[chain_id]["restype"]
+        unique_chain_residue_indices = chain_id_to_residue[chain_id][
+            "unique_chain_residue_indices"
+        ]
 
+        chain_sequences = [
+            extract_polymer_sequence_from_chain_residues(
+                chain_chemtype, chain_restype, unique_chain_residue_indices
+            )
+        ]
+        chain_deletion_matrix = [[0] * len(sequence) for sequence in chain_sequences]
+        chain_descriptions = ["101" for _ in chain_sequences]
+
+        majority_msa_chem_type = statistics.mode(chain_chemtype)
+        chain_msa_type = msa_parsing.get_msa_type(majority_msa_chem_type)
+
+        dummy_msa = msa_parsing.Msa(
+            sequences=chain_sequences,
+            deletion_matrix=chain_deletion_matrix,
+            descriptions=chain_descriptions,
+            msa_type=chain_msa_type,
+        )
+
+        msa_fpaths = (
+            glob.glob(os.path.join(msa_dir, f"{file_id}{chain_id}_*.a3m"))
+            if exists(msa_dir)
+            else []
+        )
         if not msa_fpaths:
-            msas[chain_id] = None
+            if verbose:
+                logger.warning(
+                    f"Could not find MSA for chain {chain_id} of file {file_id}. A dummy MSA will be installed for this chain."
+                )
+            msas[chain_id] = dummy_msa
             continue
 
         try:
@@ -2424,11 +2491,10 @@ def load_msa_from_msa_dir(
                 "Please ensure that one MSA file is present for each chain."
             )
             msa_fpath = msa_fpaths[0]
-            msa_type = os.path.splitext(os.path.basename(msa_fpath))[0].split("_")[-1]
 
             with open(msa_fpath, "r") as f:
                 msa = f.read()
-                msa = msa_parsing.parse_a3m(msa, msa_type)
+                msa = msa_parsing.parse_a3m(msa, chain_msa_type)
                 msa = (
                     (
                         msa.random_truncate(max_msas_per_chain)
@@ -2443,11 +2509,28 @@ def load_msa_from_msa_dir(
         except Exception as e:
             if verbose:
                 logger.warning(
-                    f"Failed to load MSA for chain {chain_id} of file {file_id} due to: {e}. Skipping MSA loading."
+                    f"Failed to load MSA for chain {chain_id} of file {file_id} due to: {e}. A dummy MSA will be installed for this chain."
                 )
-            msas[chain_id] = None
+            msas[chain_id] = dummy_msa
 
-    features = make_msa_features(msas, chain_id_to_residue)
+    chains = make_msa_features(
+        msas,
+        chain_id_to_residue,
+        num_msa_one_hot=NUM_MSA_ONE_HOT,
+        uniprot_accession_to_tax_id_mapping=uniprot_accession_to_tax_id_mapping,
+    )
+    unique_entity_ids = set(chain["entity_id"][0] for chain in chains)
+
+    is_monomer_or_homomer = len(unique_entity_ids) == 1
+    pair_msa_sequences = exists(uniprot_accession_to_tax_id_mapping) and not is_monomer_or_homomer
+
+    if pair_msa_sequences:
+        chains = msa_pairing.copy_unpaired_features(chains)
+        chains = msa_pairing.create_paired_features(chains)
+
+    features = merge_chain_features(
+        chains, pair_msa_sequences, max_msas_per_chain=max_msas_per_chain
+    )
     features = make_msa_mask(features)
 
     return features
@@ -2469,19 +2552,19 @@ def load_templates_from_templates_dir(
 ) -> FeatureDict:
     """Load templates from a directory containing template PDB mmCIF files."""
     if (
-        not exists(templates_dir) or not os.path.exists(templates_dir)
+        not_exists(templates_dir) or not os.path.exists(templates_dir)
     ) and raise_missing_exception:
         raise FileNotFoundError(f"{templates_dir} does not exist.")
-    elif not exists(templates_dir) or not os.path.exists(templates_dir):
+    elif not_exists(templates_dir) or not os.path.exists(templates_dir):
         if verbose:
             logger.warning(
                 f"{templates_dir} does not exist. Skipping template loading by returning `Nones`."
             )
         return {}
 
-    if (not exists(mmcif_dir) or not os.path.exists(mmcif_dir)) and raise_missing_exception:
+    if (not_exists(mmcif_dir) or not os.path.exists(mmcif_dir)) and raise_missing_exception:
         raise FileNotFoundError(f"{mmcif_dir} does not exist.")
-    elif not exists(mmcif_dir) or not os.path.exists(mmcif_dir):
+    elif not_exists(mmcif_dir) or not os.path.exists(mmcif_dir):
         if verbose:
             logger.warning(
                 f"{mmcif_dir} does not exist. Skipping template loading by returning `Nones`."
@@ -2547,7 +2630,7 @@ def pdb_input_to_molecule_input(
 
     # acquire a `Biomolecule` object for the given `PDBInput`
 
-    if not exists(biomol) and exists(i.biomol):
+    if not_exists(biomol) and exists(i.biomol):
         biomol = i.biomol
     else:
         # construct a `Biomolecule` object from the input PDB mmCIF file
@@ -2566,7 +2649,7 @@ def pdb_input_to_molecule_input(
             else get_assembly(_from_mmcif_object(mmcif_object))
         )
 
-        if not exists(resolution) and exists(mmcif_resolution):
+        if not_exists(resolution) and exists(mmcif_resolution):
             resolution = mmcif_resolution
 
     # record PDB resolution value if available
@@ -2607,35 +2690,54 @@ def pdb_input_to_molecule_input(
     )  # NOTE: `Biomolecule.residue_index` is 1-based originally
     num_tokens = len(biomol.atom_mask)
 
+    # create unique chain-residue index pairs to identify the first atom of each residue
+    chain_residue_index = np.array(list(zip(biomol.chain_index, biomol.residue_index)))
+
     chain_id_to_residue = {
         chain_id: {
             "chemtype": biomol.chemtype[biomol.chain_id == chain_id].tolist(),
             "restype": biomol.restype[biomol.chain_id == chain_id].tolist(),
             "residue_index": residue_index[biomol.chain_id == chain_id].tolist(),
+            "unique_chain_residue_indices": np.sort(
+                np.unique(
+                    chain_residue_index[biomol.chain_id == chain_id], axis=0, return_index=True
+                )[-1]
+            ).tolist(),
         }
         for chain_id in biomol_chain_ids
     }
 
+    msa_dir = i.msa_dir
+    max_msas_per_chain = i.max_msas_per_chain
+
     if exists(i.max_num_msa_tokens) and num_tokens * i.max_msas_per_chain > i.max_num_msa_tokens:
+        msa_dir = None
+        max_msas_per_chain = 1
+
         if verbose:
             logger.warning(
                 f"The number of tokens ({num_tokens}) multiplied by the maximum number of MSAs per structure ({i.max_msas_per_chain}) exceeds the maximum total number of MSA tokens {(i.max_num_msa_tokens)}. "
-                "Skipping curation of MSA features for this example."
+                "Skipping curation of MSA features for this example by installing a dummy MSA for each chain."
             )
-        msa_features = {}
-    else:
-        msa_features = load_msa_from_msa_dir(
-            # NOTE: if MSAs are not locally available, no MSA features will be used
-            i.msa_dir,
-            file_id,
-            chain_id_to_residue,
-            max_msas_per_chain=i.max_msas_per_chain,
-            verbose=verbose,
-        )
+
+    msa_features = load_msa_from_msa_dir(
+        # NOTE: if MSAs are not locally available, no MSA features will be used
+        msa_dir,
+        file_id,
+        chain_id_to_residue,
+        uniprot_accession_to_tax_id_mapping=i.uniprot_accession_to_tax_id_mapping,
+        max_msas_per_chain=max_msas_per_chain,
+        verbose=verbose,
+    )
 
     msa = msa_features.get("msa")
-    msa_col_mask = msa_features.get("msa_mask")
     msa_row_mask = msa_features.get("msa_row_mask")
+
+    has_deletion = msa_features.get("has_deletion")
+    deletion_value = msa_features.get("deletion_value")
+
+    profile = msa_features.get("profile")
+    deletion_mean = msa_features.get("deletion_mean")
 
     # collect additional MSA and token features
     # 0: has_deletion (msa)
@@ -2648,13 +2750,14 @@ def pdb_input_to_molecule_input(
 
     num_msas = len(msa) if exists(msa) else 1
 
-    if exists(msa):
+    all_msa_features_exist = all(
+        exists(feat)
+        for feat in [msa, msa_row_mask, has_deletion, deletion_value, profile, deletion_mean]
+    )
+    if all_msa_features_exist:
         assert (
             msa.shape[-1] == num_tokens
         ), f"The number of tokens in the MSA ({msa.shape[-1]}) does not match the number of tokens in the biomolecule ({num_tokens}). "
-
-        has_deletion = torch.clip(msa_features["deletion_matrix"], 0.0, 1.0)
-        deletion_value = torch.atan(msa_features["deletion_matrix"] / 3.0) * (2.0 / torch.pi)
 
         additional_msa_feats = torch.stack(
             [
@@ -2662,16 +2765,6 @@ def pdb_input_to_molecule_input(
                 deletion_value,
             ],
             dim=-1,
-        )
-
-        # NOTE: assumes each aligned sequence has the same mask values
-        profile_msa_mask = torch.repeat_interleave(msa_col_mask[None, ...], len(msa), dim=0)
-        msa_sum = (profile_msa_mask[:, :, None] * make_one_hot(msa, NUM_MSA_ONE_HOT)).sum(0)
-        mask_counts = 1e-6 + profile_msa_mask.sum(0)
-
-        profile = msa_sum / mask_counts[:, None]
-        deletion_mean = torch.atan(msa_features["deletion_matrix"].mean(0) / 3.0) * (
-            2.0 / torch.pi
         )
 
         additional_token_feats = torch.cat(
@@ -2975,7 +3068,7 @@ def pdb_input_to_molecule_input(
     }
 
     for token_index in range(len(atom_indices_for_frame)):
-        if not exists(atom_indices_for_frame[token_index]):
+        if not_exists(atom_indices_for_frame[token_index]):
             atom_indices_for_frame[token_index] = tuple(
                 token_index_to_frames[token_index].tolist()
             )
@@ -3463,7 +3556,7 @@ class PDBDataset(Dataset):
 
         # get the mmCIF file corresponding to the sampled structure
 
-        if not exists(mmcif_filepath):
+        if not_exists(mmcif_filepath):
             logger.warning(f"mmCIF file for PDB ID {pdb_id} not found.")
             return None
         elif not os.path.exists(mmcif_filepath):
@@ -3494,8 +3587,8 @@ class PDBDataset(Dataset):
 
         i = self.get_item(idx)
 
-        if not exists(i):
-            random_idx = not exists(self.sampler)
+        if not_exists(i):
+            random_idx = not_exists(self.sampler)
 
             retry_decorator = retry(
                 retry_on_result=not_exists, stop_max_attempt_number=max_attempts
@@ -3541,7 +3634,7 @@ def maybe_transform_to_atom_input(i: Any, raise_exception: bool = False) -> Atom
     """Convert an input to an AtomInput."""
     maybe_to_atom_fn = INPUT_TO_ATOM_TRANSFORM.get(type(i), None)
 
-    if not exists(maybe_to_atom_fn):
+    if not_exists(maybe_to_atom_fn):
         raise TypeError(
             f"Invalid input type {type(i)} being passed into Trainer that is not converted to AtomInput correctly"
         )
