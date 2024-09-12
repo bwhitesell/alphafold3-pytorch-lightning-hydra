@@ -2626,7 +2626,7 @@ def load_templates_from_templates_dir(
 def pdb_input_to_molecule_input(
     pdb_input: PDBInput,
     biomol: Biomolecule | None = None,
-    verbose: bool = False,
+    verbose: bool = True,
 ) -> MoleculeInput:
     """Convert a PDBInput to a MoleculeInput."""
     i = pdb_input
