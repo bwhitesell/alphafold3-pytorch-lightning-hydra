@@ -45,7 +45,7 @@ A visualization of the molecules of life used in the repository can be seen and 
 
 - <a href="https://github.com/milot-mirdita">Milot</a> for generating MSA and template inputs as well as optimizing the PDB dataset clustering script!
 
-- <a href="https://github.com/vandrw">Andrei</a> for working on the weighted PDB dataset sampling!
+- <a href="https://github.com/vandrw">Andrei</a> for working on the weighted PDB dataset sampling and for taking on the gradio frontend interface!
 
 - <a href="https://github.com/tanjimin">Jimin</a> for submitting a small fix to an issue with the coordinates being passed into `WeightedRigidAlign`
 
