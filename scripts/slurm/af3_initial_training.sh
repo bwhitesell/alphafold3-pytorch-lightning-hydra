@@ -47,7 +47,7 @@ export PYTHONFAULTHANDLER=1
 # For what `srun` is concerned, only one task is created, the `torchrun` process.
 
 # Define WandB run ID
-RUN_ID="3owe2fwu"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="0kus44tj"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun -c 64 singularity exec \
@@ -67,6 +67,7 @@ srun -c 64 singularity exec \
         --rdzv_endpoint=$RDZV_HOST:$RDZV_PORT \
         alphafold3_pytorch/train.py \
         data.batch_size=$((SLURM_JOB_NUM_NODES*NUM_PYTORCH_PROCESSES)) \
+        data.diffusion_num_augmentations=1 \
         data.kalign_binary_path=/usr/bin/kalign \
         environment=torch_elastic \
         experiment=af3_initial_training \
