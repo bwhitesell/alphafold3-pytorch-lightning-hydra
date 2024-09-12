@@ -38,7 +38,7 @@ export RDZV_HOST
 export RDZV_PORT=29400
 
 # Configure GPUs
-export HSA_OVERRIDE_GFX_VERSION=11.0.0
+export HSA_OVERRIDE_GFX_VERSION=9.0.0
 
 # NOTE: The following `srun` command gives all the available resources to
 # `torchrun` which will then distribute them internally to the processes
@@ -58,7 +58,7 @@ srun -c 64 singularity exec \
     bash -c "
         /usr/bin/kalign --version \
         && python3 -c 'import torch; print(torch.__version__)' \
-        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS NCCL_DEBUG=INFO PYTHONFAULTHANDLER=1 HSA_OVERRIDE_GFX_VERSION=11.0.0 \
+        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS NCCL_DEBUG=INFO PYTHONFAULTHANDLER=1 HSA_OVERRIDE_GFX_VERSION=9.0.0 \
         torchrun \
         --nnodes=$SLURM_JOB_NUM_NODES \
         --nproc_per_node=$NUM_PYTORCH_PROCESSES \
