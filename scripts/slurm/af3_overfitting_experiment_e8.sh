@@ -5,7 +5,7 @@
 #SBATCH --account=pawsey1018-gpu                              # IMPORTANT: use your own project and the -gpu suffix
 #SBATCH --nodes=2                                             # NOTE: this needs to match Lightning's `Trainer(num_nodes=...)`
 #SBATCH --ntasks-per-node=1                                   # NOTE: this needs to be `1` on SLURM clusters when using Lightning's `ddp_spawn` strategy`; otherwise, set to match Lightning's quantity of `Trainer(devices=...)`
-#SBATCH --time 0-01:00:00                                     # time limit for the job (up to 24 hours: `0-24:00:00`)
+#SBATCH --time 0-00:20:00                                     # time limit for the job (up to 24 hours: `0-24:00:00`)
 #SBATCH --job-name=af3_overfitting_e8                         # job name
 #SBATCH --output=J-%x.%j.out                                  # output log file
 #SBATCH --error=J-%x.%j.err                                   # error log file
@@ -54,7 +54,7 @@ srun -c 64 singularity exec \
     "$SINGULARITY_CONTAINER" \
     bash -c "
         /usr/bin/kalign --version \
-        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS NCCL_DEBUG=INFO \
+        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS NCCL_DEBUG=INFO HIP_LAUNCH_BLOCKING=1 \
         torchrun \
         --nnodes=$SLURM_JOB_NUM_NODES \
         --nproc_per_node=$NUM_PYTORCH_PROCESSES \
@@ -67,7 +67,7 @@ srun -c 64 singularity exec \
         environment=torch_elastic \
         experiment=af3_overfitting_e8 \
         trainer.num_nodes=$SLURM_JOB_NUM_NODES \
-        trainer.devices=$NUM_PYTORCH_PROCESSES \
+        trainer.devices=$NUM_PYTORCH_PROCESSES
     "
 
 # Inform user of run completion
