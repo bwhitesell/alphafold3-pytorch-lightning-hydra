@@ -46,7 +46,7 @@ export NCCL_P2P_DISABLE=1
 # For what `srun` is concerned, only one task is created, the `torchrun` process.
 
 # Define WandB run ID
-RUN_ID="jgkk5spy"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="tiragxct"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun -c 64 singularity exec \
