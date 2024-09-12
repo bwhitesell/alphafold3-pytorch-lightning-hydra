@@ -19,8 +19,9 @@ check_val_every_n_epoch: 1
 # makes training slower but gives more reproducibility than just setting seeds
 deterministic: False
 
-# if `gradient_clip_val` is not `null`, gradients will be norm-clipped by an upper bound of `gradient_clip_val` during training
-gradient_clip_algorithm: norm
+# NOTE: we clip by value instead of norm since Lightning does not support norm clipping for FSDP yet, per https://github.com/Lightning-AI/pytorch-lightning/issues/19235
+gradient_clip_algorithm: value
+# if `gradient_clip_val` is not `0.0` or `null`, gradients will be value-clipped by an upper bound of `gradient_clip_val` during training
 gradient_clip_val: 10.0
 
 # accumulate gradients of `accumulate_grad_batches` batches (e.g., by this amount for each rank) before doing a backward pass
