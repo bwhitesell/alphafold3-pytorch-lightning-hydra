@@ -47,7 +47,7 @@ export PYTHONFAULTHANDLER=1
 # For what `srun` is concerned, only one task is created, the `torchrun` process.
 
 # Define WandB run ID
-RUN_ID="xvr2i553"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="fczsh5xu"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun -c 64 singularity exec \
