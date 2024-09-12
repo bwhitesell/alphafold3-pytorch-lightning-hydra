@@ -41,6 +41,9 @@ export RDZV_PORT=29400
 export NCCL_DEBUG=INFO
 export PYTHONFAULTHANDLER=1
 
+# Configure ROCm
+export HSA_OVERRIDE_GFX_VERSION=11.0.0
+
 # NOTE: The following `srun` command gives all the available resources to
 # `torchrun` which will then distribute them internally to the processes
 # it creates. Importantly, notice that processes are NOT created by srun!
@@ -58,7 +61,7 @@ srun -c 64 singularity exec \
     "$SINGULARITY_CONTAINER" \
     bash -c "
         /usr/bin/kalign --version \
-        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS \
+        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS HSA_OVERRIDE_GFX_VERSION=11.0.0 \
         torchrun \
         --nnodes=$SLURM_JOB_NUM_NODES \
         --nproc_per_node=$NUM_PYTORCH_PROCESSES \
