@@ -28,5 +28,5 @@ batch_size: 1 # needs to be divisible by the number of devices (e.g., if in a di
 num_workers: 0
 pin_memory: false
 multiprocessing_context: null
-prefetch_factor: 0
+prefetch_factor: null
 persistent_workers: false
