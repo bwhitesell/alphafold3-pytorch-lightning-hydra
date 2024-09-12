@@ -37,13 +37,17 @@ RDZV_HOST=$(hostname)
 export RDZV_HOST
 export RDZV_PORT=29400
 
+# Set debugging flags (optional)
+export NCCL_DEBUG=INFO
+export PYTHONFAULTHANDLER=1
+
 # NOTE: The following `srun` command gives all the available resources to
 # `torchrun` which will then distribute them internally to the processes
 # it creates. Importantly, notice that processes are NOT created by srun!
 # For what `srun` is concerned, only one task is created, the `torchrun` process.
 
 # Define WandB run ID
-RUN_ID="mz1y3tzx"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="aqbebd3m"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun -c 64 singularity exec \
