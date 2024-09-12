@@ -37,16 +37,13 @@ RDZV_HOST=$(hostname)
 export RDZV_HOST
 export RDZV_PORT=29400
 
-# Configure GPUs
-export HSA_OVERRIDE_GFX_VERSION=9.0.0
-
 # NOTE: The following `srun` command gives all the available resources to
 # `torchrun` which will then distribute them internally to the processes
 # it creates. Importantly, notice that processes are NOT created by srun!
 # For what `srun` is concerned, only one task is created, the `torchrun` process.
 
 # Define WandB run ID
-RUN_ID="rl5go48t"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="m0zuee3b"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun -c 64 singularity exec \
@@ -57,7 +54,7 @@ srun -c 64 singularity exec \
     "$SINGULARITY_CONTAINER" \
     bash -c "
         /usr/bin/kalign --version \
-        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS NCCL_DEBUG=INFO PYTHONFAULTHANDLER=1 HSA_OVERRIDE_GFX_VERSION=9.0.0 \
+        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS \
         torchrun \
         --nnodes=$SLURM_JOB_NUM_NODES \
         --nproc_per_node=$NUM_PYTORCH_PROCESSES \
@@ -70,8 +67,7 @@ srun -c 64 singularity exec \
         environment=torch_elastic \
         experiment=af3_initial_training \
         trainer.num_nodes=$SLURM_JOB_NUM_NODES \
-        trainer.devices=$NUM_PYTORCH_PROCESSES \
-        +trainer.log_every_n_steps=1
+        trainer.devices=$NUM_PYTORCH_PROCESSES
     "
 
 # Inform user of run completion
