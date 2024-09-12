@@ -25,13 +25,10 @@ rm -rf "${MIOPEN_USER_DB_PATH}"
 mkdir -p "${MIOPEN_USER_DB_PATH}"
 
 # Define the container image path
-export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.5.5_dev.sif"
+export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.4.50_dev.sif"
 
 # Set the number of threads to be generated for each PyTorch (GPU) process
 export OMP_NUM_THREADS=1
-
-# Configure NCCL to disable P2P communication
-export NCCL_P2P_DISABLE=1
 
 # Define WandB run ID
 RUN_ID="kah0gjep"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
@@ -46,7 +43,7 @@ srun singularity exec --rocm \
     bash -c "
         /usr/bin/kalign --version \
         && python3 -c 'import torch; print(torch.__version__)' \
-        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS NCCL_DEBUG=INFO PYTHONFAULTHANDLER=1 NCCL_P2P_DISABLE=1 \
+        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS NCCL_DEBUG=INFO PYTHONFAULTHANDLER=1 \
         python3 alphafold3_pytorch/train.py \
         data.batch_size=1 \
         data.kalign_binary_path=/usr/bin/kalign \
