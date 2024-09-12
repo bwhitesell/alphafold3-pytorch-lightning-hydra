@@ -25,7 +25,7 @@ rm -rf "${MIOPEN_USER_DB_PATH}"
 mkdir -p "${MIOPEN_USER_DB_PATH}"
 
 # Define the container image path
-export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.4.50_dev.sif"
+export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.5.6_dev.sif"
 
 # Set number of PyTorch (GPU) processes per node to be spawned by torchrun - NOTE: One for each GCD
 NUM_PYTORCH_PROCESSES=4
@@ -43,7 +43,7 @@ export RDZV_PORT=29400
 # For what `srun` is concerned, only one task is created, the `torchrun` process.
 
 # Define WandB run ID
-RUN_ID="n6vlqtf6"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="e8aonh6j"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun -c 64 singularity exec \
@@ -54,7 +54,7 @@ srun -c 64 singularity exec \
     "$SINGULARITY_CONTAINER" \
     bash -c "
         /usr/bin/kalign --version \
-        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS NCCL_DEBUG=INFO PYTHONFAULTHANDLER=1 \
+        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS NCCL_DEBUG=INFO \
         torchrun \
         --nnodes=$SLURM_JOB_NUM_NODES \
         --nproc_per_node=$NUM_PYTORCH_PROCESSES \
