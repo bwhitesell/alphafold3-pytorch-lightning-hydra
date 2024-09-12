@@ -292,15 +292,11 @@ class PDBDataModule(LightningDataModule):
         data_dir: str = os.path.join("data", "pdb_data"),
         msa_dir: str = os.path.join("data", "pdb_data", "data_caches", "msa"),
         templates_dir: str = os.path.join("data", "pdb_data", "data_caches", "template"),
-        uniprot_accession_to_tax_id_mapping_filepath: str = os.path.join(
-            "data", "pdb_data", "data_caches", "uniref30_2202_accession_mapping.tsv"
-        ),
         sample_type: Literal["default", "clustered"] = "default",
         contiguous_weight: float = 0.2,
         spatial_weight: float = 0.4,
         spatial_interface_weight: float = 0.4,
         crop_size: int = 384,
-        uniprot_accession_to_tax_id_mapping_loading_batch_size: int = 8192,
         num_tax_id_mappings_to_keep: int | None = None,
         max_msas_per_chain: int | None = None,
         max_num_msa_tokens: int | None = None,
@@ -325,7 +321,6 @@ class PDBDataModule(LightningDataModule):
         multiprocessing_context: Union[str, multiprocessing.context.BaseContext] | None = None,
         prefetch_factor: int | None = None,
         persistent_workers: bool = False,
-        uniprot_accession_to_tax_id_mapping: Dict[str, str] | None = None,
     ) -> None:
         super().__init__()
 
@@ -335,7 +330,7 @@ class PDBDataModule(LightningDataModule):
 
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt
-        self.save_hyperparameters(ignore=["uniprot_accession_to_tax_id_mapping"], logger=False)
+        self.save_hyperparameters(logger=False)
 
         self.data_train: Dataset | None = None
         self.data_val: Dataset | None = None
@@ -429,16 +424,6 @@ class PDBDataModule(LightningDataModule):
                 ),
             )
 
-        # load UniProt accession ID to taxonomic ID mapping
-        if not exists(uniprot_accession_to_tax_id_mapping):
-            log.info(
-                "Loading UniProt accession ID to taxonomic ID mapping. This may take several minutes to complete."
-            )
-            uniprot_accession_to_tax_id_mapping = load_tsv_to_dict(
-                uniprot_accession_to_tax_id_mapping_filepath,
-            )
-            log.info("Finished loading UniProt accession ID to taxonomic ID mapping.")
-
         # training set
         sampler_train = (
             None
@@ -469,7 +454,6 @@ class PDBDataModule(LightningDataModule):
             return_atom_inputs=True,
             msa_dir=self.train_msa_dir,
             templates_dir=self.train_templates_dir,
-            uniprot_accession_to_tax_id_mapping=uniprot_accession_to_tax_id_mapping,
         )
 
         # validation set
@@ -502,7 +486,6 @@ class PDBDataModule(LightningDataModule):
             return_atom_inputs=True,
             msa_dir=self.val_msa_dir,
             templates_dir=self.val_templates_dir,
-            uniprot_accession_to_tax_id_mapping=uniprot_accession_to_tax_id_mapping,
         )
 
         # evaluation set
@@ -535,7 +518,6 @@ class PDBDataModule(LightningDataModule):
             return_atom_inputs=True,
             msa_dir=self.test_msa_dir,
             templates_dir=self.test_templates_dir,
-            uniprot_accession_to_tax_id_mapping=uniprot_accession_to_tax_id_mapping,
         )
 
         # subsample dataset splits as requested
