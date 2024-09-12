@@ -42,7 +42,6 @@ srun singularity exec --rocm \
     "$SINGULARITY_CONTAINER" \
     bash -c "
         /usr/bin/kalign --version \
-        && python3 -c 'import torch; print(torch.__version__)' \
         && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS NCCL_DEBUG=INFO PYTHONFAULTHANDLER=1 \
         python3 alphafold3_pytorch/train.py \
         data.batch_size=1 \

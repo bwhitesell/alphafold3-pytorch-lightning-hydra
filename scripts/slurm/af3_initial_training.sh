@@ -46,7 +46,7 @@ export HSA_OVERRIDE_GFX_VERSION=9.0.0
 # For what `srun` is concerned, only one task is created, the `torchrun` process.
 
 # Define WandB run ID
-RUN_ID="b5re16ep"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="rl5go48t"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun -c 64 singularity exec \
@@ -57,7 +57,6 @@ srun -c 64 singularity exec \
     "$SINGULARITY_CONTAINER" \
     bash -c "
         /usr/bin/kalign --version \
-        && python3 -c 'import torch; print(torch.__version__)' \
         && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS NCCL_DEBUG=INFO PYTHONFAULTHANDLER=1 HSA_OVERRIDE_GFX_VERSION=9.0.0 \
         torchrun \
         --nnodes=$SLURM_JOB_NUM_NODES \
