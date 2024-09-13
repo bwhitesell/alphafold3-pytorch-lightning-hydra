@@ -3436,7 +3436,7 @@ def pdb_input_to_molecule_input(
 
     token_constraints = None
 
-    if exists(i.constraints) and (i.training or i.inference):
+    if exists(i.constraints):
         token_pos = torch.gather(
             atom_positions,
             1,
@@ -3524,6 +3524,7 @@ def get_token_constraints(
 
     for constraint in constraints:
         constraint_dim = CONSTRAINT_DIMS[constraint]
+
         pairwise_token_constraint = torch.zeros(
             (num_atoms, num_atoms, constraint_dim), dtype=torch.float32
         )
