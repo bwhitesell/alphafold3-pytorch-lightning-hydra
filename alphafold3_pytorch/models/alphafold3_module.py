@@ -78,6 +78,10 @@ class Alphafold3LitModule(LightningModule):
 
         self.save_hyperparameters(ignore=["network"], logger=False)
 
+        # delay loading the model until the `configure_model` hook is called
+
+        self.network = None
+
         # for averaging loss across batches
 
         self.train_loss = MeanMetric()
@@ -605,6 +609,9 @@ class Alphafold3LitModule(LightningModule):
 
         :return: The configured model.
         """
+        if exists(self.network):
+            return
+
         if exists(self.trainer):
             sleep = self.trainer.global_rank * 4
             log.info(f"Rank {self.trainer.global_rank}: Sleeping for {sleep}s to avoid CPU OOMs.")
