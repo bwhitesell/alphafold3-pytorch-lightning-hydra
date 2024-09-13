@@ -21,6 +21,7 @@ dai - feature dimension (atom input)
 dmi - feature dimension (msa input)
 dmf - additional msa feats derived from msa (has_deletion and deletion_value)
 dtf - additional token feats derived from msa (profile and deletion_mean)
+dac - additional pairwise token constraint embeddings
 dpe - additional protein language model embeddings from esm
 t - templates
 s - msa
@@ -6121,12 +6122,12 @@ class Alphafold3(Module):
         self.has_atom_embeds = has_atom_embeds
         self.has_atompair_embeds = has_atompair_embeds
 
-        # optional atom constraint embeddings
+        # optional pairwise token constraint embeddings
 
         self.constraint_embeddings = constraint_embeddings
 
         if exists(constraint_embeddings):
-            self.constraint_embeds = nn.Embedding(constraint_embeddings, dim_atom)
+            self.constraint_embeds = LinearNoBias(constraint_embeddings, dim_pairwise)
 
         # residue or nucleotide modifications
 
@@ -6554,7 +6555,7 @@ class Alphafold3(Module):
         distance_labels: Int["b n n"] | None = None,  # type: ignore
         resolved_labels: Int["b m"] | None = None,  # type: ignore
         resolution: Float[" b"] | None = None,  # type: ignore
-        atom_constraints: Int["b m"] | None = None,  # type: ignore
+        token_constraints: Int["b n n dac"] | None = None,  # type: ignore
         return_loss_breakdown=False,
         return_loss: bool = None,
         return_all_diffused_atom_pos: bool = False,
@@ -6610,7 +6611,7 @@ class Alphafold3(Module):
         :param distance_labels: The distance labels tensor.
         :param resolved_labels: The resolved labels tensor.
         :param resolution: The resolution tensor.
-        :param atom_constraints: The atom constraints tensor.
+        :param token_constraints: The pairwise token constraints tensor.
         :param return_loss_breakdown: Whether to return the loss breakdown.
         :param return_loss: Whether to return the loss.
         :param return_confidence_head_logits: Whether to return the confidence head logits.
@@ -6762,16 +6763,6 @@ class Alphafold3(Module):
 
             atompair_feats = atompair_feats + atompair_embeds
 
-        # handle maybe atom constraint embeddings
-
-        if exists(self.constraint_embeddings):
-            assert exists(
-                atom_constraints
-            ), "`atom_constraints` must be provided to use constraint embeddings."
-
-            atom_constraint_embeds = self.constraint_embeds(atom_constraints)
-            atom_feats = atom_feats + atom_constraint_embeds
-
         # handle maybe molecule modifications
 
         assert not (
@@ -6793,6 +6784,16 @@ class Alphafold3(Module):
             single_init = single_init.scatter_add(0, seq_indices, scatter_values)
 
             single_init = seq_unpack_one(single_init)
+
+        # handle maybe pairwise token constraint embeddings
+
+        if exists(self.constraint_embeddings):
+            assert exists(
+                token_constraints
+            ), "`token_constraints` must be provided to use constraint embeddings."
+
+            pairwise_constraint_embeds = self.constraint_embeds(token_constraints)
+            pairwise_init = pairwise_init + pairwise_constraint_embeds
 
         # handle maybe protein language model (PLM) embeddings
 
