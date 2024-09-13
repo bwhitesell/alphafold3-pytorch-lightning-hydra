@@ -13,9 +13,8 @@
 #################################################################
 
 # Load required modules
-module load pawseyenv/2023.08
-# NOTE: The following module swap is needed due to a PyTorch module bug
-module load singularity/3.11.4-nohost
+module load pawseyenv/2024.05
+module load singularity/4.1.0-slurm
 
 # Prepare cache paths
 export MIOPEN_USER_DB_PATH="/scratch/pawsey1018/$USER/tmp/my-miopen-cache/af3_rocm"
