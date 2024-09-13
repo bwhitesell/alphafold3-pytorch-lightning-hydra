@@ -41,7 +41,7 @@ export RDZV_PORT=29400
 # For what `srun` is concerned, only one task is created, the `torchrun` process.
 
 # Define WandB run ID
-RUN_ID="pzcz93eg"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="7gcptntk"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun -c 64 singularity exec \
@@ -53,7 +53,7 @@ srun -c 64 singularity exec \
     bash -c "
         /usr/bin/kalign --version \
         && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS \
-        NCCL_DEBUG=INFO NCCL_DEBUG_SUBSYS=COLL NCCL_P2P_DISABLE=1 AMD_SERIALIZE_KERNEL=3 \
+        NCCL_DEBUG=INFO NCCL_DEBUG_SUBSYS=COLL AMD_SERIALIZE_KERNEL=3 \
         torchrun \
         --nnodes=$SLURM_JOB_NUM_NODES \
         --nproc_per_node=$NUM_PYTORCH_PROCESSES \
