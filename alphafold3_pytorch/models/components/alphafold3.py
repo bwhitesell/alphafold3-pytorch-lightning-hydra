@@ -6475,7 +6475,7 @@ class Alphafold3(Module):
     @typecheck
     def extract_plm_embeddings(self, aa_ids: Int["b n"]) -> Float["b n dpe"]:  # type: ignore
         """Extract PLM embeddings from batched amino acid IDs."""
-        aa_constants = get_residue_constants(res_chem_index=IS_PROTEIN_INDEX)
+        aa_constants = get_residue_constants(res_chem_index=IS_PROTEIN)
         sequence_data = [
             (
                 f"molecule{i}",
