@@ -53,7 +53,6 @@ srun -c 64 singularity exec \
     bash -c "
         /usr/bin/kalign --version \
         && python3 -c 'import torch; print(torch.__version__)' \
-        && python3 -m pip install wandb --upgrade \
         && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS NCCL_DEBUG=INFO \
         torchrun \
         --nnodes=$SLURM_JOB_NUM_NODES \
