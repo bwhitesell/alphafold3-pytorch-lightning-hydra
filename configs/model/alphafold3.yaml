@@ -31,7 +31,7 @@ net:
   checkpoint_confidence_head: true
 
 # training parameters
-compile: false # compile model for faster training with pytorch 2.0
+compile: false # compile model for faster training with PyTorch 2.0
 skip_invalid_gradient_updates: true
 
 # model parameters
