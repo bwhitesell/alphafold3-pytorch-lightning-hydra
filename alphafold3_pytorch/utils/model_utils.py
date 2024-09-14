@@ -89,7 +89,7 @@ def l2norm(t: Tensor, eps: float = 1e-20, dim: int = -1) -> Tensor:
 
 
 @typecheck
-def max_neg_value(t: Tensor) -> Tensor:
+def max_neg_value(t: Tensor) -> float:
     """Get the maximum negative value of Tensor based on its `dtype`.
 
     :param t: The Tensor.
