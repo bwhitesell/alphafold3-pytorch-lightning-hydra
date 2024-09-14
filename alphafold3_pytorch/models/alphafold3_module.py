@@ -173,7 +173,7 @@ class Alphafold3LitModule(LightningModule):
             self.train_loss,
             on_step=True,
             on_epoch=True,
-            sync_dist=True,
+            sync_dist=False,
             batch_size=len(batch.atom_inputs),
         )
 
@@ -185,7 +185,7 @@ class Alphafold3LitModule(LightningModule):
             loss_breakdown_dict,
             on_step=True,
             on_epoch=True,
-            sync_dist=True,
+            sync_dist=False,
             batch_size=len(batch.atom_inputs),
         )
 
@@ -274,7 +274,7 @@ class Alphafold3LitModule(LightningModule):
             self.val_model_selection_score,
             on_step=True,
             on_epoch=True,
-            sync_dist=True,
+            sync_dist=False,
             batch_size=len(batch.atom_inputs),
         )
 
@@ -284,7 +284,7 @@ class Alphafold3LitModule(LightningModule):
             self.val_top_ranked_lddt,
             on_step=True,
             on_epoch=True,
-            sync_dist=True,
+            sync_dist=False,
             batch_size=len(batch.atom_inputs),
         )
 
@@ -415,7 +415,7 @@ class Alphafold3LitModule(LightningModule):
             self.test_model_selection_score,
             on_step=True,
             on_epoch=True,
-            sync_dist=True,
+            sync_dist=False,
             batch_size=len(batch.atom_inputs),
         )
 
@@ -425,7 +425,7 @@ class Alphafold3LitModule(LightningModule):
             self.test_top_ranked_lddt,
             on_step=True,
             on_epoch=True,
-            sync_dist=True,
+            sync_dist=False,
             batch_size=len(batch.atom_inputs),
         )
 
