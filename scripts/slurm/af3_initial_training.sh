@@ -31,7 +31,10 @@ NUM_PYTORCH_PROCESSES=8
 export OMP_NUM_THREADS=8
 
 # Define the compute node executing the batch script
-RDZV_HOST=$(hostname)
+read -r -a NODES <<< "$(scontrol show hostnames "$SLURM_JOB_NODELIST")"
+RDZV_NODE="${NODES[0]}"
+RDZV_HOST=$(srun --nodes=1 --ntasks=1 -w "$RDZV_NODE" hostname --ip-address)
+
 export RDZV_HOST
 export RDZV_PORT=29400
 
@@ -41,7 +44,7 @@ export RDZV_PORT=29400
 # For what `srun` is concerned, only one task is created, the `torchrun` process.
 
 # Define WandB run ID
-RUN_ID="5j7z9lwb"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="5j7z9lwb" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun -c 64 singularity exec \
@@ -52,16 +55,15 @@ srun -c 64 singularity exec \
     "$SINGULARITY_CONTAINER" \
     bash -c "
         /usr/bin/kalign --version \
-        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS \
-        NCCL_DEBUG=INFO NCCL_DEBUG_SUBSYS=COLL \
+        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS NCCL_DEBUG=INFO \
         torchrun \
         --nnodes=$SLURM_JOB_NUM_NODES \
         --nproc_per_node=$NUM_PYTORCH_PROCESSES \
-        --rdzv_id=$SLURM_JOB_ID \
+        --rdzv_id=$RANDOM \
         --rdzv_backend=c10d \
         --rdzv_endpoint=$RDZV_HOST:$RDZV_PORT \
         alphafold3_pytorch/train.py \
-        data.batch_size=$((SLURM_JOB_NUM_NODES*NUM_PYTORCH_PROCESSES)) \
+        data.batch_size=$((SLURM_JOB_NUM_NODES * NUM_PYTORCH_PROCESSES)) \
         data.kalign_binary_path=/usr/bin/kalign \
         environment=torch_elastic \
         experiment=af3_initial_training \
