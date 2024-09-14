@@ -1,5 +1,5 @@
 import re
-from functools import partial
+from functools import partial, wraps
 
 import torch
 from beartype.typing import Literal
@@ -10,6 +10,30 @@ from alphafold3_pytorch.common.biomolecule import get_residue_constants
 from alphafold3_pytorch.models.components.inputs import IS_PROTEIN
 from alphafold3_pytorch.utils.data_utils import join
 from alphafold3_pytorch.utils.tensor_typing import Float, Int, typecheck
+
+# functions
+
+
+def remove_plms(fn):
+    """Decorator to remove PLMs from the model before calling the inner function and then restore
+    them afterwards."""
+
+    @wraps(fn)
+    def inner(self, *args, **kwargs):
+        has_plms = hasattr(self, "plms")
+        if has_plms:
+            plms = self.plms
+            delattr(self, "plms")
+
+        out = fn(self, *args, **kwargs)
+
+        if has_plms:
+            self.plms = plms
+
+        return out
+
+    return inner
+
 
 # constants
 

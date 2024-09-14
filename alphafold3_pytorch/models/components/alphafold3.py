@@ -116,7 +116,11 @@ from alphafold3_pytorch.models.components.inputs import (
     BatchedAtomInput,
     hard_validate_atom_indices_ascending,
 )
-from alphafold3_pytorch.models.components.plm import PLMEmbedding, PLMRegistry
+from alphafold3_pytorch.models.components.plm import (
+    PLMEmbedding,
+    PLMRegistry,
+    remove_plms,
+)
 from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.model_utils import (
     ExpressCoordinatesInFrame,
@@ -6373,6 +6377,16 @@ class Alphafold3(Module):
     def device(self):
         """Device of the model."""
         return self.zero.device
+
+    @remove_plms
+    def state_dict(self, *args, **kwargs):
+        """State dict without PLMs."""
+        return super().state_dict(*args, **kwargs)
+
+    @remove_plms
+    def load_state_dict(self, *args, **kwargs):
+        """Load state dict without PLMs."""
+        return super().load_state_dict(*args, **kwargs)
 
     @property
     def state_dict_with_init_args(self):
