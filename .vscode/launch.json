@@ -151,7 +151,7 @@
                 // "strategy.stage=2",
                 // "trainer=default",
                 // "trainer.accelerator=cpu",
-                "trainer.devices=[0]",
+                "trainer.devices=1",
                 // "trainer.max_steps=2",
                 "trainer.val_check_interval=1",
                 // "trainer.precision=32",
