@@ -41,7 +41,7 @@ export RDZV_PORT=29400
 echo "Rendezvous Node IP: $RDZV_HOST"
 
 # Set the network interface
-export NCCL_SOCKET_IFNAME=eth0
+export NCCL_SOCKET_IFNAME=^docker0,lo
 
 # NOTE: The following `srun` command gives all the available resources to
 # `torchrun` which will then distribute them internally to the processes
@@ -49,7 +49,7 @@ export NCCL_SOCKET_IFNAME=eth0
 # For what `srun` is concerned, only one task is created, the `torchrun` process.
 
 # Define WandB run ID
-RUN_ID="hduby729" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="d9q3ra3h" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun -c 64 singularity exec \
