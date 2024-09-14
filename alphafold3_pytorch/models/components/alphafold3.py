@@ -6138,7 +6138,7 @@ class Alphafold3(Module):
             ):
                 assert (
                     one_plm_embedding in PLMRegistry
-                ), f"Received invalid PLM embedding name: {one_plm_embedding}. Acceptable ones are {PLMRegistry.keys()}."
+                ), f"Received invalid PLM embedding name: {one_plm_embedding}. Acceptable ones are {list(PLMRegistry.keys())}."
 
                 constructor = PLMRegistry.get(one_plm_embedding)
 
