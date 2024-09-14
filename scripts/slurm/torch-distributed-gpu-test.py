@@ -70,19 +70,12 @@ gpu = f"[{hostname}-{local_rank}]"
 try:
     # test distributed
     dist.init_process_group("nccl")
-    printflock(f"{gpu} is OK (after init_process_group)")
-
     dist.all_reduce(torch.ones(1).to(device), op=dist.ReduceOp.SUM)
-    printflock(f"{gpu} is OK (after all_reduce)")
-
     dist.barrier()
-    printflock(f"{gpu} is OK (after all_reduce barrier)")
 
     # test cuda is available and can allocate memory
     torch.cuda.is_available()
-
     torch.ones(1).cuda(local_rank)
-    printflock(f"{gpu} is OK (after allocating memory)")
 
     # global rank
     rank = dist.get_rank()

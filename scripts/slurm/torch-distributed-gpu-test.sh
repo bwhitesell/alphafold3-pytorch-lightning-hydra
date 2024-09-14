@@ -21,9 +21,9 @@ module load singularity/3.11.4-nohost
 export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.5.5_dev.sif"
 
 # Configure torch.distributed
-GPUS_PER_NODE=8
-MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
-MASTER_PORT=29400
+NUM_PYTORCH_PROCESSES=8
+RDZV_HOST=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
+RDZV_PORT=29400
 
 # Run Singularity container
 srun -c 64 --jobid "$SLURM_JOBID" singularity exec \
@@ -33,8 +33,11 @@ srun -c 64 --jobid "$SLURM_JOBID" singularity exec \
     --pwd /alphafold3-pytorch-lightning-hydra \
     "$SINGULARITY_CONTAINER" \
     bash -c "
-        python -m torch.distributed.run \
-        --nproc_per_node $GPUS_PER_NODE --nnodes $SLURM_NNODES --node_rank $SLURM_PROCID \
-        --master_addr $MASTER_ADDR --master_port $MASTER_PORT \
+        torchrun \
+        --nnodes $SLURM_JOB_NUM_NODES \
+        --nproc_per_node $NUM_PYTORCH_PROCESSES \
+        --rdzv_id=$RANDOM \
+        --rdzv_backend=c10d \
+        --rdzv_endpoint=$RDZV_HOST:$RDZV_PORT \
         scripts/slurm/torch-distributed-gpu-test.py
     "
