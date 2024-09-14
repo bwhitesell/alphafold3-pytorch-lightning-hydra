@@ -12,7 +12,14 @@
 #SBATCH --exclusive                                           # request exclusive node access
 #################################################################
 
-# Set up the environment
+# Load required modules
+module load pawseyenv/2024.05
+module load singularity/4.1.0-slurm
+
+# Define the container image path
+export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.5.6_source_dev.sif"
+
+# Configure torch.distributed
 GPUS_PER_NODE=8
 MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
 MASTER_PORT=29400
