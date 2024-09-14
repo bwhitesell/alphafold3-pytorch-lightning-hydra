@@ -38,6 +38,8 @@ RDZV_HOST=$(srun --nodes=1 --ntasks=1 -w "$RDZV_NODE" hostname --ip-address)
 export RDZV_HOST
 export RDZV_PORT=29400
 
+echo "Rendezvous Node IP: $RDZV_HOST"
+
 # NOTE: The following `srun` command gives all the available resources to
 # `torchrun` which will then distribute them internally to the processes
 # it creates. Importantly, notice that processes are NOT created by srun!
