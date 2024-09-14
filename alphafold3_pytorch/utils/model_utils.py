@@ -131,7 +131,7 @@ def compact(*args):
 
 
 @typecheck
-def cast_tuple(t: Any, length: int = 1) -> Any:
+def cast_tuple(t: Any, length: int = 1) -> Tuple[Any, ...]:
     """Cast an object to a tuple of objects with the given length.
 
     :param t: The object to cast.
