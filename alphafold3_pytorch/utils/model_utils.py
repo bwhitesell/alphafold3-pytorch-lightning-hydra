@@ -4,7 +4,7 @@ from functools import wraps
 import einx
 import torch
 import torch.nn.functional as F
-from beartype.typing import Callable, List, Tuple, Union
+from beartype.typing import Any, Callable, List, Tuple, Union
 from einops import einsum, pack, rearrange, reduce, repeat, unpack
 from torch import Tensor
 from torch.nn import Module
@@ -131,10 +131,10 @@ def compact(*args):
 
 
 @typecheck
-def cast_tuple(t: Tensor, length: int = 1) -> Tuple[Tensor, ...]:
-    """Cast a Tensor to a tuple of Tensors with the given length.
+def cast_tuple(t: Any, length: int = 1) -> Tuple[Tensor, ...]:
+    """Cast an object to a tuple of objects with the given length.
 
-    :param t: The Tensor to cast.
+    :param t: The object to cast.
     :param length: The length of the tuple.
     :return: The casted tuple.
     """
