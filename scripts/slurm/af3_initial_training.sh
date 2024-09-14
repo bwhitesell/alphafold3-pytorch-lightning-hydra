@@ -40,16 +40,13 @@ export RDZV_PORT=29400
 
 echo "Rendezvous Node IP: $RDZV_HOST"
 
-# Configure NCCL
-export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
-
 # NOTE: The following `srun` command gives all the available resources to
 # `torchrun` which will then distribute them internally to the processes
 # it creates. Importantly, notice that processes are NOT created by srun!
 # For what `srun` is concerned, only one task is created, the `torchrun` process.
 
 # Define WandB run ID
-RUN_ID="f4hcf0ok" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="5i3kl6jo" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun -c 64 singularity exec \
@@ -60,7 +57,7 @@ srun -c 64 singularity exec \
     "$SINGULARITY_CONTAINER" \
     bash -c "
         /usr/bin/kalign --version \
-        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS TORCH_NCCL_ASYNC_ERROR_HANDLING=$TORCH_NCCL_ASYNC_ERROR_HANDLING NCCL_DEBUG=INFO \
+        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS NCCL_DEBUG=INFO \
         torchrun \
         --nnodes=$SLURM_JOB_NUM_NODES \
         --nproc_per_node=$NUM_PYTORCH_PROCESSES \
