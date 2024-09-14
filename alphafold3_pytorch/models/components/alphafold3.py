@@ -2986,8 +2986,6 @@ class SmoothLDDTLoss(Module):
         :return: The output tensor.
         """
         # Compute distances between all pairs of atoms
-        device = pred_coords.device
-
         pred_dists = torch.cdist(pred_coords, pred_coords, p=2)
         true_dists = torch.cdist(true_coords, true_coords, p=2)
 
@@ -3009,7 +3007,9 @@ class SmoothLDDTLoss(Module):
         )
 
         # Compute mean, avoiding self term
-        mask = inclusion_radius & ~torch.eye(pred_coords.shape[1], dtype=torch.bool, device=device)
+        mask = inclusion_radius & ~torch.eye(
+            pred_coords.shape[1], dtype=torch.bool, device=pred_coords.device
+        )
 
         # Take into account variable lengthed atoms in batch
         if exists(coords_mask):
@@ -3727,8 +3727,8 @@ class MultiChainPermutationAlignment(Module):
         pred_pos = out["pred_coords"]
         pred_mask = out["mask"].to(dtype=pred_pos.dtype)
 
-        true_poses = [l["true_coords"] for l in labels]
-        true_masks = [l["mask"].long() for l in labels]
+        true_poses = [label["true_coords"] for label in labels]
+        true_masks = [label["mask"].long() for label in labels]
 
         # Assignment Stage - Section 7.3.2 of the AlphaFold-Multimer Paper
 
@@ -5359,7 +5359,7 @@ class ComputeModelSelectionScore(Module):
         try:
             sh.which(self.dssp_path)
             return True
-        except:
+        except sh.ErrorReturnCode_1:
             return False
 
     @typecheck
@@ -5774,7 +5774,7 @@ class ComputeModelSelectionScore(Module):
         )
 
         weight = weight_dict.get("unresolved", {}).get("unresolved", None)
-        assert weight, f"Weight not found for unresolved"
+        assert weight, "Weight not found for unresolved"
 
         unresolved_rasa = [
             self._compute_unresolved_rasa(*args)
