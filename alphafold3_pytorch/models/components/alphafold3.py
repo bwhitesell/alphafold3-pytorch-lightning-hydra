@@ -140,7 +140,6 @@ from alphafold3_pytorch.utils.model_utils import (
     mean_pool_fixed_windows_with_mask,
     mean_pool_with_lens,
     pack_one,
-    package_available,
     pad_and_window,
     pad_or_slice_to,
     save_args_and_kwargs,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.metadata
 from functools import partial
 
 import numpy as np
@@ -14,7 +15,6 @@ from environs import Env
 from jaxtyping import Bool, Float, Int, Shaped, jaxtyped
 from torch import Tensor
 
-from alphafold3_pytorch.utils.model_utils import package_available
 from alphafold3_pytorch.utils.utils import always, identity
 
 # environment
@@ -53,6 +53,20 @@ ChainType = Chain
 TokenType = AtomType | ResidueType
 
 # some more colocated environmental stuff
+
+
+def package_available(package_name: str) -> bool:
+    """Check if a package is available in your environment.
+
+    :param package_name: The name of the package to be checked.
+    :return: `True` if the package is available. `False` otherwise.
+    """
+    try:
+        importlib.metadata.version(package_name)
+        return True
+    except importlib.metadata.PackageNotFoundError:
+        return False
+
 
 # maybe deespeed checkpoint, and always use non reentrant checkpointing
 
