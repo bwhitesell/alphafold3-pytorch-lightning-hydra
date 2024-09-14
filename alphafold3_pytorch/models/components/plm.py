@@ -14,7 +14,7 @@ from alphafold3_pytorch.utils.tensor_typing import Float, Int, typecheck
 # constants
 
 aa_constants = get_residue_constants(res_chem_index=IS_PROTEIN)
-restypes_index = aa_constants.restypes + ["X"]
+restypes = aa_constants.restypes + ["X"]
 
 # class
 
@@ -51,10 +51,10 @@ class ESMWrapper(Module):
 
         sequence_data = [
             (
-                f"molecule{i}",
-                join([(restypes_index[i] if 0 <= i < len(restypes_index) else "X") for i in ids]),
+                f"molecule{mol_idx}",
+                join([(restypes[i] if 0 <= i < len(restypes) else "X") for i in ids]),
             )
-            for i, ids in enumerate(aa_ids)
+            for mol_idx, ids in enumerate(aa_ids)
         ]
 
         _, _, batch_tokens = self.batch_converter(sequence_data)
@@ -99,7 +99,7 @@ class ProstT5Wrapper(Module):
         device, seq_len = self.dummy.device, aa_ids.shape[-1]
 
         str_sequences = [
-            join([restypes_index.get(i, "X") for i in ids]) for i, ids in enumerate(aa_ids)
+            join([(restypes[i] if 0 <= i < len(restypes) else "X") for i in ids]) for ids in aa_ids
         ]
 
         # following the readme at https://github.com/mheinzinger/ProstT5
