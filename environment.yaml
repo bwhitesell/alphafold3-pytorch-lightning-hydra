@@ -221,7 +221,6 @@ dependencies:
   - torchvision=0.18.1=py310_cu118
   - tzdata=2024a=h0c530f3_0
   - unicodedata2=15.1.0=py310h2372a71_0
-  - urllib3=1.26.19=pyhd8ed1ab_0
   - wcwidth=0.2.13=pyhd8ed1ab_0
   - wheel=0.43.0=pyhd8ed1ab_1
   - x264=1!164.3095=h166bdaf_2
@@ -398,6 +397,7 @@ dependencies:
       - typeguard==2.13.3
       - typing-extensions==4.9.0
       - url-normalize==1.4.3
+      - urllib3==2.0.3
       - virtualenv==20.26.2
       - wandb==0.18.0
       - wget==3.2
