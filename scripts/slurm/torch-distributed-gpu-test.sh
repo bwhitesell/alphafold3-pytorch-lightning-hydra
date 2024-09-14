@@ -13,11 +13,12 @@
 #################################################################
 
 # Load required modules
-module load pawseyenv/2024.05
-module load singularity/4.1.0-slurm
+module load pytorch/2.2.0-rocm5.7.3
+module load pawseyenv/2023.08
+module load singularity/3.11.4-nohost
 
 # Define the container image path
-export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.5.6_source_dev.sif"
+export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.5.5_dev.sif"
 
 # Configure torch.distributed
 GPUS_PER_NODE=8
