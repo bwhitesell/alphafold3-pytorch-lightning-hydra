@@ -142,12 +142,12 @@ def cast_tuple(t: Tensor, length: int = 1) -> Tuple[Tensor, ...]:
 
 
 @typecheck
-def pack_one(t: Tensor, pattern: str) -> Tuple[Tensor, List[Shape]]:
+def pack_one(t: Tensor, pattern: str) -> Tuple[Tensor, Callable]:
     """Pack a single tensor into a tuple of tensors with the given pattern.
 
     :param t: The tensor to pack.
     :param pattern: The pattern with which to pack.
-    :return: The packed tensor along with the shape(s) of the tensor.
+    :return: The packed tensor and the unpack function.
     """
     packed, ps = pack([t], pattern)
 

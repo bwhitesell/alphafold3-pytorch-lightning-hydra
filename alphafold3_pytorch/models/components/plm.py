@@ -14,7 +14,7 @@ from alphafold3_pytorch.utils.tensor_typing import Float, Int, typecheck
 # constants
 
 aa_constants = get_residue_constants(res_chem_index=IS_PROTEIN)
-restypes_index = dict(enumerate(aa_constants.restypes))
+restypes_index = aa_constants.restypes + ["X"]
 
 # class
 
@@ -52,7 +52,7 @@ class ESMWrapper(Module):
         sequence_data = [
             (
                 f"molecule{i}",
-                join([restypes_index.get(i, "X") for i in ids]),
+                join([(restypes_index[i] if 0 <= i < len(restypes_index) else "X") for i in ids]),
             )
             for i, ids in enumerate(aa_ids)
         ]
