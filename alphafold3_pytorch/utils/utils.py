@@ -6,6 +6,7 @@ from beartype.typing import Any, Callable, Dict, Iterable, Optional, Tuple
 from omegaconf import DictConfig
 
 from alphafold3_pytorch.utils import pylogger, rich_utils
+from alphafold3_pytorch.utils.tensor_typing import typecheck
 
 log = pylogger.RankedLogger(__name__, rank_zero_only=True)
 
@@ -148,6 +149,7 @@ def default(v: Any, d: Any) -> Any:
     return v if exists(v) else d
 
 
+@typecheck
 def first(arr: Iterable[Any]) -> Any:
     """Return the first element of an iterable object such as a list.
 
@@ -172,6 +174,7 @@ def identity(x, *args, **kwargs):
     return x
 
 
+@typecheck
 def np_mode(x: np.ndarray) -> Any:
     """Return the mode of a 1D NumPy array."""
     assert x.ndim == 1, f"Input NumPy array must be 1D, not {x.ndim}D."

@@ -21,6 +21,7 @@ Shape = Union[Tuple[int, ...], List[int]]
 # default scheduler used in paper w/ warmup
 
 
+@typecheck
 def default_lambda_lr_fn(steps: int) -> float:
     """Default lambda learning rate function.
 
@@ -75,6 +76,7 @@ def offset_only_positive(t: Tensor, offset: Tensor) -> Tensor:
     return torch.where(is_positive, t_offsetted, t)
 
 
+@typecheck
 def l2norm(t: Tensor, eps: float = 1e-20, dim: int = -1) -> Tensor:
     """Perform an L2 normalization on a Tensor.
 
@@ -86,6 +88,7 @@ def l2norm(t: Tensor, eps: float = 1e-20, dim: int = -1) -> Tensor:
     return F.normalize(t, p=2, eps=eps, dim=dim)
 
 
+@typecheck
 def max_neg_value(t: Tensor) -> Tensor:
     """Get the maximum negative value of Tensor based on its `dtype`.
 
@@ -95,6 +98,7 @@ def max_neg_value(t: Tensor) -> Tensor:
     return -torch.finfo(t.dtype).max
 
 
+@typecheck
 def log(t: Tensor, eps=1e-20) -> Tensor:
     """Run a safe log function that clamps the input to be above `eps` to avoid `log(0)`.
 
@@ -105,6 +109,7 @@ def log(t: Tensor, eps=1e-20) -> Tensor:
     return torch.log(t.clamp(min=eps))
 
 
+@typecheck
 def divisible_by(num: int, den: int) -> bool:
     """Check if a number is divisible by another number.
 
@@ -115,6 +120,7 @@ def divisible_by(num: int, den: int) -> bool:
     return (num % den) == 0
 
 
+@typecheck
 def compact(*args):
     """Compact a tuple of objects by removing any `None` values.
 
@@ -124,6 +130,18 @@ def compact(*args):
     return tuple(filter(exists, args))
 
 
+@typecheck
+def cast_tuple(t: Tensor, length: int = 1) -> Tuple[Tensor, ...]:
+    """Cast a Tensor to a tuple of Tensors with the given length.
+
+    :param t: The Tensor to cast.
+    :param length: The length of the tuple.
+    :return: The casted tuple.
+    """
+    return t if isinstance(t, tuple) else ((t,) * length)
+
+
+@typecheck
 def pack_one(t: Tensor, pattern: str) -> Tuple[Tensor, List[Shape]]:
     """Pack a single tensor into a tuple of tensors with the given pattern.
 
@@ -146,6 +164,7 @@ def pack_one(t: Tensor, pattern: str) -> Tuple[Tensor, List[Shape]]:
     return packed, unpack_one
 
 
+@typecheck
 def softclamp(t: Tensor, value: float) -> Tensor:
     """Perform a soft clamp on a Tensor.
 
@@ -156,6 +175,7 @@ def softclamp(t: Tensor, value: float) -> Tensor:
     return (t / value).tanh() * value
 
 
+@typecheck
 def exclusive_cumsum(t: Tensor, dim: int = -1) -> Tensor:
     """Perform an exclusive cumulative summation on a Tensor.
 
@@ -176,9 +196,20 @@ def symmetrize(t: Float["b n n ..."]) -> Float["b n n ..."]:  # type: ignore
     return t + rearrange(t, "b i j ... -> b j i ...")
 
 
+@typecheck
+def freeze_(m: Module):
+    """Freeze a module.
+
+    :param m: The module to freeze.
+    """
+    for p in m.parameters():
+        p.requires_grad = False
+
+
 # decorators
 
 
+@typecheck
 def maybe(fn):
     """Decorator to check if a Tensor exists before running a function on it."""
 

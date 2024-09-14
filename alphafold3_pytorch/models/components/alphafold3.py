@@ -60,12 +60,11 @@ import random
 import tempfile
 from functools import partial, wraps
 from importlib.metadata import version
+from itertools import zip_longest
 from math import pi, sqrt
 from pathlib import Path
 
 import einx
-import esm
-import rootutils
 import sh
 import torch
 import torch.nn as nn
@@ -78,7 +77,6 @@ from Bio.PDB.StructureBuilder import StructureBuilder
 from colt5_attention import ConditionalRoutedAttention
 from einops import einsum, pack, rearrange, reduce, repeat, unpack
 from einops.layers.torch import Rearrange
-from environs import Env
 from frame_averaging_pytorch import FrameAverage
 from huggingface_hub import PyTorchModelHubMixin, hf_hub_download
 from taylor_series_linear_attention import TaylorSeriesLinearAttn
@@ -118,6 +116,7 @@ from alphafold3_pytorch.models.components.inputs import (
     BatchedAtomInput,
     hard_validate_atom_indices_ascending,
 )
+from alphafold3_pytorch.models.components.plm import PLMEmbedding, PLMRegistry
 from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.model_utils import (
     ExpressCoordinatesInFrame,
@@ -126,10 +125,12 @@ from alphafold3_pytorch.utils.model_utils import (
     batch_repeat_interleave,
     batch_repeat_interleave_pairwise,
     calculate_weighted_rigid_align_weights,
+    cast_tuple,
     compact,
     concat_previous_window,
     distance_to_dgram,
     exclusive_cumsum,
+    freeze_,
     l2norm,
     lens_to_mask,
     log,
@@ -152,6 +153,7 @@ from alphafold3_pytorch.utils.tensor_typing import (
     Bool,
     Float,
     Int,
+    checkpoint,
     typecheck,
 )
 from alphafold3_pytorch.utils.utils import default, exists, identity, not_exists
@@ -161,26 +163,6 @@ from alphafold3_pytorch.utils.utils import default, exists, identity, not_exists
 LinearNoBias = partial(Linear, bias=False)
 
 logger = RankedLogger(__name__, rank_zero_only=False)
-
-# environment
-
-rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
-
-env = Env()
-env.read_env()
-
-# always use non reentrant checkpointing
-
-DEEPSPEED_CHECKPOINTING = env.bool("DEEPSPEED_CHECKPOINTING", False)
-
-if DEEPSPEED_CHECKPOINTING:
-    assert package_available("deepspeed"), "DeepSpeed must be installed for checkpointing."
-
-    import deepspeed
-
-    checkpoint = deepspeed.checkpointing.checkpoint
-else:
-    checkpoint = partial(torch.utils.checkpoint.checkpoint, use_reentrant=False)
 
 
 # linear and outer sum
@@ -4795,9 +4777,11 @@ class ComputeConfidenceScore(Module):
                 for i, chain_i in enumerate(unique_chains[b]):
                     for j, chain_j in enumerate(unique_chains[b]):
                         if chain_i != chain_j:
-                            mask_i = (asym_id[b] == chain_i)[:, None]
-                            mask_j = (asym_id[b] == chain_j)[None, :]
-                            pair_mask = mask_i * mask_j
+                            mask_i = asym_id[b] == chain_i
+                            mask_j = asym_id[b] == chain_j
+
+                            pair_mask = einx.multiply("i, j -> i j", mask_i, mask_j)
+
                             pair_residue_weights = pair_mask * einx.multiply(
                                 "... i, ... j -> ... i j", residue_weights[b], residue_weights[b]
                             )
@@ -4824,12 +4808,12 @@ class ComputeConfidenceScore(Module):
         else:
             pair_mask = torch.ones(size=(num_batch, num_res, num_res), device=device).bool()
             if interface:
-                pair_mask *= asym_id[:, :, None] != asym_id[:, None, :]
+                pair_mask *= einx.not_equal("b i, b j -> b i j", asym_id, asym_id)
 
             predicted_tm_term *= pair_mask
 
-            pair_residue_weights = pair_mask * (
-                residue_weights[:, None, :] * residue_weights[:, :, None]
+            pair_residue_weights = pair_mask * einx.multiply(
+                "b i, b j -> b i j", residue_weights, residue_weights
             )
             normed_residue_mask = pair_residue_weights / (
                 self.eps + torch.sum(pair_residue_weights, dim=-1, keepdims=True)
@@ -6094,8 +6078,8 @@ class Alphafold3(Module):
         checkpoint_diffusion_module=False,
         detach_when_recycling=True,
         pdb_training_set=True,
-        plm_embeddings: Literal["esm2_t33_650M_UR50D"] | None = None,
-        plm_repr_layer: int = 33,
+        plm_embeddings: PLMEmbedding | tuple[PLMEmbedding, ...] | None = None,
+        plm_kwargs: dict | tuple[dict, ...] | None = None,
         constraint_embeddings: int | None = None,
     ):
         super().__init__()
@@ -6139,17 +6123,33 @@ class Alphafold3(Module):
 
         self.has_molecule_mod_embeds = has_molecule_mod_embeds
 
-        # optional protein language model (PLM) embeddings
+        # optional protein language model(s) (PLM) embeddings
 
-        self.plm_embeddings = plm_embeddings
+        self.plms = None
 
         if exists(plm_embeddings):
-            self.plm, plm_alphabet = esm.pretrained.load_model_and_alphabet_hub(plm_embeddings)
-            self.plm_repr_layer = plm_repr_layer
-            self.plm_batch_converter = plm_alphabet.get_batch_converter()
-            self.plm_embeds = nn.Linear(self.plm.embed_dim, dim_single, bias=False)
-            for p in self.plm.parameters():
-                p.requires_grad = False
+            self.plms = ModuleList([])
+
+            for one_plm_embedding, one_plm_kwargs in zip_longest(
+                cast_tuple(plm_embeddings), cast_tuple(plm_kwargs)
+            ):
+                assert (
+                    one_plm_embedding in PLMRegistry
+                ), f"Received invalid PLM embedding name: {one_plm_embedding}. Acceptable ones are {PLMRegistry.keys()}."
+
+                constructor = PLMRegistry.get(one_plm_embedding)
+
+                one_plm_kwargs = default(one_plm_kwargs, {})
+                plm = constructor(**one_plm_kwargs)
+
+                freeze_(plm)
+
+                self.plms.append(plm)
+
+        if exists(self.plms):
+            concatted_plm_embed_dim = sum([plm.embed_dim for plm in self.plms])
+
+            self.to_plm_embeds = LinearNoBias(concatted_plm_embed_dim, dim_single)
 
         # atoms per window
 
@@ -6473,41 +6473,6 @@ class Alphafold3(Module):
         return self
 
     @typecheck
-    def extract_plm_embeddings(self, aa_ids: Int["b n"]) -> Float["b n dpe"]:  # type: ignore
-        """Extract PLM embeddings from batched amino acid IDs."""
-        aa_constants = get_residue_constants(res_chem_index=IS_PROTEIN)
-        sequence_data = [
-            (
-                f"molecule{i}",
-                "".join(
-                    [
-                        (
-                            aa_constants.restypes[id]
-                            if 0 <= id < len(aa_constants.restypes)
-                            else "X"
-                        )
-                        for id in ids
-                    ]
-                ),
-            )
-            for i, ids in enumerate(aa_ids)
-        ]
-
-        _, _, batch_tokens = self.plm_batch_converter(sequence_data)
-        batch_tokens = batch_tokens.to(self.device)
-
-        with torch.no_grad():
-            results = self.plm(batch_tokens, repr_layers=[self.plm_repr_layer])
-        token_representations = results["representations"][self.plm_repr_layer]
-
-        sequence_representations = []
-        for i, (_, seq) in enumerate(sequence_data):
-            sequence_representations.append(token_representations[i, 1 : len(seq) + 1])
-        plm_embeddings = torch.stack(sequence_representations, dim=0)
-
-        return plm_embeddings
-
-    @typecheck
     def forward_with_alphafold3_inputs(
         self, alphafold3_inputs: Alphafold3Input | list[Alphafold3Input], **kwargs
     ):
@@ -6797,15 +6762,19 @@ class Alphafold3(Module):
 
         # handle maybe protein language model (PLM) embeddings
 
-        if exists(self.plm_embeddings):
+        if exists(self.plms):
             molecule_aa_ids = torch.where(
                 molecule_ids < 0,
                 NUM_HUMAN_AMINO_ACIDS,
                 molecule_ids.clamp(max=NUM_HUMAN_AMINO_ACIDS),
             )
 
-            molecule_plm_embeddings = self.extract_plm_embeddings(molecule_aa_ids)
-            single_plm_init = self.plm_embeds(molecule_plm_embeddings)
+            plm_embeds = [plm(molecule_aa_ids) for plm in self.plms]
+
+            # concat all PLM embeddings and project and add to single init
+
+            all_plm_embeds = torch.cat(plm_embeds, dim=-1)
+            single_plm_init = self.to_plm_embeds(all_plm_embeds)
 
             single_init = single_init + single_plm_init
 

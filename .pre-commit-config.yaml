@@ -102,7 +102,7 @@ repos:
             "--extend-ignore",
             "E203,E402,E501,F401,F841,RST2,RST301",
             "--exclude",
-            "logs/*,data/*,alphafold3_pytorch/data/life.py,alphafold3_pytorch/models/alphafold3_module.py,alphafold3_pytorch/models/components/alphafold3.py,alphafold3_pytorch/models/components/attention.py,alphafold3_pytorch/models/components/inputs.py,alphafold3_pytorch/utils/model_utils.py",
+            "logs/*,data/*,alphafold3_pytorch/data/life.py,alphafold3_pytorch/models/alphafold3_module.py,alphafold3_pytorch/models/components/alphafold3.py,alphafold3_pytorch/models/components/attention.py,alphafold3_pytorch/models/components/inputs.py,alphafold3_pytorch/models/components/plm.py,alphafold3_pytorch/utils/model_utils.py",
           ]
         additional_dependencies: [flake8-rst-docstrings==0.3.0]
 

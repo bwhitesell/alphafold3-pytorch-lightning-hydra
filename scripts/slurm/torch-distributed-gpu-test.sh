@@ -32,7 +32,9 @@ srun -c 64 --jobid "$SLURM_JOBID" singularity exec \
     --pwd /alphafold3-pytorch-lightning-hydra \
     "$SINGULARITY_CONTAINER" \
     bash -c "
-        python -m torch.distributed.run \
+        python3 -m pip install --upgrade lion-pytorch sentencepiece transformers[torch] \
+        && cd /alphafold3-pytorch-lightning-hydra \
+        && python -m torch.distributed.run \
         --nproc_per_node $GPUS_PER_NODE --nnodes $SLURM_NNODES --node_rank $SLURM_PROCID \
         --master_addr $MASTER_ADDR --master_port $MASTER_PORT \
         scripts/slurm/torch-distributed-gpu-test.py

@@ -373,6 +373,7 @@ dependencies:
       - scikit-learn==1.5.0
       - scipy==1.13.1
       - seaborn==0.13.2
+      - sentencepiece==0.2.0
       - sh==2.0.7
       - shortuuid==1.0.13
       - sniffio==1.3.1
@@ -392,6 +393,7 @@ dependencies:
       - tornado==6.4
       - tqdm==4.66.4
       - traitlets==5.14.3
+      - transformers==4.44.2
       - triton==2.3.0
       - typeguard==2.13.3
       - typing-extensions==4.9.0

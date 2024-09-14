@@ -3501,6 +3501,7 @@ def get_token_constraints(
     token_pos: Float["n 3"],  # type: ignore
     token_parent_ids: Int[" n"],  # type: ignore
     token_residue_ids: Int[" n"],  # type: ignore
+    dist_belong_thres: float = 8.0,
 ) -> Float["n n dac"]:  # type: ignore
     """Construct pairwise token constraints for the given constraint strings and ratio.
 
@@ -3513,6 +3514,7 @@ def get_token_constraints(
     :param token_pos: The token center atom positions.
     :param token_parent_ids: The token parent (i.e., chain) IDs.
     :param token_residue_ids: The token residue IDs.
+    :param dist_belong_thres: The distance threshold for two tokens to belong to a binding site.
     :return: The pairwise token constraints.
     """
     assert 0 < constraints_ratio <= 1, "The constraints ratio must be in the range (0, 1]."
@@ -3534,9 +3536,11 @@ def get_token_constraints(
             # are within 8 Å of each other and belong to different chains and residues.
             token_dists = torch.cdist(token_pos, token_pos)
 
-            token_dists_mask = (token_dists > 0.0) & (token_dists < 8.0)
-            token_parent_mask = token_parent_ids[None, :] != token_parent_ids[:, None]
-            token_residue_mask = token_residue_ids[None, :] != token_residue_ids[:, None]
+            token_dists_mask = (token_dists > 0.0) & (token_dists < dist_belong_thres)
+            token_parent_mask = einx.not_equal("i, j -> i j", token_parent_ids, token_parent_ids)
+            token_residue_mask = einx.not_equal(
+                "i, j -> i j", token_residue_ids, token_residue_ids
+            )
 
             pairwise_token_mask = token_dists_mask & token_parent_mask & token_residue_mask
             pairwise_token_constraint[pairwise_token_mask] = 1.0

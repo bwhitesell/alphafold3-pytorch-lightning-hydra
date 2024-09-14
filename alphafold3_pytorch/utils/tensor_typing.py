@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from functools import partial
+
 import numpy as np
 import rootutils
+import torch
 from beartype import beartype
 from beartype.door import is_bearable
 from Bio.PDB.Atom import Atom, DisorderedAtom
@@ -11,6 +14,7 @@ from environs import Env
 from jaxtyping import Bool, Float, Int, Shaped, jaxtyped
 from torch import Tensor
 
+from alphafold3_pytorch.utils.model_utils import package_available
 from alphafold3_pytorch.utils.utils import always, identity
 
 # environment
@@ -48,6 +52,21 @@ ResidueType = Residue | DisorderedResidue
 ChainType = Chain
 TokenType = AtomType | ResidueType
 
+# some more colocated environmental stuff
+
+# maybe deespeed checkpoint, and always use non reentrant checkpointing
+
+DEEPSPEED_CHECKPOINTING = env.bool("DEEPSPEED_CHECKPOINTING", False)
+
+if DEEPSPEED_CHECKPOINTING:
+    assert package_available("deepspeed"), "DeepSpeed must be installed for checkpointing."
+
+    import deepspeed
+
+    checkpoint = deepspeed.checkpointing.checkpoint
+else:
+    checkpoint = partial(torch.utils.checkpoint.checkpoint, use_reentrant=False)
+
 # NOTE: use env variable `TYPECHECK` (which is set by `rootutils` above using `.env`) to control whether to use `beartype` + `jaxtyping`
 # NOTE: use env variable `DEBUG` to control whether to print debugging information
 
@@ -74,6 +93,7 @@ __all__ = [
     Float,
     Int,
     Shaped,
+    checkpoint,
     should_typecheck,
     typecheck,
     IS_DEBUGGING,
