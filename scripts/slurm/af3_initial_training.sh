@@ -31,9 +31,7 @@ NUM_PYTORCH_PROCESSES=8
 export OMP_NUM_THREADS=8
 
 # Define the compute node executing the batch script
-read -r -a NODES <<< "$(scontrol show hostnames "$SLURM_JOB_NODELIST")"
-RDZV_NODE="${NODES[0]}"
-RDZV_HOST=$(srun --nodes=1 --ntasks=1 -w "$RDZV_NODE" hostname --ip-address)
+RDZV_HOST=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
 
 export RDZV_HOST
 export RDZV_PORT=29400
@@ -57,7 +55,7 @@ srun -c 64 singularity exec \
     "$SINGULARITY_CONTAINER" \
     bash -c "
         /usr/bin/kalign --version \
-        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS NCCL_DEBUG=INFO \
+        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS \
         torchrun \
         --nnodes=$SLURM_JOB_NUM_NODES \
         --nproc_per_node=$NUM_PYTORCH_PROCESSES \
