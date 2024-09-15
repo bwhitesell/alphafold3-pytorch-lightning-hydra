@@ -7,7 +7,7 @@
 #SBATCH --gres=gpu:1                                          # NOTE: requests any GPU resource(s)
 #SBATCH --ntasks-per-node=1                                   # NOTE: this needs to be `1` on SLURM clusters when using Lightning's `ddp_spawn` strategy`; otherwise, set to match Lightning's quantity of `Trainer(devices=...)`
 #SBATCH --time 0-06:00:00                                     # time limit for the job (up to 24 hours: `0-24:00:00`)
-#SBATCH --job-name=af3_overfitting_e1                         # job name
+#SBATCH --job-name=af3_single_gpu_initial_training            # job name
 #SBATCH --output=J-%x.%j.out                                  # output log file
 #SBATCH --error=J-%x.%j.err                                   # error log file
 #################################################################
@@ -50,7 +50,8 @@ srun singularity exec --rocm \
         +model.net.diffusion_module_kwargs='{atom_encoder_depth: 1, token_transformer_depth: 1, atom_decoder_depth: 1, atom_encoder_kwargs: {attn_pair_bias_kwargs: {dim_head: 4}}, atom_decoder_kwargs: {attn_pair_bias_kwargs: {dim_head: 4}}}' \
         experiment=af3_initial_training \
         trainer.num_nodes=1 \
-        trainer.devices=1
+        trainer.devices=1 \
+        +trainer.detect_anomaly=True
     "
 
 # Inform user of run completion
