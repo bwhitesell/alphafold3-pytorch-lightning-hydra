@@ -4,13 +4,14 @@
 #SBATCH --partition=chengji-lab-gpu                           # use reserved partition `chengji-lab-gpu`
 #SBATCH --account=chengji-lab                                 # NOTE: this must be specified to use the reserved partition above
 #SBATCH --nodes=2                                             # NOTE: this needs to match Lightning's `Trainer(num_nodes=...)`
-#SBATCH --gres=gpu:1                                          # e.g., request A/H100 GPU resource(s)
-#SBATCH --ntasks-per-node=1                                   # NOTE: this needs to be `1` on SLURM clusters when using Lightning's `ddp_spawn` strategy`; otherwise, set to match Lightning's quantity of `Trainer(devices=...)`
-#SBATCH --mem=59G                                             # NOTE: use `--mem=0` to request all memory "available" on the assigned node
+#SBATCH --gres=gpu:4                                          # e.g., request A/H100 GPU resource(s)
+#SBATCH --ntasks-per-node=4                                   # NOTE: this needs to be `1` on SLURM clusters when using Lightning's `ddp_spawn` strategy`; otherwise, set to match Lightning's quantity of `Trainer(devices=...)`
+#SBATCH --mem=0                                               # NOTE: use `--mem=0` to request all memory "available" on the assigned node
 #SBATCH -t 0-01:00:00                                         # time limit for the job (up to two days: `2-00:00:00`)
 #SBATCH -J af3_initial_training                               # job name
 #SBATCH --output=J-%x.%j.out                                  # output log file
 #SBATCH --error=J-%x.%j.err                                   # error log file
+#SBATCH --exclusive                                           # request exclusive node access
 
 # Load required modules
 module purge
