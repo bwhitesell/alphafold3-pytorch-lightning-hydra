@@ -1,8 +1,8 @@
 #!/bin/bash -l
 
 ######################### Batch Headers #########################
-#SBATCH --partition chengji-lab-gpu                           # use reserved partition `chengji-lab-gpu`
-#SBATCH --account chengji-lab                                 # NOTE: this must be specified to use the reserved partition above
+#SBATCH --partition=chengji-lab-gpu                           # use reserved partition `chengji-lab-gpu`
+#SBATCH --account=chengji-lab                                 # NOTE: this must be specified to use the reserved partition above
 #SBATCH --nodes=2                                             # NOTE: this needs to match Lightning's `Trainer(num_nodes=...)`
 #SBATCH --gres gpu:A100:4                                     # request A100 GPU resource(s)
 #SBATCH --ntasks-per-node=4                                   # NOTE: this needs to be `1` on SLURM clusters when using Lightning's `ddp_spawn` strategy`; otherwise, set to match Lightning's quantity of `Trainer(devices=...)`
