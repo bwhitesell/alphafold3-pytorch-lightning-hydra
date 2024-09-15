@@ -247,10 +247,6 @@ class EMAOptimizer(torch.optim.Optimizer):
         self.ema_params = ()
         self.in_saving_ema_model_context = False
 
-    def zero_grad(self, set_to_none: bool = True):
-        """Zero the gradients of all optimized parameters."""
-        self.optimizer.zero_grad(set_to_none)
-
     def all_parameters(self) -> Iterable[torch.Tensor]:
         """Return an iterator over all parameters in the optimizer."""
         return (param for group in self.param_groups for param in group["params"])
@@ -371,8 +367,10 @@ class EMAOptimizer(torch.optim.Optimizer):
             if not self.in_saving_ema_model_context
             else list(self.all_parameters())
         )
+        optimizer_state_dict = self.optimizer.state_dict()
         state_dict = {
-            "state": self.optimizer.state_dict(),
+            "state": optimizer_state_dict["state"],
+            "param_groups": optimizer_state_dict["param_groups"],
             "ema": ema_params,
             "current_step": self.current_step,
             "decay": self.decay,
@@ -384,7 +382,8 @@ class EMAOptimizer(torch.optim.Optimizer):
         """Load the state dict for the optimizer."""
         self.join()
 
-        self.optimizer.load_state_dict(state_dict["state"])
+        state = {"state": state_dict["state"], "param_groups": state_dict["param_groups"]}
+        self.optimizer.load_state_dict(state)
         self.ema_params = tuple(
             param.to(self.device) for param in copy.deepcopy(state_dict["ema"])
         )

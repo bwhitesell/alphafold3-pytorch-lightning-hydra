@@ -11,8 +11,8 @@ defaults:
   - override /environment: default
   - override /logger: wandb
   - override /model: alphafold3
-  - override /strategy: deepspeed
-  - override /trainer: deepspeed
+  - override /strategy: fsdp
+  - override /trainer: fsdp
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
