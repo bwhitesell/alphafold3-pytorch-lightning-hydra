@@ -3434,15 +3434,15 @@ def pdb_input_to_molecule_input(
     # sanity-check the atom indices
     if not (-1 <= distogram_atom_indices.min() <= distogram_atom_indices.max() < num_atoms):
         raise ValueError(
-            f"Invalid distogram atom indices found in `pdb_input_to_molecule_input()` for {i.filepath}: {distogram_atom_indices}"
+            f"Invalid distogram atom indices found in `pdb_input_to_molecule_input()` for {filepath}: {distogram_atom_indices}"
         )
     if not (-1 <= molecule_atom_indices.min() <= molecule_atom_indices.max() < num_atoms):
         raise ValueError(
-            f"Invalid molecule atom indices found in `pdb_input_to_molecule_input()` for {i.filepath}: {molecule_atom_indices}"
+            f"Invalid molecule atom indices found in `pdb_input_to_molecule_input()` for {filepath}: {molecule_atom_indices}"
         )
     if not (-1 <= atom_indices_for_frame.min() <= atom_indices_for_frame.max() < num_atoms):
         raise ValueError(
-            f"Invalid atom indices for frame found in `pdb_input_to_molecule_input()` for {i.filepath}: {atom_indices_for_frame}"
+            f"Invalid atom indices for frame found in `pdb_input_to_molecule_input()` for {filepath}: {atom_indices_for_frame}"
         )
 
     # create atom_parent_ids using the `Biomolecule` object, which governs in the atom
