@@ -7540,7 +7540,7 @@ class Alphafold3(Module):
             else:
                 resolved_loss = (
                     ch_logits.resolved * 0.0
-                )  # ensure resolved logits always contribute to the loss
+                ).mean()  # ensure resolved logits always contribute to the loss
 
             confidence_loss = pae_loss + pde_loss + plddt_loss + resolved_loss
 
