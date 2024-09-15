@@ -22,7 +22,7 @@ deterministic: False
 # NOTE: we clip by value instead of norm since Lightning does not support norm clipping for FSDP yet, per https://github.com/Lightning-AI/pytorch-lightning/issues/19235
 gradient_clip_algorithm: value
 # if `gradient_clip_val` is not `0.0` or `null`, gradients will be value-clipped by an upper bound of `gradient_clip_val` during training
-gradient_clip_val: 10.0
+gradient_clip_val: null
 
 # accumulate gradients of `accumulate_grad_batches` batches (e.g., by this amount for each rank) before doing a backward pass
 # NOTE: here, we would have to accumulate gradients independently for each rank, per https://lightning.ai/docs/pytorch/stable/advanced/training_tricks.html#accumulate-gradients

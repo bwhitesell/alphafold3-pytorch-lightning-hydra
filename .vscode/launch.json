@@ -104,7 +104,7 @@
                 "data.persistent_workers=false",
                 "~logger",
                 "~logger.wandb",
-                // "model.net.diffusion_num_augmentations=4",
+                "model.net.diffusion_num_augmentations=4",
                 "+model.net.dim_atom=8",
                 "+model.net.dim_pairwise=8",
                 "+model.net.dim_single=8",
