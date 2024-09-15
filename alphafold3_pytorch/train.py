@@ -188,12 +188,12 @@ def main(cfg: DictConfig) -> Optional[float]:
 
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("spawn", force=True)
-    torch.multiprocessing.set_start_method("spawn", force=True)
-    torch.set_float32_matmul_precision("high")
-
     from torch import distributed as dist
 
+    multiprocessing.set_start_method("spawn", force=True)
+    torch.multiprocessing.set_start_method("spawn", force=True)
+
+    torch.set_float32_matmul_precision("high")
     dist.set_debug_level(dist.DebugLevel.DETAIL)
 
     register_custom_omegaconf_resolvers()
