@@ -4,7 +4,7 @@
 #SBATCH --partition=chengji-lab-gpu                           # use reserved partition `chengji-lab-gpu`
 #SBATCH --account=chengji-lab                                 # NOTE: this must be specified to use the reserved partition above
 #SBATCH --nodes=1                                             # NOTE: this needs to match Lightning's `Trainer(num_nodes=...)`
-#SBATCH --gres gpu:1                                          # e.g., request A/H100 GPU resource(s)
+#SBATCH --gres=gpu:1                                          # e.g., request A/H100 GPU resource(s)
 #SBATCH --ntasks-per-node=1                                   # NOTE: this needs to be `1` on SLURM clusters when using Lightning's `ddp_spawn` strategy`; otherwise, set to match Lightning's quantity of `Trainer(devices=...)`
 #SBATCH --mem=59G                                             # NOTE: use `--mem=0` to request all memory "available" on the assigned node
 #SBATCH -t 0-01:00:00                                         # time limit for the job (up to two days: `2-00:00:00`)
@@ -41,7 +41,7 @@ bash -c "
     && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID \
     TORCH_HOME=$TORCH_HOME \
     HF_HOME=$HF_HOME \
-    python3 alphafold3_pytorch/train.py \
+    srun python3 alphafold3_pytorch/train.py \
     data.batch_size=$((SLURM_JOB_NUM_NODES * SLURM_NTASKS_PER_NODE)) \
     data.kalign_binary_path=$CONDA_PREFIX/bin/kalign \
     model.net.diffusion_num_augmentations=4 \
