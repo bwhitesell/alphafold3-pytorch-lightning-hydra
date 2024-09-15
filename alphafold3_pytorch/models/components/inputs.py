@@ -822,11 +822,17 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
 
     # sanity-check atom indices
     if not (0 <= molecule_atom_indices.min() <= molecule_atom_indices.max() < total_atoms):
-        raise ValueError("Invalid molecule atom indices")
+        raise ValueError(
+            f"Invalid molecule atom indices for {i.filepath}: {molecule_atom_indices}"
+        )
     if not (0 <= distogram_atom_indices.min() <= distogram_atom_indices.max() < total_atoms):
-        raise ValueError("Invalid distogram atom indices")
+        raise ValueError(
+            f"Invalid distogram atom indices for {i.filepath}: {distogram_atom_indices}"
+        )
     if not (0 <= atom_indices_for_frame.min() <= atom_indices_for_frame.max() < total_atoms):
-        raise ValueError("Invalid atom indices for frame")
+        raise ValueError(
+            f"Invalid atom indices for frame for {i.filepath}: {atom_indices_for_frame}"
+        )
 
     # handle atom positions
 
@@ -3427,11 +3433,17 @@ def pdb_input_to_molecule_input(
 
     # sanity-check the atom indices
     if not (0 <= distogram_atom_indices.min() <= distogram_atom_indices.max() < num_atoms):
-        raise ValueError(f"Invalid distogram atom indices: {distogram_atom_indices}")
+        raise ValueError(
+            f"Invalid distogram atom indices for {i.filepath}: {distogram_atom_indices}"
+        )
     if not (0 <= molecule_atom_indices.min() <= molecule_atom_indices.max() < num_atoms):
-        raise ValueError(f"Invalid molecule atom indices: {molecule_atom_indices}")
+        raise ValueError(
+            f"Invalid molecule atom indices for {i.filepath}: {molecule_atom_indices}"
+        )
     if not (0 <= atom_indices_for_frame.min() <= atom_indices_for_frame.max() < num_atoms):
-        raise ValueError(f"Invalid atom indices for frame: {atom_indices_for_frame}")
+        raise ValueError(
+            f"Invalid atom indices for frame for {i.filepath}: {atom_indices_for_frame}"
+        )
 
     # create atom_parent_ids using the `Biomolecule` object, which governs in the atom
     # encoder / decoder which atom attends to which, where a design choice is made such
