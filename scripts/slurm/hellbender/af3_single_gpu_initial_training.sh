@@ -32,7 +32,7 @@ RUN_ID="ng9ds475" # NOTE: Generate a unique ID for each run using `python3 scrip
 bash -c "
     $CONDA_PREFIX/bin/kalign \
     && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID \
-    alphafold3_pytorch/train.py \
+    python3 alphafold3_pytorch/train.py \
     data.batch_size=$((SLURM_JOB_NUM_NODES * SLURM_GPUS_PER_NODE)) \
     data.kalign_binary_path=$CONDA_PREFIX/bin/kalign \
     model.net.diffusion_num_augmentations=4 \
