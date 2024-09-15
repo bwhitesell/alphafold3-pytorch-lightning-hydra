@@ -118,7 +118,7 @@
                 // "trainer=ddp_sim",
                 "trainer.devices=1",
                 // "+trainer.precision=32",
-                // "+trainer.detect_anomaly=true",
+                "+trainer.detect_anomaly=true",
             ]
         },
         {
