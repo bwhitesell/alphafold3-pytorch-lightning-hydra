@@ -4,7 +4,7 @@
 #SBATCH --partition=chengji-lab-gpu                           # use reserved partition `chengji-lab-gpu`
 #SBATCH --account=chengji-lab                                 # NOTE: this must be specified to use the reserved partition above
 #SBATCH --nodes=2                                             # NOTE: this needs to match Lightning's `Trainer(num_nodes=...)`
-#SBATCH --gres gpu:A100:4                                     # request A100 GPU resource(s)
+#SBATCH --gres gpu:4                                          # e.g., request A/H100 GPU resource(s)
 #SBATCH --ntasks-per-node=4                                   # NOTE: this needs to be `1` on SLURM clusters when using Lightning's `ddp_spawn` strategy`; otherwise, set to match Lightning's quantity of `Trainer(devices=...)`
 #SBATCH --mem=0                                               # NOTE: use `--mem=0` to request all memory "available" on the assigned node
 #SBATCH -t 0-01:00:00                                         # time limit for the job (up to two days: `2-00:00:00`)
@@ -34,7 +34,7 @@ mkdir -p "$TORCH_HOME"
 mkdir -p "$HF_HOME"
 
 # Define WandB run ID
-RUN_ID="mg9ds475" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="pg9ds475" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run script
 bash -c "
