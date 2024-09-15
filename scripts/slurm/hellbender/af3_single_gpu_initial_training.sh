@@ -25,13 +25,22 @@ cd "$PROJECT_DIR" || exit
 source "/home/$USER/mambaforge/etc/profile.d/conda.sh"
 conda activate alphafold3-pytorch/
 
+# Establish environment variables
+export TORCH_HOME="/cluster/pixstor/chengji-lab/$USER/torch_cache"
+export HF_HOME="/cluster/pixstor/chengji-lab/$USER/hf_cache"
+
+mkdir -p "$TORCH_HOME"
+mkdir -p "$HF_HOME"
+
 # Define WandB run ID
-RUN_ID="ng9ds475" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="og9ds475" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run script
 bash -c "
     $CONDA_PREFIX/bin/kalign \
     && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID \
+    TORCH_HOME=$TORCH_HOME \
+    HF_HOME=$HF_HOME \
     python3 alphafold3_pytorch/train.py \
     data.batch_size=$((SLURM_JOB_NUM_NODES * SLURM_NTASKS_PER_NODE)) \
     data.kalign_binary_path=$CONDA_PREFIX/bin/kalign \
