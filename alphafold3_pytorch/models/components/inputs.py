@@ -801,6 +801,7 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
 
     molecule_atom_indices = i.molecule_atom_indices
     distogram_atom_indices = i.distogram_atom_indices
+    atom_indices_for_frame = i.atom_indices_for_frame
 
     if exists(missing_token_indices) and missing_token_indices.shape[-1]:
         is_missing_molecule_atom = einx.equal(
@@ -809,9 +810,23 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
         is_missing_distogram_atom = einx.equal(
             "n missing, n -> n missing", missing_token_indices, distogram_atom_indices
         ).any(dim=-1)
+        is_missing_atom_indices_for_frame = einx.equal(
+            "n missing, n three -> n three missing", missing_token_indices, atom_indices_for_frame
+        ).any(dim=-1)
 
         molecule_atom_indices = molecule_atom_indices.masked_fill(is_missing_molecule_atom, -1)
         distogram_atom_indices = distogram_atom_indices.masked_fill(is_missing_distogram_atom, -1)
+        atom_indices_for_frame = atom_indices_for_frame.masked_fill(
+            is_missing_atom_indices_for_frame, -1
+        )
+
+    # sanity-check atom indices
+    if not (0 <= molecule_atom_indices.min() <= molecule_atom_indices.max() < total_atoms):
+        raise ValueError("Invalid molecule atom indices")
+    if not (0 <= distogram_atom_indices.min() <= distogram_atom_indices.max() < total_atoms):
+        raise ValueError("Invalid distogram atom indices")
+    if not (0 <= atom_indices_for_frame.min() <= atom_indices_for_frame.max() < total_atoms):
+        raise ValueError("Invalid atom indices for frame")
 
     # handle atom positions
 
@@ -838,9 +853,9 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
         atompair_inputs=atompair_inputs,
         molecule_atom_lens=atom_lens.long(),
         molecule_ids=i.molecule_ids,
-        molecule_atom_indices=i.molecule_atom_indices,
-        distogram_atom_indices=i.distogram_atom_indices,
-        atom_indices_for_frame=i.atom_indices_for_frame,
+        molecule_atom_indices=molecule_atom_indices,
+        distogram_atom_indices=distogram_atom_indices,
+        atom_indices_for_frame=atom_indices_for_frame,
         is_molecule_mod=is_molecule_mod,
         msa=i.msa,
         templates=i.templates,
@@ -3410,6 +3425,14 @@ def pdb_input_to_molecule_input(
     )
     num_atoms = atom_pos.shape[0]
 
+    # sanity-check the atom indices
+    if not (0 <= distogram_atom_indices.min() <= distogram_atom_indices.max() < num_atoms):
+        raise ValueError(f"Invalid distogram atom indices: {distogram_atom_indices}")
+    if not (0 <= molecule_atom_indices.min() <= molecule_atom_indices.max() < num_atoms):
+        raise ValueError(f"Invalid molecule atom indices: {molecule_atom_indices}")
+    if not (0 <= atom_indices_for_frame.min() <= atom_indices_for_frame.max() < num_atoms):
+        raise ValueError(f"Invalid atom indices for frame: {atom_indices_for_frame}")
+
     # create atom_parent_ids using the `Biomolecule` object, which governs in the atom
     # encoder / decoder which atom attends to which, where a design choice is made such
     # that mmCIF author chain indices are directly adopted to group atoms belonging to
@@ -3737,7 +3760,7 @@ def register_input_transform(input_type: Type, fn: Callable[[Any], AtomInput]):
 
 
 @typecheck
-def maybe_transform_to_atom_input(i: Any, raise_exception: bool = False) -> AtomInput | None:
+def maybe_transform_to_atom_input(i: Any, raise_exception: bool = True) -> AtomInput | None:
     """Convert an input to an AtomInput."""
     maybe_to_atom_fn = INPUT_TO_ATOM_TRANSFORM.get(type(i), None)
 

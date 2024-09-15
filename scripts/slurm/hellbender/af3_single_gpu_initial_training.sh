@@ -44,7 +44,6 @@ bash -c "
     srun python3 alphafold3_pytorch/train.py \
     data.batch_size=$((SLURM_JOB_NUM_NODES * SLURM_NTASKS_PER_NODE)) \
     data.kalign_binary_path=$CONDA_PREFIX/bin/kalign \
-    model.net.diffusion_num_augmentations=4 \
     experiment=af3_initial_training \
     trainer.num_nodes=$SLURM_JOB_NUM_NODES \
     trainer.devices=$SLURM_NTASKS_PER_NODE
