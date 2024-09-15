@@ -3017,12 +3017,14 @@ def pdb_input_to_molecule_input(
 
     current_atom_index = 0
     current_res_index = -1
+    current_chain_index = -1
 
-    for mol_type, atom_mask, chemid, res_index in zip(
+    for mol_type, atom_mask, chemid, res_index, res_chain_index in zip(
         molecule_atom_types,
         biomol.atom_mask,
         biomol.chemid,
         biomol.residue_index,
+        biomol.chain_index,
     ):
         residue_constants = get_residue_constants(
             mol_type.replace("protein", "peptide").replace("mod_", "")
@@ -3037,11 +3039,12 @@ def pdb_input_to_molecule_input(
 
         if is_atomized_residue(mol_type):
             # collect indices for each ligand and modified polymer residue token (i.e., atom)
-            if current_res_index == res_index:
+            if current_res_index == res_index and current_chain_index == res_chain_index:
                 current_atom_index += 1
             else:
                 current_atom_index = 0
                 current_res_index = res_index
+                current_chain_index = res_chain_index
 
             # NOTE: we have to dynamically determine the token center atom index for atomized residues
             token_center_atom_index = np.where(atom_mask)[0][0]
@@ -3772,7 +3775,7 @@ def register_input_transform(input_type: Type, fn: Callable[[Any], AtomInput]):
 
 
 @typecheck
-def maybe_transform_to_atom_input(i: Any, raise_exception: bool = True) -> AtomInput | None:
+def maybe_transform_to_atom_input(i: Any, raise_exception: bool = False) -> AtomInput | None:
     """Convert an input to an AtomInput."""
     maybe_to_atom_fn = INPUT_TO_ATOM_TRANSFORM.get(type(i), None)
 
