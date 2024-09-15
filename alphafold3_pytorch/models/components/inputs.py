@@ -820,16 +820,16 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
             is_missing_atom_indices_for_frame, -1
         )
 
-    # sanity-check atom indices
-    if not (0 <= molecule_atom_indices.min() <= molecule_atom_indices.max() < total_atoms):
+    # sanity-check the atom indices
+    if not (-1 <= molecule_atom_indices.min() <= molecule_atom_indices.max() < total_atoms):
         raise ValueError(
             f"Invalid molecule atom indices for {i.filepath}: {molecule_atom_indices}"
         )
-    if not (0 <= distogram_atom_indices.min() <= distogram_atom_indices.max() < total_atoms):
+    if not (-1 <= distogram_atom_indices.min() <= distogram_atom_indices.max() < total_atoms):
         raise ValueError(
             f"Invalid distogram atom indices for {i.filepath}: {distogram_atom_indices}"
         )
-    if not (0 <= atom_indices_for_frame.min() <= atom_indices_for_frame.max() < total_atoms):
+    if not (-1 <= atom_indices_for_frame.min() <= atom_indices_for_frame.max() < total_atoms):
         raise ValueError(
             f"Invalid atom indices for frame for {i.filepath}: {atom_indices_for_frame}"
         )
@@ -3432,15 +3432,15 @@ def pdb_input_to_molecule_input(
     num_atoms = atom_pos.shape[0]
 
     # sanity-check the atom indices
-    if not (0 <= distogram_atom_indices.min() <= distogram_atom_indices.max() < num_atoms):
+    if not (-1 <= distogram_atom_indices.min() <= distogram_atom_indices.max() < num_atoms):
         raise ValueError(
             f"Invalid distogram atom indices for {i.filepath}: {distogram_atom_indices}"
         )
-    if not (0 <= molecule_atom_indices.min() <= molecule_atom_indices.max() < num_atoms):
+    if not (-1 <= molecule_atom_indices.min() <= molecule_atom_indices.max() < num_atoms):
         raise ValueError(
             f"Invalid molecule atom indices for {i.filepath}: {molecule_atom_indices}"
         )
-    if not (0 <= atom_indices_for_frame.min() <= atom_indices_for_frame.max() < num_atoms):
+    if not (-1 <= atom_indices_for_frame.min() <= atom_indices_for_frame.max() < num_atoms):
         raise ValueError(
             f"Invalid atom indices for frame for {i.filepath}: {atom_indices_for_frame}"
         )
