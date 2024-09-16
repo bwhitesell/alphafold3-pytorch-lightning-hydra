@@ -222,8 +222,8 @@ class Alphafold3LitModule(LightningModule):
         if self.trainer.gradient_clip_val:
             self.clip_gradients(
                 opt,
-                gradient_clip_val=self.trainer.gradient_clip_val,
-                gradient_clip_algorithm=self.trainer.gradient_clip_algorithm,
+                gradient_clip_val=10.0,
+                gradient_clip_algorithm="norm",
             )
 
         opt.step()
