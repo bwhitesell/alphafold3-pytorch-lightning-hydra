@@ -12,6 +12,7 @@ max_num_msa_tokens: null # if specified, the maximum number of MSA sequence toke
 max_templates_per_chain: null # if specified, the maximum number of templates to include per chain (e.g., for throughput concerns)
 num_templates_per_chain: null # if specified, the effective number number of templates to include per chain (e.g., for throughput concerns)
 max_num_template_tokens: null # if specified, the maximum number of template sequence tokens to include per structure (e.g., for throughput concerns)
+max_val_length: null # NOTE: must be one of (initial_training: 1000, fine_tuning_1: 1000, fine_tuning_2: 1000, fine_tuning_3: 1000), proceeding from left to right
 kalign_binary_path: ${oc.env:CONDA_PREFIX}/bin/kalign # if specified, the path to a local Kalign3 executable
 sampling_weight_for_disorder_pdb_distillation: 0.02 # NOTE: must be one of (initial_training: 0.02, fine_tuning_1: 0.01, fine_tuning_2: 0.02, fine_tuning_3: 0.02), proceeding from left to right following Table 6 in the paper
 train_on_transcription_factor_distillation_sets: false # NOTE: must be one of (initial_training: False, fine_tuning_1: False, fine_tuning_2: True, fine_tuning_3: True), proceeding from left to right following Table 6 in the paper

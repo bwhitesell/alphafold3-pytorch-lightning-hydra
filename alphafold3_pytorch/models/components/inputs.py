@@ -1889,6 +1889,7 @@ class PDBInput:
     max_templates_per_chain: int | None = None
     num_templates_per_chain: int | None = None
     max_num_template_tokens: int | None = None
+    max_length: int | None = None
     kalign_binary_path: str | None = None
     extract_atom_feats_fn: Callable[[Atom], Float["m dai"]] = default_extract_atom_feats_fn  # type: ignore
     extract_atompair_feats_fn: Callable[[Mol], Float["m m dapi"]] = default_extract_atompair_feats_fn  # type: ignore
@@ -2920,6 +2921,11 @@ def pdb_input_to_molecule_input(
 
         except Exception as e:
             raise ValueError(f"Failed to crop the biomolecule for input {file_id} due to: {e}")
+
+    if exists(i.max_length):
+        assert (
+            num_tokens <= i.max_length
+        ), f"The number of tokens ({num_tokens}) in {filepath} exceeds the maximum length allowed ({i.max_length})."
 
     # retrieve features directly available within the `Biomolecule` object
 
