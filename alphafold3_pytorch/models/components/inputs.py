@@ -18,6 +18,7 @@ from pathlib import Path
 
 import einx
 import numpy as np
+import timeout_decorator
 import torch
 import torch.nn.functional as F
 from beartype.typing import Any, Callable, Dict, List, Literal, Set, Tuple, Type
@@ -92,6 +93,8 @@ logger = RankedLogger(__name__, rank_zero_only=False)
 RDLogger.DisableLog("rdApp.*")
 
 # constants
+
+PDB_INPUT_TO_MOLECULE_INPUT_MAX_SECONDS_PER_INPUT = 45
 
 IS_MOLECULE_TYPES = 5
 IS_PROTEIN_INDEX = 0
@@ -2658,6 +2661,7 @@ def load_templates_from_templates_dir(
 
 
 @typecheck
+@timeout_decorator.timeout(PDB_INPUT_TO_MOLECULE_INPUT_MAX_SECONDS_PER_INPUT, use_signals=True)
 def pdb_input_to_molecule_input(
     pdb_input: PDBInput,
     biomol: Biomolecule | None = None,
