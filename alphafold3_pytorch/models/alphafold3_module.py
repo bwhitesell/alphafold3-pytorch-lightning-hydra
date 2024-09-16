@@ -100,6 +100,9 @@ class Alphafold3LitModule(LightningModule):
         self.val_top_ranked_lddt = MeanMetric()
         self.test_top_ranked_lddt = MeanMetric()
 
+        # Important: This property activates manual optimization.
+        self.automatic_optimization = False
+
     @typecheck
     def prepare_batch_dict(self, batch_dict: Dict[str, Any]) -> Dict[str, Any]:
         """Prepare the input batch dictionary for the model.
@@ -201,9 +204,29 @@ class Alphafold3LitModule(LightningModule):
             if batch_idx % self.hparams.visualize_train_samples_every_n_steps == 0:
                 self.sample_and_visualize(batch, batch_idx, phase="train")
 
-        # return loss or backpropagation will fail
+        opt = self.optimizers()
+        opt.zero_grad()
 
-        return loss
+        # backprop loss and take a step with the optimizer
+
+        try:
+            self.manual_backward(loss)
+        except RuntimeError as e:
+            log.error(
+                f"Caught a runtime error ({e}) during the backward pass for step {self.global_step} with filepaths {self.current_filepaths}, which are associated with the following batched inputs for chains {batch_dict['chains']}: {[batch_dict[k] for k in batch_dict]}."
+            )
+            raise e
+
+        # clip gradients
+
+        if self.trainer.gradient_clip_val:
+            self.clip_gradients(
+                opt,
+                gradient_clip_val=self.trainer.gradient_clip_val,
+                gradient_clip_algorithm=self.trainer.gradient_clip_algorithm,
+            )
+
+        opt.step()
 
     @typecheck
     def validation_step(self, batch: BatchedAtomInput, batch_idx: int) -> None:
@@ -575,19 +598,6 @@ class Alphafold3LitModule(LightningModule):
                 insert_alphafold_mmcif_metadata=True,
                 sampled_atom_positions=sampled_atom_positions,
             )
-
-    def backward(self, loss: Tensor):
-        """Perform a backward pass on the loss tensor while catching runtime errors.
-
-        :param loss: The loss tensor.
-        """
-        try:
-            loss.backward()
-        except RuntimeError as e:
-            log.error(
-                f"Caught a runtime error during the backward pass for step {self.global_step} with {self.current_filepaths}: {e}"
-            )
-            raise e
 
     def on_after_backward(self):
         """Skip updates in case of unstable gradients.
