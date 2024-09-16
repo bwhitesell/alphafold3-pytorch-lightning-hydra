@@ -580,7 +580,14 @@ class MoleculeInput:
 
 @typecheck
 def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
-    """Convert a MoleculeInput to an AtomInput."""
+    """Convert a MoleculeInput to an AtomInput.
+
+    NOTE: This function assumes that `distogram_atom_indices`,
+    `molecule_atom_indices`, and `atom_indices_for_frame` are already
+    offset as structure-global (and not molecule-local) atom indices.
+    In contrast, `missing_atom_indices` and `missing_token_indices`
+    are expected to be molecule-local atom indices.
+    """
     i = mol_input
 
     molecules = i.molecules
@@ -652,11 +659,15 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
 
         missing_atom_mask: List[Bool[" _"]] = []  # type: ignore
 
-        for num_atoms, mol_missing_atom_indices in zip(all_num_atoms, missing_atom_indices):
+        for num_atoms, mol_missing_atom_indices, mol_missing_token_indices, offset in zip(
+            all_num_atoms, missing_atom_indices, missing_token_indices, offsets
+        ):
             mol_miss_atom_mask = torch.zeros(num_atoms, dtype=torch.bool)
 
             if mol_missing_atom_indices.numel() > 0:
                 mol_miss_atom_mask.scatter_(-1, mol_missing_atom_indices, True)
+            if mol_missing_token_indices.numel() > 0:
+                mol_missing_token_indices += offset
 
             missing_atom_mask.append(mol_miss_atom_mask)
 
@@ -787,7 +798,7 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
 
     atompair_feats: List[Float["m m dapi"]] = []  # type: ignore
 
-    for mol, offset in zip(molecules, offsets):
+    for mol in molecules:
         atompair_feats.append(extract_atompair_feats_fn(mol))
 
     assert len(atompair_feats) > 0
@@ -814,13 +825,13 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
             "n missing, n -> n missing", missing_token_indices, distogram_atom_indices
         ).any(dim=-1)
         is_missing_atom_indices_for_frame = einx.equal(
-            "n missing, n three -> n three missing", missing_token_indices, atom_indices_for_frame
-        ).any(dim=-1)
+            "n missing, n c -> n c missing", missing_token_indices, atom_indices_for_frame
+        ).any(dim=(-1, -2))
 
         molecule_atom_indices = molecule_atom_indices.masked_fill(is_missing_molecule_atom, -1)
         distogram_atom_indices = distogram_atom_indices.masked_fill(is_missing_distogram_atom, -1)
         atom_indices_for_frame = atom_indices_for_frame.masked_fill(
-            is_missing_atom_indices_for_frame, -1
+            is_missing_atom_indices_for_frame[..., None], -1
         )
 
     # sanity-check the atom indices
@@ -3348,7 +3359,7 @@ def pdb_input_to_molecule_input(
         mol_miss_atom_indices = default(mol_miss_atom_indices, [])
         mol_miss_atom_indices = tensor(mol_miss_atom_indices, dtype=torch.long)
 
-        missing_atom_indices.append(mol_miss_atom_indices)
+        missing_atom_indices.append(mol_miss_atom_indices.clone())
         if is_atomized_residue(mol_type):
             missing_token_indices.extend([mol_miss_atom_indices for _ in range(mol.GetNumAtoms())])
         else:
