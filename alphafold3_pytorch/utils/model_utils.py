@@ -6,8 +6,9 @@ import torch
 import torch.nn.functional as F
 from beartype.typing import Any, Callable, List, Tuple, Union
 from einops import einsum, pack, rearrange, reduce, repeat, unpack
-from torch import Tensor
+from torch import Tensor, is_tensor
 from torch.nn import Module
+from torch.utils._pytree import tree_map
 
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, Shaped, typecheck
 from alphafold3_pytorch.utils.utils import default, exists, not_exists
@@ -96,6 +97,16 @@ def max_neg_value(t: Tensor) -> float:
     :return: The maximum negative value of its `dtype`.
     """
     return -torch.finfo(t.dtype).max
+
+
+def dict_to_device(d: dict, device: str | torch.device) -> dict:
+    """Move a dictionary of tensors to a device.
+
+    :param d: The dictionary of tensors.
+    :param device: The device to move to.
+    :return: The dictionary of tensors on the device.
+    """
+    return tree_map(lambda t: t.to(device) if is_tensor(t) else t, d)
 
 
 @typecheck
@@ -657,7 +668,7 @@ def should_checkpoint(
     :param check_instance_variable: The instance variable to check.
     :return: True if activation checkpointing should be used, False otherwise.
     """
-    if torch.is_tensor(inputs):
+    if is_tensor(inputs):
         inputs = (inputs,)
 
     return (

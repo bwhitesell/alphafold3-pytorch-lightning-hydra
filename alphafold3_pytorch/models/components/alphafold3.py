@@ -132,6 +132,7 @@ from alphafold3_pytorch.utils.model_utils import (
     cast_tuple,
     compact,
     concat_previous_window,
+    dict_to_device,
     distance_to_dgram,
     exclusive_cumsum,
     freeze_,
@@ -6497,7 +6498,11 @@ class Alphafold3(Module):
         batched_atom_inputs = alphafold3_inputs_to_batched_atom_input(
             alphafold3_inputs, atoms_per_window=self.w
         )
-        return self.forward(**batched_atom_inputs.model_forward_dict(), **kwargs)
+
+        atom_dict = batched_atom_inputs.model_forward_dict()
+        atom_dict = dict_to_device(atom_dict, device=self.device)
+
+        return self.forward(**atom_dict, **kwargs)
 
     @typecheck
     def forward(
