@@ -213,18 +213,17 @@ class Alphafold3LitModule(LightningModule):
             self.manual_backward(loss)
         except RuntimeError as e:
             log.error(
-                f"Caught a runtime error ({e}) during the backward pass for step {self.global_step} with filepaths {self.current_filepaths}, which are associated with the following batched inputs for chains {batch_dict['chains']}: {[batch_dict[k] for k in batch_dict]}."
+                f"Caught a runtime error ({e}) during the backward pass for step {self.global_step} with filepaths {self.current_filepaths}, which are associated with the following batched inputs for chains {batch_dict['chains']}: {[(k, batch_dict[k]) for k in batch_dict]}."
             )
             raise e
 
         # clip gradients
 
-        if self.trainer.gradient_clip_val:
-            self.clip_gradients(
-                opt,
-                gradient_clip_val=10.0,
-                gradient_clip_algorithm="norm",
-            )
+        self.clip_gradients(
+            opt,
+            gradient_clip_val=10.0,
+            gradient_clip_algorithm="norm",
+        )
 
         opt.step()
 
