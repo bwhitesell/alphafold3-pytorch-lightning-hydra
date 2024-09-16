@@ -57,7 +57,7 @@ A visualization of the molecules of life used in the repository can be seen and 
 
 - <a href="https://github.com/ptosco">Paolo</a> for proposing the `PDB neutral stable molecule` hypothesis!
 
-- <a href="https://github.com/dhuvik">Dhuvi</a> for fixing a bug related to metal ion molecule ID assignment for `Alphafold3Inputs`!
+- <a href="https://github.com/dhuvik">Dhuvi</a> for fixing a bug related to metal ion molecule ID assignment for `Alphafold3Inputs` and for taking on the logic for translating `Alphafold3Inputs` to `Biomolecules` for saving inference samples to mmCIF files!
 
 - Tom (from the Discord channel) for identifying a discrepancy between this codebase's distogram and template unit vector computations and those of OpenFold (and <a href="https://github.com/vandrw">Andrei</a> for helping address the distogram issue)!
 
