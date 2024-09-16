@@ -6,7 +6,7 @@ optimizer:
   lr: 1.8e-3
   betas: [0.9, 0.95]
   eps: 1e-8
-  foreach: false
+  # foreach: false
 
 scheduler:
   _target_: torch.optim.lr_scheduler.LambdaLR
@@ -32,7 +32,6 @@ net:
 
 # training parameters
 compile: false # compile model for faster training with PyTorch 2.0
-skip_invalid_gradient_updates: true
 
 # model parameters
 parameters_initialized_from: random # NOTE: must be one of (initial_training: 'random', fine_tuning_1: 'initial_training', fine_tuning_2: 'fine_tuning_1', fine_tuning_3: 'fine_tuning_2'), proceeding from left to right following Table 6 in the paper
