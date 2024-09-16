@@ -571,6 +571,26 @@ class Alphafold3LitModule(LightningModule):
                 sampled_atom_positions=sampled_atom_positions,
             )
 
+    def on_after_backward(self):
+        """Skip updates in case of unstable gradients.
+
+        Reference: https://github.com/Lightning-AI/lightning/issues/4956
+        """
+        if self.hparams.skip_invalid_gradient_updates:
+            valid_gradients = True
+            for _, param in self.named_parameters():
+                if exists(param.grad):
+                    valid_gradients = not (
+                        torch.isnan(param.grad).any() or torch.isinf(param.grad).any()
+                    )
+                    if not valid_gradients:
+                        break
+            if not valid_gradients:
+                log.warning(
+                    f"Detected `inf` or `nan` values in gradients at global step {self.trainer.global_step}. Not updating model parameters."
+                )
+                self.zero_grad()
+
     @typecheck
     def setup(self, stage: str) -> None:
         """Lightning hook that is called at the beginning of fit (train + validate), validate,
