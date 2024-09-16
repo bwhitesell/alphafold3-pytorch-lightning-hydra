@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ######################### Batch Headers #########################
-#SBATCH --partition=gpu-dev                                   # use partition `gpu` for GPU nodes
+#SBATCH --partition=gpu                                       # use partition `gpu` for GPU nodes
 #SBATCH --account=pawsey1018-gpu                              # IMPORTANT: use your own project and the -gpu suffix
 #SBATCH --nodes=2                                             # NOTE: this needs to match Lightning's `Trainer(num_nodes=...)`
 #SBATCH --ntasks-per-node=1                                   # NOTE: this needs to be `1` on SLURM clusters when using Lightning's `ddp_spawn` strategy`; otherwise, set to match Lightning's quantity of `Trainer(devices=...)`
@@ -38,7 +38,7 @@ echo "Rendezvous Node IP: $RDZV_HOST"
 # For what `srun` is concerned, only one task is created, the `torchrun` process.
 
 # Define WandB run ID
-RUN_ID="m1j0b322" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="g0h7stao" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun -c 64 singularity exec \
