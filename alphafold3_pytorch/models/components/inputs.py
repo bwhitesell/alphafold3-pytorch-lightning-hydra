@@ -2738,6 +2738,11 @@ def pdb_input_to_molecule_input(
     chain_index = torch.from_numpy(biomol.chain_index)
     num_tokens = len(biomol.atom_mask)
 
+    if exists(i.max_length):
+        assert (
+            num_tokens <= i.max_length
+        ), f"The number of tokens ({num_tokens}) in {filepath} exceeds the maximum initial length allowed ({i.max_length})."
+
     # create unique chain-residue index pairs to identify the first atom of each residue
     chain_residue_index = np.array(list(zip(biomol.chain_index, biomol.residue_index)))
 
@@ -2921,11 +2926,6 @@ def pdb_input_to_molecule_input(
 
         except Exception as e:
             raise ValueError(f"Failed to crop the biomolecule for input {file_id} due to: {e}")
-
-    if exists(i.max_length):
-        assert (
-            num_tokens <= i.max_length
-        ), f"The number of tokens ({num_tokens}) in {filepath} exceeds the maximum length allowed ({i.max_length})."
 
     # retrieve features directly available within the `Biomolecule` object
 
