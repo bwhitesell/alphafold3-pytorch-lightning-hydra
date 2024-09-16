@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ######################### Batch Headers #########################
-#SBATCH --partition=gpu                                       # use partition `gpu` for GPU nodes
+#SBATCH --partition=gpu-dev                                   # use partition `gpu` for GPU nodes
 #SBATCH --account=pawsey1018-gpu                              # IMPORTANT: use your own project and the -gpu suffix
 #SBATCH --nodes=1                                             # NOTE: this needs to match Lightning's `Trainer(num_nodes=...)`
 #SBATCH --gres=gpu:1                                          # NOTE: requests any GPU resource(s)

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ######################### Batch Headers #########################
-#SBATCH --partition=gpu                                       # use partition `gpu` for GPU nodes
+#SBATCH --partition=gpu-dev                                   # use partition `gpu` for GPU nodes
 #SBATCH --account=pawsey1018-gpu                              # IMPORTANT: use your own project and the -gpu suffix
 #SBATCH --nodes=2                                             # NOTE: this needs to match Lightning's `Trainer(num_nodes=...)`
 #SBATCH --ntasks-per-node=1                                   # NOTE: this needs to be `1` on SLURM clusters when using Lightning's `ddp_spawn` strategy`; otherwise, set to match Lightning's quantity of `Trainer(devices=...)`
