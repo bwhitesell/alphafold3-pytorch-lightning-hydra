@@ -11,8 +11,8 @@ defaults:
   - override /environment: default
   - override /logger: wandb
   - override /model: alphafold3
-  - override /strategy: fsdp
-  - override /trainer: fsdp
+  - override /strategy: deepspeed
+  - override /trainer: deepspeed
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
@@ -48,6 +48,6 @@ model:
   diffusion_add_bond_loss: true
   net:
     plm_embeddings: ${resolve_plm_embeddings_tuple:[esm2_t33_650M_UR50D,prostT5]}
-
-strategy:
-  ignored_modules: [network.plms]
+# NOTE: the following argument is only needed when using the `fsdp` strategy
+# strategy:
+#   ignored_modules: [network.plms]

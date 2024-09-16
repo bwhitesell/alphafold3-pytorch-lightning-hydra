@@ -182,6 +182,9 @@ class Alphafold3LitModule(LightningModule):
             for (k, v) in loss_breakdown._asdict().items()
         }
         self.log_dict(
+            # NOTE: we set `sync_dist=True` only for `loss_breakdown`,
+            # since it is not wrapped in a `torchmetric.Metric` object
+            # which would automatically handle distributed synchronization
             loss_breakdown_dict,
             on_step=True,
             on_epoch=True,
