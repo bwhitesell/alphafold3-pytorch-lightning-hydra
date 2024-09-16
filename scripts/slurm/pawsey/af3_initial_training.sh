@@ -38,7 +38,7 @@ echo "Rendezvous Node IP: $RDZV_HOST"
 # For what `srun` is concerned, only one task is created, the `torchrun` process.
 
 # Define WandB run ID
-RUN_ID="g0h7stao" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="7q00ynrq" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun -c 64 singularity exec \
