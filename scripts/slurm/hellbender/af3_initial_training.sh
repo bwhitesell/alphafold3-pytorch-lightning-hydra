@@ -3,11 +3,11 @@
 ######################### Batch Headers #########################
 #SBATCH --partition=chengji-lab-gpu                           # use reserved partition `chengji-lab-gpu`
 #SBATCH --account=chengji-lab                                 # NOTE: this must be specified to use the reserved partition above
-#SBATCH --nodes=4                                             # NOTE: this needs to match Lightning's `Trainer(num_nodes=...)`
+#SBATCH --nodes=3                                             # NOTE: this needs to match Lightning's `Trainer(num_nodes=...)`
 #SBATCH --gres=gpu:A100:4                                     # e.g., request A/H100 GPU resource(s)
 #SBATCH --ntasks-per-node=4                                   # NOTE: this needs to be `1` on SLURM clusters when using Lightning's `ddp_spawn` strategy`; otherwise, set to match Lightning's quantity of `Trainer(devices=...)`
 #SBATCH --mem=0                                               # NOTE: use `--mem=0` to request all memory "available" on the assigned node
-#SBATCH -t 2-00:00:00                                         # time limit for the job (up to two days: `2-00:00:00`)
+#SBATCH -t 28-00:00:00                                        # time limit for the job (up to 28 days: `28-00:00:00`)
 #SBATCH -J af3_initial_training                               # job name
 #SBATCH --output=J-%x.%j.out                                  # output log file
 #SBATCH --error=J-%x.%j.err                                   # error log file
@@ -27,7 +27,7 @@ source "/home/$USER/mambaforge/etc/profile.d/conda.sh"
 conda activate alphafold3-pytorch/
 
 # Establish environment variables
-TARGET_BATCH_SIZE=256
+TARGET_BATCH_SIZE=240
 
 export TORCH_HOME="/cluster/pixstor/chengji-lab/$USER/torch_cache"
 export HF_HOME="/cluster/pixstor/chengji-lab/$USER/hf_cache"
@@ -48,7 +48,7 @@ bash -c "
     experiment=af3_initial_training \
     trainer.accumulate_grad_batches=$((TARGET_BATCH_SIZE / (SLURM_JOB_NUM_NODES * SLURM_NTASKS_PER_NODE))) \
     trainer.devices=$SLURM_NTASKS_PER_NODE \
-    trainer.max_epochs=2 \
+    trainer.max_epochs=3 \
     trainer.num_nodes=$SLURM_JOB_NUM_NODES \
 "
 
