@@ -3791,7 +3791,7 @@ def maybe_transform_to_atom_input(i: Any, raise_exception: bool = False) -> Atom
     try:
         return maybe_to_atom_fn(i)
     except Exception as e:
-        logger.error(f"Failed to convert input {i} to AtomInput due to: {e}")
+        logger.warning(f"Failed to convert input {i} to AtomInput due to: {e}")
         if raise_exception:
             raise e
         return None
