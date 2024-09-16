@@ -121,11 +121,13 @@ class Alphafold3LitModule(LightningModule):
         batch_dict = batch.dict()
         batch_model_forward_dict = self.prepare_batch_dict(batch.model_forward_dict())
 
+        # cache the current filepaths for logging errors
         filepaths = (
             list(batch_dict["filepath"])
             if "filepath" in batch_dict and exists(batch_dict["filepath"])
             else None
         )
+        self.current_filepaths = filepaths
 
         return self.network(
             **batch_model_forward_dict,
@@ -573,6 +575,19 @@ class Alphafold3LitModule(LightningModule):
                 insert_alphafold_mmcif_metadata=True,
                 sampled_atom_positions=sampled_atom_positions,
             )
+
+    def backward(self, loss: Tensor):
+        """Perform a backward pass on the loss tensor while catching runtime errors.
+
+        :param loss: The loss tensor.
+        """
+        try:
+            loss.backward()
+        except RuntimeError as e:
+            log.error(
+                f"Caught a runtime error during the backward pass for step {self.global_step} with {self.current_filepaths}: {e}"
+            )
+            raise e
 
     def on_after_backward(self):
         """Skip updates in case of unstable gradients.
