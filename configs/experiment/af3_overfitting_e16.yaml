@@ -1,0 +1,95 @@
+# @package _global_
+
+# lists the experiment parameters corresponding to an "Overfitting Experiment" with 16 training examples
+
+# to execute this experiment run:
+# python train.py experiment=af3_overfitting_e16
+
+defaults:
+  - override /callbacks: default
+  - override /data: pdb
+  - override /environment: default
+  - override /logger: wandb
+  - override /model: alphafold3
+  - override /strategy: fsdp
+  - override /trainer: fsdp
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+tags:
+  [
+    "pdb",
+    "alphafold3",
+    "overfitting",
+    3wih",
+    6jx6",
+    5w4a",
+    5g1x",
+    2nvn",
+    5k5r",
+    6zqn",
+    1np0",
+    3glg",
+    6kxy",
+    7eeb",
+    2ms6",
+    7nhn",
+    1zme",
+    1q8b",
+    4v91",
+  ]
+
+seed: 12345
+
+# overfitting experiment parameters:
+
+data:
+  crop_size: 384
+  max_msas_per_chain: 16384
+  max_num_msa_tokens: 41943040
+  max_templates_per_chain: 20
+  num_templates_per_chain: 4
+  max_num_template_tokens: 5120
+
+  overfitting_train_examples: true
+  sample_only_pdb_ids:
+    [
+      3wih-assembly1,
+      6jx6-assembly1,
+      5w4a-assembly1,
+      5g1x-assembly1,
+      2nvn-assembly1,
+      5k5r-assembly1,
+      6zqn-assembly1,
+      1np0-assembly1,
+      3glg-assembly1,
+      6kxy-assembly1,
+      7eeb-assembly1,
+      2ms6-assembly1,
+      7nhn-assembly1,
+      1zme-assembly1,
+      1q8b-assembly1,
+      4v91-assembly1,
+    ]
+
+logger:
+  wandb:
+    entity: bml-lab
+    group: "af3-overfitting-experiments"
+    tags: ${tags}
+    name: e16-${now:%Y%m%d%H%M%S}
+
+model:
+  diffusion_add_smooth_lddt_loss: true
+  diffusion_add_bond_loss: true
+  visualize_val_samples_every_n_steps: 1
+
+trainer:
+  min_steps: null
+  max_steps: -1
+  min_epochs: 1 # NOTE: prevents early stopping
+  max_epochs: 20000
+  check_val_every_n_epoch: null
+  val_check_interval: 50
+  log_every_n_steps: 1
