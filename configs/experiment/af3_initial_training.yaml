@@ -48,3 +48,6 @@ model:
   diffusion_add_bond_loss: true
   net:
     plm_embeddings: ${resolve_plm_embeddings_tuple:[esm2_t33_650M_UR50D,prostT5]}
+
+strategy:
+  ignored_modules: [network.plms]
