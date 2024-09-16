@@ -1821,8 +1821,12 @@ def to_inference_mmcif(
             pos = res_atom_positions[0][-1]
             mmcif_dict["_atom_site.group_PDB"].append("ATOM")
             mmcif_dict["_atom_site.id"].append(str(atom_index))
-            mmcif_dict["_atom_site.type_symbol"].append(type_symbol)  # noqa: F821
-            mmcif_dict["_atom_site.label_atom_id"].append(unique_atom_name)  # noqa: F821
+            mmcif_dict["_atom_site.type_symbol"].append(
+                type_symbol  # noqa: F821 - TODO: Fix this.
+            )
+            mmcif_dict["_atom_site.label_atom_id"].append(
+                unique_atom_name  # noqa: F821 - TODO: Fix this.
+            )
             mmcif_dict["_atom_site.label_alt_id"].append(".")
             mmcif_dict["_atom_site.label_comp_id"].append(res_name_3)
             mmcif_dict["_atom_site.label_asym_id"].append(chain_ids[unique_chain_index[i]])
@@ -1836,11 +1840,15 @@ def to_inference_mmcif(
             mmcif_dict["_atom_site.Cartn_y"].append(f"{pos[1]:.3f}")
             mmcif_dict["_atom_site.Cartn_z"].append(f"{pos[2]:.3f}")
             mmcif_dict["_atom_site.occupancy"].append("1.00")
-            mmcif_dict["_atom_site.B_iso_or_equiv"].append(f"{b_factor:.2f}")  # noqa: F821
+            mmcif_dict["_atom_site.B_iso_or_equiv"].append(
+                f"{b_factor:.2f}"  # noqa: F821 - TODO: Fix this.
+            )
             mmcif_dict["_atom_site.auth_seq_id"].append(str(unique_residue_index[i]))
             mmcif_dict["_atom_site.auth_comp_id"].append(res_name_3)
             mmcif_dict["_atom_site.auth_asym_id"].append(chain_ids[unique_chain_index[i]])
-            mmcif_dict["_atom_site.auth_atom_id"].append(unique_atom_name)  # noqa: F821
+            mmcif_dict["_atom_site.auth_atom_id"].append(
+                unique_atom_name  # noqa: F821 - TODO: Fix this.
+            )
             mmcif_dict["_atom_site.pdbx_PDB_model_num"].append("1")
             atom_index += 1
             continue
