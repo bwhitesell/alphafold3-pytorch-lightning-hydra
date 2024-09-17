@@ -205,12 +205,13 @@ class Alphafold3LitModule(LightningModule):
                 self.sample_and_visualize(batch, batch_idx, phase="train")
 
         opt = self.optimizers()
-        opt.zero_grad()
 
         # backprop loss and take a step with the optimizer
 
         try:
+            opt.zero_grad()
             self.manual_backward(loss)
+
             self.clip_gradients(
                 opt,
                 gradient_clip_val=10.0,
