@@ -211,21 +211,18 @@ class Alphafold3LitModule(LightningModule):
 
         try:
             self.manual_backward(loss)
-        except RuntimeError as e:
+            self.clip_gradients(
+                opt,
+                gradient_clip_val=10.0,
+                gradient_clip_algorithm="norm",
+            )
+            opt.step()
+
+        except Exception as e:
             log.error(
-                f"Caught a runtime error ({e}) during the backward pass for step {self.global_step} with filepaths {self.current_filepaths}, which are associated with the following batched inputs: {[(k, batch_dict[k], (batch_dict[k].shape if torch.is_tensor(batch_dict[k]) else None)) for k in batch_dict]}. Zeroing gradients and skipping this update step."
+                f"Caught an exception ({e}) during the backward pass for step {self.global_step} with filepaths {self.current_filepaths}, which are associated with the following batched inputs: {[(k, batch_dict[k], (batch_dict[k].shape if torch.is_tensor(batch_dict[k]) else None)) for k in batch_dict]}. Zeroing gradients and skipping this update step."
             )
             opt.zero_grad()
-
-        # clip gradients
-
-        self.clip_gradients(
-            opt,
-            gradient_clip_val=10.0,
-            gradient_clip_algorithm="norm",
-        )
-
-        opt.step()
 
     @typecheck
     def validation_step(self, batch: BatchedAtomInput, batch_idx: int) -> None:
