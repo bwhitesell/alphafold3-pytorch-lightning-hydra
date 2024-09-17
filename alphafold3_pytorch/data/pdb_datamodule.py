@@ -482,6 +482,7 @@ class PDBDataModule(LightningDataModule):
         shuffle_train_val_test_subsets: bool = True,
         overfitting_train_examples: bool = False,
         ablate_weighted_pdb_sampler: bool = False,
+        filter_out_pdb_ids: List[str] | None = None,
         sample_only_pdb_ids: List[str] | None = None,
         batch_size: int = 1,
         num_workers: int = 0,
