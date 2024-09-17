@@ -51,8 +51,8 @@ data:
   max_templates_per_chain: 20
   num_templates_per_chain: 4
   max_num_template_tokens: 5120
-  max_train_length: null
-  max_val_length: 1280
+  max_train_length: 2560
+  max_val_length: 2560
 
   overfitting_train_examples: true
   sample_only_pdb_ids:
