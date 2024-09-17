@@ -1450,3 +1450,7 @@ def test_unresolved_protein_rasa():
     )
 
     assert exists(unresolved_rasa)
+
+
+if __name__ == "__main__":
+    test_alphafold3_with_plm_embeddings()
