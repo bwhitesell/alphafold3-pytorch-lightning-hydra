@@ -100,7 +100,8 @@ class Alphafold3LitModule(LightningModule):
         self.val_top_ranked_lddt = MeanMetric()
         self.test_top_ranked_lddt = MeanMetric()
 
-        # Important: This property activates manual optimization.
+        # activate manual optimization for fault-tolerant backward passes
+
         self.automatic_optimization = False
 
     @typecheck
@@ -204,7 +205,8 @@ class Alphafold3LitModule(LightningModule):
             if batch_idx % self.hparams.visualize_train_samples_every_n_steps == 0:
                 self.sample_and_visualize(batch, batch_idx, phase="train")
 
-        # backprop loss and take a step with the optimizer and learning rate scheduler
+        # backprop loss and take a step with the optimizer and learning rate scheduler,
+        # while handling e.g., anomalous AMD HIP errors during backpropagation
 
         opt = self.optimizers()
         sch = self.lr_schedulers()
