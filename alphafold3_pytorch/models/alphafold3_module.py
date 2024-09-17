@@ -204,9 +204,10 @@ class Alphafold3LitModule(LightningModule):
             if batch_idx % self.hparams.visualize_train_samples_every_n_steps == 0:
                 self.sample_and_visualize(batch, batch_idx, phase="train")
 
-        opt = self.optimizers()
+        # backprop loss and take a step with the optimizer and learning rate scheduler
 
-        # backprop loss and take a step with the optimizer
+        opt = self.optimizers()
+        sch = self.lr_schedulers()
 
         try:
             opt.zero_grad()
@@ -217,7 +218,9 @@ class Alphafold3LitModule(LightningModule):
                 gradient_clip_val=10.0,
                 gradient_clip_algorithm="norm",
             )
+
             opt.step()
+            sch.step()
 
         except Exception as e:
             log.error(
