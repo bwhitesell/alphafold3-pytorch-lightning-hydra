@@ -105,6 +105,7 @@ from alphafold3_pytorch.models.components.inputs import (
     IS_METAL_ION,
     IS_METAL_ION_INDEX,
     IS_MOLECULE_TYPES,
+    IS_NON_PROTEIN_INDICES,
     IS_PROTEIN,
     IS_PROTEIN_INDEX,
     IS_RNA,
@@ -6085,6 +6086,7 @@ class Alphafold3(Module):
         plm_embeddings: PLMEmbedding | tuple[PLMEmbedding, ...] | None = None,
         plm_kwargs: dict | tuple[dict, ...] | None = None,
         constraint_embeddings: int | None = None,
+        constraint_dropout: float = 0.0,
     ):
         super().__init__()
 
@@ -6116,7 +6118,11 @@ class Alphafold3(Module):
         self.constraint_embeddings = constraint_embeddings
 
         if exists(constraint_embeddings):
-            self.constraint_embeds = LinearNoBias(constraint_embeddings, dim_pairwise)
+            constraint_modules = [
+                LinearNoBias(constraint_embeddings, dim_pairwise),
+                (nn.Dropout(constraint_dropout) if constraint_dropout else nn.Identity()),
+            ]
+            self.constraint_embeds = nn.Sequential(*constraint_modules)
 
         # residue or nucleotide modifications
 
@@ -6783,9 +6789,9 @@ class Alphafold3(Module):
 
         if exists(self.plms):
             molecule_aa_ids = torch.where(
-                molecule_ids < 0,
-                NUM_HUMAN_AMINO_ACIDS,
-                molecule_ids.clamp(max=NUM_HUMAN_AMINO_ACIDS),
+                is_molecule_types[..., IS_NON_PROTEIN_INDICES].any(dim=-1),
+                -1,
+                molecule_ids,
             )
 
             plm_embeds = [plm(molecule_aa_ids) for plm in self.plms]

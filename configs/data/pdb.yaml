@@ -14,6 +14,7 @@ num_templates_per_chain: null # if specified, the effective number number of tem
 max_num_template_tokens: null # if specified, the maximum number of template sequence tokens to include per structure (e.g., for throughput concerns)
 max_train_length: null # NOTE: if specified, the maximum allowed (pre-cropping) length of any training example
 max_val_length: null # NOTE: if specified, the maximum allowed length of any validation example
+train_cutoff_date: "2021-01-12" # if specified, the effective cutoff date for training data
 kalign_binary_path: ${oc.env:CONDA_PREFIX}/bin/kalign # if specified, the path to a local Kalign3 executable
 sampling_weight_for_disorder_pdb_distillation: 0.02 # NOTE: must be one of (initial_training: 0.02, fine_tuning_1: 0.01, fine_tuning_2: 0.02, fine_tuning_3: 0.02), proceeding from left to right following Table 6 in the paper
 train_on_transcription_factor_distillation_sets: false # NOTE: must be one of (initial_training: False, fine_tuning_1: False, fine_tuning_2: True, fine_tuning_3: True), proceeding from left to right following Table 6 in the paper

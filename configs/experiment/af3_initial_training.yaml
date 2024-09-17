@@ -48,6 +48,7 @@ model:
   diffusion_add_bond_loss: true
   net:
     plm_embeddings: ${resolve_plm_embeddings_tuple:[esm2_t33_650M_UR50D,prostT5]}
+    constraint_dropout: 0.1
 # NOTE: the following argument is only needed when using the `fsdp` strategy
 # strategy:
 #   ignored_modules: [network.plms]
