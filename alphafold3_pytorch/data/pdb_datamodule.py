@@ -531,6 +531,14 @@ class PDBDataModule(LightningDataModule):
             list(sample_only_pdb_ids) if exists(sample_only_pdb_ids) else None
         )
 
+        filter_out_pdb_ids = (
+            # filter out specific PDB IDs as requested
+            set(self.hparams.filter_out_pdb_ids)
+            if exists(self.hparams.filter_out_pdb_ids)
+            else None
+        )
+        filter_out_pdb_ids_list = list(filter_out_pdb_ids) if exists(filter_out_pdb_ids) else None
+
         # data paths for each split
         for split in ("train", "val", "test"):
             path_split = split
@@ -600,6 +608,7 @@ class PDBDataModule(LightningDataModule):
                 chain_mapping_paths=self.train_chain_mapping_paths,
                 interface_mapping_path=self.train_interface_mapping_path,
                 batch_size=1,
+                pdb_ids_to_skip=filter_out_pdb_ids_list,
                 pdb_ids_to_keep=sample_only_pdb_ids_list,
             )
         )
@@ -622,6 +631,7 @@ class PDBDataModule(LightningDataModule):
             inference=False,
             constraints=self.hparams.constraints,
             constraints_ratio=self.hparams.constraints_ratio,
+            filter_out_pdb_ids=filter_out_pdb_ids,
             sample_only_pdb_ids=sample_only_pdb_ids,
             return_atom_inputs=True,
             msa_dir=self.train_msa_dir,
@@ -636,6 +646,7 @@ class PDBDataModule(LightningDataModule):
                 chain_mapping_paths=self.val_chain_mapping_paths,
                 interface_mapping_path=self.val_interface_mapping_path,
                 batch_size=1,
+                pdb_ids_to_skip=filter_out_pdb_ids_list,
                 pdb_ids_to_keep=sample_only_pdb_ids_list,
             )
         )
@@ -658,6 +669,7 @@ class PDBDataModule(LightningDataModule):
             inference=False,
             constraints=self.hparams.constraints,
             constraints_ratio=self.hparams.constraints_ratio,
+            filter_out_pdb_ids=filter_out_pdb_ids,
             sample_only_pdb_ids=sample_only_pdb_ids,
             return_atom_inputs=True,
             msa_dir=self.val_msa_dir,
@@ -672,6 +684,7 @@ class PDBDataModule(LightningDataModule):
                 chain_mapping_paths=self.test_chain_mapping_paths,
                 interface_mapping_path=self.test_interface_mapping_path,
                 batch_size=1,
+                pdb_ids_to_skip=filter_out_pdb_ids_list,
                 pdb_ids_to_keep=sample_only_pdb_ids_list,
             )
         )
@@ -693,6 +706,7 @@ class PDBDataModule(LightningDataModule):
             inference=False,
             constraints=self.hparams.constraints,
             constraints_ratio=self.hparams.constraints_ratio,
+            filter_out_pdb_ids=filter_out_pdb_ids,
             sample_only_pdb_ids=sample_only_pdb_ids,
             return_atom_inputs=True,
             msa_dir=self.test_msa_dir,
