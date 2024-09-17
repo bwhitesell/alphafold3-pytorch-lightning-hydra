@@ -475,7 +475,7 @@ class PDBDataModule(LightningDataModule):
         train_on_transcription_factor_distillation_sets: bool = False,
         pdb_distillation: bool | None = None,
         constraints: List[str] | None = None,
-        constraints_ratio: float = 0.5,
+        constraints_ratio: float = 0.1,
         max_number_of_chains: int = 20,
         atoms_per_window: int | None = None,
         map_dataset_input_fn: Callable | None = None,

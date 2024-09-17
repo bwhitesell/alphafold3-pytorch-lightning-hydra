@@ -180,22 +180,6 @@ def resolve_omegaconf_classes(module_name: str, class_names: List[str]) -> Set[A
     return classes
 
 
-def resolve_constraint_embeddings(constraint_embeddings: List[str] | None) -> int | None:
-    """Resolve total constraint embedding dimensionality from a list of constraint descriptor
-    strings."""
-    if not constraint_embeddings:
-        return None
-
-    num_embeddings = 0
-    for constraint_embedding in constraint_embeddings:
-        if constraint_embedding in CONSTRAINT_DIMS:
-            num_embeddings += CONSTRAINT_DIMS[constraint_embedding]
-        else:
-            raise ValueError(f"Error: {constraint_embedding} is not a valid constraint type.")
-
-    return num_embeddings
-
-
 def int_divide(x: int, y: int, raise_exception: bool = False) -> int:
     """Perform integer division on `x` and `y`.
 
@@ -219,10 +203,6 @@ def register_custom_omegaconf_resolvers():
     OmegaConf.register_new_resolver(
         "resolve_classes",
         lambda module_name, class_names: resolve_omegaconf_classes(module_name, class_names),
-    )
-    OmegaConf.register_new_resolver(
-        "resolve_constraint_embeddings",
-        lambda constraint_embeddings: resolve_constraint_embeddings(constraint_embeddings),
     )
     OmegaConf.register_new_resolver(
         "resolve_plm_embeddings_tuple",

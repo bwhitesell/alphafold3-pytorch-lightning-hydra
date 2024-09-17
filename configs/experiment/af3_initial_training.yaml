@@ -31,7 +31,7 @@ data:
   num_templates_per_chain: 4
   max_num_template_tokens: 5120
   max_val_length: 2560
-  constraints: [binding_site]
+  constraints: [pocket, contact, docking]
 
 logger:
   wandb:
@@ -48,7 +48,6 @@ model:
   diffusion_add_bond_loss: true
   net:
     plm_embeddings: ${resolve_plm_embeddings_tuple:[esm2_t33_650M_UR50D,prostT5]}
-    constraint_dropout: 0.1
 # NOTE: the following argument is only needed when using the `fsdp` strategy
 # strategy:
 #   ignored_modules: [network.plms]
