@@ -133,6 +133,8 @@ class Alphafold3LitModule(LightningModule):
         )
         self.current_filepaths = filepaths
 
+        log.info(f"Forward pass for step {self.global_step} with filepaths: {filepaths}")
+
         return self.network(
             **batch_model_forward_dict,
             return_loss_breakdown=True,
