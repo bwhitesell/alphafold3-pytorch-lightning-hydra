@@ -230,6 +230,8 @@ class Alphafold3LitModule(LightningModule):
             )
             opt.zero_grad()
 
+        return loss
+
     @typecheck
     def validation_step(self, batch: BatchedAtomInput, batch_idx: int) -> None:
         """Perform a single validation step on a batch of data from the validation set.
