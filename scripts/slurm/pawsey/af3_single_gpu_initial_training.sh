@@ -23,7 +23,7 @@ export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hy
 export OMP_NUM_THREADS=8
 
 # Define WandB run ID
-RUN_ID="vas0lj0b"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="was0lj0b"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun singularity exec \
@@ -34,7 +34,7 @@ srun singularity exec \
     "$SINGULARITY_CONTAINER" \
     bash -c "
         /usr/bin/kalign --version \
-        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS \
+        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS AMD_SERIALIZE_KERNEL=3 \
         python3 alphafold3_pytorch/train.py \
         data.batch_size=1 \
         data.kalign_binary_path=/usr/bin/kalign \
