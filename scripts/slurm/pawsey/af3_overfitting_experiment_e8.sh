@@ -56,7 +56,9 @@ srun -c 64 singularity exec \
         alphafold3_pytorch/train.py \
         data.batch_size=$((SLURM_JOB_NUM_NODES*NUM_PYTORCH_PROCESSES)) \
         data.kalign_binary_path=/usr/bin/kalign \
-        environment=torch_elastic \
+        data.num_workers=1 \
+        data.pin_memory=false \
+        data.prefetch_factor=1 \
         experiment=af3_overfitting_e8 \
         trainer.num_nodes=$SLURM_JOB_NUM_NODES \
         trainer.devices=$NUM_PYTORCH_PROCESSES

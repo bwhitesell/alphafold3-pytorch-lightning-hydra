@@ -23,10 +23,10 @@ export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hy
 export OMP_NUM_THREADS=8
 
 # Define WandB run ID
-RUN_ID="fc18mo5y"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="sas0lj0b"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
-srun singularity exec --rocm \
+srun singularity exec \
     --cleanenv \
     -H "$PWD":/home \
     -B alphafold3-pytorch-lightning-hydra:/alphafold3-pytorch-lightning-hydra \
@@ -37,9 +37,10 @@ srun singularity exec --rocm \
         && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS \
         python3 alphafold3_pytorch/train.py \
         data.batch_size=1 \
-        data.num_workers=1 \
-        data.prefetch_factor=1 \
         data.kalign_binary_path=/usr/bin/kalign \
+        data.num_workers=1 \
+        data.pin_memory=false \
+        data.prefetch_factor=1 \
         model.net.diffusion_num_augmentations=4 \
         +model.net.dim_atom=8 \
         +model.net.dim_pairwise=8 \
