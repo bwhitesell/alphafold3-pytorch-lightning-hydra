@@ -38,7 +38,7 @@ echo "Rendezvous Node IP: $RDZV_HOST"
 # For what `srun` is concerned, only one task is created, the `torchrun` process.
 
 # Define WandB run ID
-RUN_ID="fn1w1s1a" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="8pb6bc6m" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun -c 64 singularity exec \
@@ -58,6 +58,9 @@ srun -c 64 singularity exec \
         --rdzv_endpoint=$RDZV_HOST:$RDZV_PORT \
         alphafold3_pytorch/train.py \
         data.batch_size=$((SLURM_JOB_NUM_NODES * NUM_PYTORCH_PROCESSES)) \
+        data.num_workers=1 \
+        data.pin_memory=false \
+        data.prefetch_factor=1 \
         data.kalign_binary_path=/usr/bin/kalign \
         model.net.diffusion_num_augmentations=4 \
         +model.net.dim_atom=8 \
