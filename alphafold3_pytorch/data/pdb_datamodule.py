@@ -455,8 +455,8 @@ class PDBDataModule(LightningDataModule):
     def __init__(
         self,
         data_dir: str = os.path.join("data", "pdb_data"),
-        msa_dir: str = os.path.join("data", "pdb_data", "data_caches", "msa"),
-        templates_dir: str = os.path.join("data", "pdb_data", "data_caches", "template"),
+        msa_dir: str | None = os.path.join("data", "pdb_data", "data_caches", "msa"),
+        templates_dir: str | None = os.path.join("data", "pdb_data", "data_caches", "template"),
         sample_type: Literal["default", "clustered"] = "default",
         contiguous_weight: float = 0.2,
         spatial_weight: float = 0.4,
@@ -564,12 +564,20 @@ class PDBDataModule(LightningDataModule):
             setattr(
                 self,
                 f"{split}_msa_dir",
-                os.path.join(self.hparams.msa_dir, f"{path_split}_msas"),
+                (
+                    os.path.join(self.hparams.msa_dir, f"{path_split}_msas")
+                    if exists(self.hparams.msa_dir)
+                    else None
+                ),
             )
             setattr(
                 self,
                 f"{split}_templates_dir",
-                os.path.join(self.hparams.templates_dir, f"{path_split}_templates"),
+                (
+                    os.path.join(self.hparams.templates_dir, f"{path_split}_templates")
+                    if exists(self.hparams.templates_dir)
+                    else None
+                ),
             )
             setattr(
                 self,
