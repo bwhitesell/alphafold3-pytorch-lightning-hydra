@@ -51,7 +51,7 @@ srun -c 64 singularity exec \
         /usr/bin/kalign --version \
         && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS \
         NCCL_DEBUG=INFO NCCL_DEBUG_SUBSYS=ALL TORCH_DISTRIBUTED_DEBUG=DETAIL TORCH_SHOW_CPP_STACKTRACES=1 \
-        PYTORCH_ROCM_ARCH=gfx90a HSA_OVERRIDE_GFX_VERSION=9.0.0 \
+        PYTORCH_ROCM_ARCH=gfx90a \
         torchrun \
         --nnodes=$SLURM_JOB_NUM_NODES \
         --nproc_per_node=$NUM_PYTORCH_PROCESSES \
