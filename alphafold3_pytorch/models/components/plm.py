@@ -74,7 +74,9 @@ class ESMWrapper(Module):
         :param aa_ids: A batch of amino acid residue indices.
         :return: The PLM embeddings for the input sequences.
         """
-        device, repr_layer = self.dummy.device, self.repr_layer
+        device, seq_len, repr_layer = self.dummy.device, aa_ids.shape[-1], self.repr_layer
+
+        # following the readme at https://github.com/facebookresearch/esm
 
         sequence_data = [
             (
@@ -84,18 +86,21 @@ class ESMWrapper(Module):
             for mol_idx, ids in enumerate(aa_ids)
         ]
 
+        # encode to IDs
+
         _, _, batch_tokens = self.batch_converter(sequence_data)
         batch_tokens = batch_tokens.to(device)
+
+        # forward through plm
 
         self.model.eval()
         results = self.model(batch_tokens, repr_layers=[repr_layer])
 
-        token_representations = results["representations"][repr_layer]
+        embeddings = results["representations"][repr_layer]
 
-        sequence_representations = []
-        for i, (_, seq) in enumerate(sequence_data):
-            sequence_representations.append(token_representations[i, 1 : len(seq) + 1])
-        plm_embeddings = torch.stack(sequence_representations, dim=0)
+        # remove prefix
+
+        plm_embeddings = embeddings[:, 1 : (seq_len + 1)]
 
         return plm_embeddings
 
@@ -125,21 +130,21 @@ class ProstT5Wrapper(Module):
         """
         device, seq_len = self.dummy.device, aa_ids.shape[-1]
 
-        str_sequences = [
+        # following the readme at https://github.com/mheinzinger/ProstT5
+
+        sequence_data = [
             join([(PROST_T5_MASK_TOKEN if i == -1 else restypes[i]) for i in ids])
             for ids in aa_ids
         ]
 
-        # following the readme at https://github.com/mheinzinger/ProstT5
-
-        str_sequences = [
-            join(list(re.sub(r"[UZOB]", "X", str_seq)), " ") for str_seq in str_sequences
+        sequence_data = [
+            join(list(re.sub(r"[UZOB]", "X", str_seq)), " ") for str_seq in sequence_data
         ]
 
         # encode to ids
 
         inputs = self.tokenizer.batch_encode_plus(
-            str_sequences, add_special_tokens=True, padding="longest", return_tensors="pt"
+            sequence_data, add_special_tokens=True, padding="longest", return_tensors="pt"
         ).to(device)
 
         # forward through plm
@@ -148,8 +153,8 @@ class ProstT5Wrapper(Module):
 
         # remove prefix
 
-        plm_embedding = embeddings.last_hidden_state[:, 1 : (seq_len + 1)]
-        return plm_embedding
+        plm_embeddings = embeddings.last_hidden_state[:, 1 : (seq_len + 1)]
+        return plm_embeddings
 
 
 # PLM embedding type and registry

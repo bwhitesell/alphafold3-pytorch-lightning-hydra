@@ -323,6 +323,7 @@ dependencies:
       - mmtf-python==1.1.3
       - msgpack==1.0.8
       - multidict==6.0.5
+      - multimolecule==0.0.4
       - multipledispatch==1.0.0
       - nest-asyncio==1.6.0
       - networkx==3.2.1

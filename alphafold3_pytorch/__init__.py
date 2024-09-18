@@ -205,8 +205,8 @@ def register_custom_omegaconf_resolvers():
         lambda module_name, class_names: resolve_omegaconf_classes(module_name, class_names),
     )
     OmegaConf.register_new_resolver(
-        "resolve_plm_embeddings_tuple",
-        lambda plm_embeddings: tuple(plm_embeddings),
+        "resolve_list_as_tuple",
+        lambda object_list: tuple(object_list),
     )
     OmegaConf.register_new_resolver("add", lambda x, y: x + y)
     OmegaConf.register_new_resolver("subtract", lambda x, y: x - y)

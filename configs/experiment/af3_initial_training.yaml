@@ -48,7 +48,8 @@ model:
   diffusion_add_smooth_lddt_loss: true
   diffusion_add_bond_loss: true
   net:
-    plm_embeddings: ${resolve_plm_embeddings_tuple:[esm2_t33_650M_UR50D,prostT5]}
+    plm_embeddings: ${resolve_list_as_tuple:[esm2_t33_650M_UR50D,prostT5]}
+    nlm_embeddings: ${resolve_list_as_tuple:[rinalmo]}
 # NOTE: the following argument is only needed when using the `fsdp` strategy
 # strategy:
 #   ignored_modules: [network.plms]

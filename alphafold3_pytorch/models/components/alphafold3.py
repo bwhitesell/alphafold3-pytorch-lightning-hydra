@@ -22,7 +22,8 @@ dmi - feature dimension (msa input)
 dmf - additional msa feats derived from msa (has_deletion and deletion_value)
 dtf - additional token feats derived from msa (profile and deletion_mean)
 dac - additional pairwise token constraint embeddings
-dpe - additional protein language model embeddings from esm
+dpe - additional protein language model embeddings
+dne - additional nucleotide language model embeddings
 t - templates
 s - msa
 r - registers
@@ -108,17 +109,27 @@ from alphafold3_pytorch.models.components.inputs import (
     IS_METAL_ION,
     IS_METAL_ION_INDEX,
     IS_MOLECULE_TYPES,
+    IS_NA_INDICES,
+    IS_NON_NA_INDICES,
     IS_NON_PROTEIN_INDICES,
     IS_PROTEIN,
     IS_PROTEIN_INDEX,
     IS_RNA,
     IS_RNA_INDEX,
+    MAX_DNA_NUCLEOTIDE_ID,
+    MIN_RNA_NUCLEOTIDE_ID,
+    MISSING_RNA_NUCLEOTIDE_ID,
     NUM_HUMAN_AMINO_ACIDS,
     NUM_MOLECULE_IDS,
     NUM_MSA_ONE_HOT,
     Alphafold3Input,
     BatchedAtomInput,
     hard_validate_atom_indices_ascending,
+)
+from alphafold3_pytorch.models.components.nlm import (
+    NLMEmbedding,
+    NLMRegistry,
+    remove_nlms,
 )
 from alphafold3_pytorch.models.components.plm import (
     PLMEmbedding,
@@ -6087,7 +6098,9 @@ class Alphafold3(Module):
         detach_when_recycling=True,
         pdb_training_set=True,
         plm_embeddings: PLMEmbedding | tuple[PLMEmbedding, ...] | None = None,
+        nlm_embeddings: NLMEmbedding | tuple[NLMEmbedding, ...] | None = None,
         plm_kwargs: dict | tuple[dict, ...] | None = None,
+        nlm_kwargs: dict | tuple[dict, ...] | None = None,
         constraints: List[CONSTRAINTS] | None = None,
     ):
         super().__init__()
@@ -6167,6 +6180,34 @@ class Alphafold3(Module):
             concatted_plm_embed_dim = sum([plm.embed_dim for plm in self.plms])
 
             self.to_plm_embeds = LinearNoBias(concatted_plm_embed_dim, dim_single)
+
+        # optional nucleotide language model(s) (NLM) embeddings
+
+        self.nlms = None
+
+        if exists(nlm_embeddings):
+            self.nlms = ModuleList([])
+
+            for one_nlm_embedding, one_nlm_kwargs in zip_longest(
+                cast_tuple(nlm_embeddings), cast_tuple(nlm_kwargs)
+            ):
+                assert (
+                    one_nlm_embedding in NLMRegistry
+                ), f"Received invalid NLM embedding name: {one_nlm_embedding}. Acceptable ones are {list(NLMRegistry.keys())}."
+
+                constructor = NLMRegistry.get(one_nlm_embedding)
+
+                one_nlm_kwargs = default(one_nlm_kwargs, {})
+                nlm = constructor(**one_nlm_kwargs)
+
+                freeze_(nlm)
+
+                self.nlms.append(nlm)
+
+        if exists(self.nlms):
+            concatted_nlm_embed_dim = sum([nlm.embed_dim for nlm in self.nlms])
+
+            self.to_nlm_embeds = LinearNoBias(concatted_nlm_embed_dim, dim_single)
 
         # atoms per window
 
@@ -6393,13 +6434,15 @@ class Alphafold3(Module):
         return self.zero.device
 
     @remove_plms
+    @remove_nlms
     def state_dict(self, *args, **kwargs):
-        """State dict without PLMs."""
+        """State dict without PLMs or NLMs."""
         return super().state_dict(*args, **kwargs)
 
     @remove_plms
+    @remove_nlms
     def load_state_dict(self, *args, **kwargs):
-        """Load state dict without PLMs."""
+        """Load state dict without PLMs or NLMs."""
         return super().load_state_dict(*args, **kwargs)
 
     @property
@@ -6822,6 +6865,32 @@ class Alphafold3(Module):
             single_plm_init = self.to_plm_embeds(all_plm_embeds)
 
             single_init = single_init + single_plm_init
+
+        # handle maybe nucleotide language model (NLM) embeddings
+
+        if exists(self.nlms):
+            na_ids = torch.where(
+                is_molecule_types[..., IS_NA_INDICES].any(dim=-1)
+                & (
+                    (molecule_ids < MIN_RNA_NUCLEOTIDE_ID) | (molecule_ids > MAX_DNA_NUCLEOTIDE_ID)
+                ),
+                MISSING_RNA_NUCLEOTIDE_ID,
+                molecule_ids,
+            )
+            molecule_na_ids = torch.where(
+                is_molecule_types[..., IS_NON_NA_INDICES].any(dim=-1),
+                -1,
+                na_ids,
+            )
+
+            nlm_embeds = [nlm(molecule_na_ids) for nlm in self.nlms]
+
+            # concat all NLM embeddings and project and add to single init
+
+            all_nlm_embeds = torch.cat(nlm_embeds, dim=-1)
+            single_nlm_init = self.to_nlm_embeds(all_nlm_embeds)
+
+            single_init = single_init + single_nlm_init
 
         # relative positional encoding
 

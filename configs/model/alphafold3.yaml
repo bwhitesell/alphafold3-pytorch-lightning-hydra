@@ -22,6 +22,7 @@ net:
   pdb_training_set: true
   diffusion_num_augmentations: 4 # NOTE: must be one of (initial_training: 48, fine_tuning_1: 32, fine_tuning_2: 32, fine_tuning_3: 32), proceeding from left to right following Table 6 in the paper
   plm_embeddings: null # NOTE: if specified, a list of values in (`esm2_t33_650M_UR50D`, `prostT5`)
+  nlm_embeddings: null # NOTE: if specified, a list of values in (`rinalmo`)
   constraints: ${data.constraints}
 
   checkpoint_input_embedding: true
