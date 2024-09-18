@@ -6,7 +6,7 @@
 #SBATCH --nodes=1                                             # NOTE: this needs to match Lightning's `Trainer(num_nodes=...)`
 #SBATCH --ntasks-per-node=1                                   # NOTE: this needs to be `1` on SLURM clusters when using Lightning's `ddp_spawn` strategy`; otherwise, set to match Lightning's quantity of `Trainer(devices=...)`
 #SBATCH --time 0-48:00:00                                     # time limit for the job (up to 48 hours: `0-48:00:00`)
-#SBATCH --job-name=afdb_download                              # job name
+#SBATCH --job-name=distillation_data_download                 # job name
 #SBATCH --output=J-%x.%j.out                                  # output log file
 #SBATCH --error=J-%x.%j.err                                   # error log file
 #################################################################
@@ -21,7 +21,7 @@ awsv2 --install && alias aws="awsv2" | grep "AWS CLI is already installed."
 
 # Define paths
 AFDB_URL="https://ftp.ebi.ac.uk/pub/databases/alphafold/latest/swissprot_cif_v4.tar"
-OUTPUT_DIR="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/alphafold3-pytorch-lightning-hydra/data/afdb_data"
+OUTPUT_DIR="./data/afdb_data"
 
 MMCIF_OUTPUT_DIR="$OUTPUT_DIR/train_mmcifs"
 MSA_OUTPUT_DIR="$OUTPUT_DIR/data_caches/msa/train_msas"
