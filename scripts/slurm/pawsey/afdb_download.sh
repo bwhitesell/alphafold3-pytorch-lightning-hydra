@@ -16,6 +16,9 @@ module load pawseyenv/2024.05
 module load singularity/4.1.0-slurm
 module load aws-cli/2.13.0
 
+# Ensure AWS CLI is installed
+awsv2 --install && alias aws="awsv2" | grep "AWS CLI is already installed."
+
 # Define paths
 AFDB_URL="https://ftp.ebi.ac.uk/pub/databases/alphafold/latest/swissprot_cif_v4.tar"
 OUTPUT_DIR="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/alphafold3-pytorch-lightning-hydra/data/afdb_data"
