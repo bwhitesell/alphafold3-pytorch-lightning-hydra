@@ -32,7 +32,7 @@ def test_data_input():
     sampler = WeightedPDBSampler(
         chain_mapping_paths=chain_mapping_paths,
         interface_mapping_path=interface_mapping_path,
-        batch_size=4,
+        batch_size=2,
     )
 
     sampler_pdb_ids = set(sampler.mappings.get_column("pdb_id").to_list())
