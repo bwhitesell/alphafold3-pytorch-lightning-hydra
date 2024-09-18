@@ -208,7 +208,7 @@ class Alphafold3LitModule(LightningModule):
                 self.sample_and_visualize(batch, batch_idx, phase="train")
 
         # backprop loss and take a step with the optimizer and learning rate scheduler,
-        # while handling e.g., anomalous AMD HIP errors during backpropagation
+        # e.g., while elucidating ambiguous AMD HIP errors during backpropagation
 
         opt = self.optimizers()
         sch = self.lr_schedulers()
@@ -228,9 +228,9 @@ class Alphafold3LitModule(LightningModule):
 
         except Exception as e:
             log.error(
-                f"Caught an exception ({e}) during the backward pass of loss {loss} for step {self.global_step} with filepaths {self.current_filepaths}, which are associated with the following batched inputs: {[(k, batch_dict[k], (batch_dict[k].shape if torch.is_tensor(batch_dict[k]) else None)) for k in batch_dict]}. Zeroing gradients and skipping this update step."
+                f"Caught an exception ({e}) during the backward pass of loss {loss} for step {self.global_step} with filepaths {self.current_filepaths}, which are associated with the following batched inputs: {[(k, batch_dict[k], (batch_dict[k].shape if torch.is_tensor(batch_dict[k]) else None)) for k in batch_dict]}."
             )
-            opt.zero_grad()
+            raise e
 
         return loss
 

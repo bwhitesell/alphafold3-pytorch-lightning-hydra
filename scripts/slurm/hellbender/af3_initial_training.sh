@@ -36,7 +36,7 @@ mkdir -p "$TORCH_HOME"
 mkdir -p "$HF_HOME"
 
 # Define WandB run ID
-RUN_ID="ve97ifaq" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="zkezamfx" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run script
 bash -c "
@@ -45,10 +45,12 @@ bash -c "
     srun python3 alphafold3_pytorch/train.py \
     data.batch_size=$((SLURM_JOB_NUM_NODES * SLURM_NTASKS_PER_NODE)) \
     data.kalign_binary_path=$CONDA_PREFIX/bin/kalign \
+    data.msa_dir=null \
+    data.templates_dir=null \
     experiment=af3_initial_training \
     trainer.accumulate_grad_batches=$((TARGET_BATCH_SIZE / (SLURM_JOB_NUM_NODES * SLURM_NTASKS_PER_NODE))) \
     trainer.devices=$SLURM_NTASKS_PER_NODE \
-    trainer.max_epochs=3 \
+    trainer.max_epochs=5 \
     trainer.num_nodes=$SLURM_JOB_NUM_NODES \
 "
 
