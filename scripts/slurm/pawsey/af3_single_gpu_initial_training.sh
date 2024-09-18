@@ -34,8 +34,6 @@ srun singularity exec \
     "$SINGULARITY_CONTAINER" \
     bash -c "
         /usr/bin/kalign --version \
-        && python3 -m pip install multimolecule \
-        && cd /alphafold3-pytorch-lightning-hydra \
         && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS \
         python3 alphafold3_pytorch/train.py \
         data.batch_size=1 \
