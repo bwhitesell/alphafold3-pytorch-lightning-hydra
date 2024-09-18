@@ -17,7 +17,7 @@ module load pawseyenv/2024.05
 module load singularity/4.1.0-slurm
 
 # Define the container image path
-export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.5.25_dev.sif"
+export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.5.6_source_dev.sif"
 
 # Configure torch.distributed
 NUM_PYTORCH_PROCESSES=8
