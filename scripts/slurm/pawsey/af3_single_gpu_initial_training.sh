@@ -17,13 +17,13 @@ module load pawseyenv/2024.05
 module load singularity/4.1.0-slurm
 
 # Define the container image path
-export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.5.6_source_dev.sif"
+export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.5.25_dev.sif"
 
 # Set the number of threads to be generated for each PyTorch (GPU) process
 export OMP_NUM_THREADS=8
 
 # Define WandB run ID
-RUN_ID="v7w6d5xc"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="fc18mo5y"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun singularity exec --rocm \
@@ -34,7 +34,7 @@ srun singularity exec --rocm \
     "$SINGULARITY_CONTAINER" \
     bash -c "
         /usr/bin/kalign --version \
-        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS NCCL_DEBUG=INFO \
+        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS \
         python3 alphafold3_pytorch/train.py \
         data.batch_size=1 \
         data.num_workers=1 \

@@ -17,7 +17,7 @@ module load pawseyenv/2024.05
 module load singularity/4.1.0-slurm
 
 # Define the container image path
-export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.5.6_source_dev.sif"
+export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.5.25_dev.sif"
 
 # Set number of PyTorch (GPU) processes per node to be spawned by torchrun - NOTE: One for each GCD
 NUM_PYTORCH_PROCESSES=8
@@ -38,7 +38,7 @@ echo "Rendezvous Node IP: $RDZV_HOST"
 # For what `srun` is concerned, only one task is created, the `torchrun` process.
 
 # Define WandB run ID
-RUN_ID="8pb6bc6m" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="8sf3fxrh" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun -c 64 singularity exec \
