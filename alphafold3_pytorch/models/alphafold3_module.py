@@ -228,21 +228,9 @@ class Alphafold3LitModule(LightningModule):
 
         except Exception as e:
             log.error(
-                f"Caught an exception ({e}) during the backward pass for step {self.global_step} with filepaths {self.current_filepaths}, which are associated with the following batched inputs: {[(k, batch_dict[k], (batch_dict[k].shape if torch.is_tensor(batch_dict[k]) else None)) for k in batch_dict]}. Zeroing gradients and skipping this update step."
+                f"Caught an exception ({e}) during the backward pass of loss {loss} for step {self.global_step} with filepaths {self.current_filepaths}, which are associated with the following batched inputs: {[(k, batch_dict[k], (batch_dict[k].shape if torch.is_tensor(batch_dict[k]) else None)) for k in batch_dict]}. Zeroing gradients and skipping this update step."
             )
-            loss = loss * 0.0
-
             opt.zero_grad()
-            self.manual_backward(loss)
-
-            self.clip_gradients(
-                opt,
-                gradient_clip_val=10.0,
-                gradient_clip_algorithm="norm",
-            )
-
-            opt.step()
-            sch.step()
 
         return loss
 
