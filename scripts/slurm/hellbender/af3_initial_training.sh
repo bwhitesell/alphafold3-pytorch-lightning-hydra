@@ -51,7 +51,7 @@ bash -c "
     trainer.accumulate_grad_batches=$((TARGET_BATCH_SIZE / (SLURM_JOB_NUM_NODES * SLURM_NTASKS_PER_NODE))) \
     trainer.devices=$SLURM_NTASKS_PER_NODE \
     trainer.max_epochs=5 \
-    trainer.num_nodes=$SLURM_JOB_NUM_NODES \
+    trainer.num_nodes=$SLURM_JOB_NUM_NODES
 "
 
 # Inform user of run completion
