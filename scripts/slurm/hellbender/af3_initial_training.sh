@@ -3,8 +3,8 @@
 ######################### Batch Headers #########################
 #SBATCH --partition=chengji-lab-gpu                           # use reserved partition `chengji-lab-gpu`
 #SBATCH --account=chengji-lab                                 # NOTE: this must be specified to use the reserved partition above
-#SBATCH --nodes=3                                             # NOTE: this needs to match Lightning's `Trainer(num_nodes=...)`
-#SBATCH --gres=gpu:A100:4                                     # e.g., request A/H100 GPU resource(s)
+#SBATCH --nodes=4                                             # NOTE: this needs to match Lightning's `Trainer(num_nodes=...)`
+#SBATCH --gres=gpu:4                                          # e.g., request A/H100 GPU resource(s)
 #SBATCH --ntasks-per-node=4                                   # NOTE: this needs to be `1` on SLURM clusters when using Lightning's `ddp_spawn` strategy`; otherwise, set to match Lightning's quantity of `Trainer(devices=...)`
 #SBATCH --mem=0                                               # NOTE: use `--mem=0` to request all memory "available" on the assigned node
 #SBATCH -t 28-00:00:00                                        # time limit for the job (up to 28 days: `28-00:00:00`)
@@ -27,7 +27,7 @@ source "/home/$USER/mambaforge/etc/profile.d/conda.sh"
 conda activate alphafold3-pytorch/
 
 # Establish environment variables
-TARGET_BATCH_SIZE=240
+TARGET_BATCH_SIZE=256
 
 export TORCH_HOME="/cluster/pixstor/chengji-lab/$USER/torch_cache"
 export HF_HOME="/cluster/pixstor/chengji-lab/$USER/hf_cache"
