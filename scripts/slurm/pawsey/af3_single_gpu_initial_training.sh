@@ -23,7 +23,7 @@ export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hy
 export OMP_NUM_THREADS=8
 
 # Define WandB run ID
-RUN_ID="was0lj0b"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="sjkiejyo"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun singularity exec \
