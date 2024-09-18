@@ -179,6 +179,11 @@ from alphafold3_pytorch.utils.utils import default, exists, identity, not_exists
 
 # constants
 
+# NOTE: for some types of (e.g., AMD ROCm) GPUs, this represents
+# the maximum number of elements that can be processed simultaneously
+# by backpropagation for a given loss tensor
+MAX_ELEMENTS_FOR_BACKPROP = int(2e8)
+
 LinearNoBias = partial(Linear, bias=False)
 
 logger = RankedLogger(__name__, rank_zero_only=False)
@@ -2929,6 +2934,21 @@ class ElucidatedAtomDiffusion(Module):
 
             bond_losses = F.mse_loss(denoised_cdist, normalized_cdist, reduction="none")
             bond_losses = bond_losses * loss_weights
+
+            if atompair_mask.sum() > MAX_ELEMENTS_FOR_BACKPROP:
+                # randomly subset the atom pairs to supervise
+
+                flat_atompair_mask_indices = torch.arange(
+                    atompair_mask.numel(), device=self.device
+                )[atompair_mask.view(-1)]
+                num_true_atompairs = flat_atompair_mask_indices.size(0)
+
+                num_atompairs_to_ignore = num_true_atompairs - MAX_ELEMENTS_FOR_BACKPROP
+                ignored_atompair_indices = flat_atompair_mask_indices[
+                    torch.randperm(num_true_atompairs)[:num_atompairs_to_ignore]
+                ]
+
+                atompair_mask.view(-1)[ignored_atompair_indices] = False
 
             bond_loss = bond_losses[atompair_mask].mean()
 
