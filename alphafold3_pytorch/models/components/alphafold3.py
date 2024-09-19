@@ -3943,9 +3943,7 @@ class MultiChainPermutationAlignment(Module):
         # NOTE: Covalent ligand-polymer bond pairs may be many-to-many, so
         # we need to group them together by assigning covalent ligands the same
         # asym IDs as the polymer chains to which they are most frequently bonded.
-        covalent_bonded_asym_id = torch.where(
-            covalent_bond_mask, token_asym_id[..., None], torch.tensor(eps)
-        )
+        covalent_bonded_asym_id = torch.where(covalent_bond_mask, token_asym_id[..., None], eps)
 
         covalent_bond_mode_values, _ = covalent_bonded_asym_id.mode(dim=-1, keepdim=False)
         mapped_token_asym_id = torch.where(
