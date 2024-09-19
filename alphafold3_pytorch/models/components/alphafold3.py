@@ -2454,8 +2454,11 @@ class ElucidatedAtomDiffusion(Module):
         multi_chain_permutation_alignment_kwargs: dict = dict(),
         centre_random_augmentation_kwargs: dict = dict(),
         karras_formulation=True,  # use the original EDM formulation from Karras et al. Table 1 in https://arxiv.org/abs/2206.00364 - differences are that the noise and sampling schedules are scaled by sigma data, as well as loss weight adds the sigma data instead of multiply in denominator
+        verbose=False,
     ):
         super().__init__()
+
+        self.verbose = verbose
         self.net = net
 
         # parameters
@@ -2789,6 +2792,7 @@ class ElucidatedAtomDiffusion(Module):
         ligand_loss_weight=10.0,
         return_loss_breakdown=False,
         single_structure_input=False,
+        verbose=None,
         filepaths: List[str] | None = None,
     ) -> ElucidatedAtomDiffusionReturn:
         """Perform the forward pass.
@@ -2816,11 +2820,16 @@ class ElucidatedAtomDiffusion(Module):
         :param ligand_loss_weight: The ligand loss weight.
         :param return_loss_breakdown: Whether to return the loss breakdown.
         :param single_structure_input: Whether to the input(s) represent a single structure.
+        :param verbose: Whether to be verbose.
         :param filepaths: The input filepaths.
         :return: The output tensor.
         """
+        verbose = default(verbose, self.verbose)
 
         # diffusion loss
+
+        if verbose:
+            logger.info(f"Sampling noise distribution within EDM")
 
         dtype = atom_pos_ground_truth.dtype
         batch_size = atom_pos_ground_truth.shape[0]
@@ -2833,6 +2842,9 @@ class ElucidatedAtomDiffusion(Module):
         noised_atom_pos = (
             atom_pos_ground_truth + padded_sigmas * noise
         )  # alphas are 1. in the paper
+
+        if verbose:
+            logger.info(f"Running preconditioned network forward pass within EDM")
 
         denoised_atom_pos = self.preconditioned_network_forward(
             noised_atom_pos,
@@ -2856,6 +2868,9 @@ class ElucidatedAtomDiffusion(Module):
 
         # section 3.7.1 equation 2 - weighted rigid aligned ground truth
 
+        if verbose:
+            logger.info(f"Calculating weighted rigid aligned ground truth within EDM")
+
         align_weights = calculate_weighted_rigid_align_weights(
             atom_pos_ground_truth=atom_pos_ground_truth,
             molecule_atom_lens=molecule_atom_lens,
@@ -2874,6 +2889,9 @@ class ElucidatedAtomDiffusion(Module):
         # section 4.2 - multi-chain permutation alignment
 
         if exists(molecule_atom_indices) and single_structure_input:
+            if verbose:
+                logger.info(f"Running multi-chain permutation alignment within EDM")
+
             try:
                 atom_pos_aligned_ground_truth = self.multi_chain_permutation_alignment(
                     pred_coords=denoised_atom_pos,
@@ -2892,6 +2910,9 @@ class ElucidatedAtomDiffusion(Module):
                 )
 
         # main diffusion mse loss
+
+        if verbose:
+            logger.info(f"Calculating main diffusion loss within EDM")
 
         losses = (
             F.mse_loss(
@@ -2927,6 +2948,9 @@ class ElucidatedAtomDiffusion(Module):
         bond_loss = self.zero
 
         if add_bond_loss:
+            if verbose:
+                logger.info(f"Calculating bond loss within EDM")
+
             atompair_mask = to_pairwise_mask(atom_mask)
 
             denoised_cdist = torch.cdist(denoised_atom_pos, denoised_atom_pos, p=2)
@@ -2937,6 +2961,9 @@ class ElucidatedAtomDiffusion(Module):
 
             if atompair_mask.sum() > MAX_ELEMENTS_FOR_BACKPROP:
                 # randomly subset the atom pairs to supervise
+
+                if verbose:
+                    logger.info(f"Subsetting atom pairs for backprop within EDM")
 
                 flat_atompair_mask_indices = torch.arange(
                     atompair_mask.numel(), device=self.device
@@ -2959,6 +2986,9 @@ class ElucidatedAtomDiffusion(Module):
         smooth_lddt_loss = self.zero
 
         if add_smooth_lddt_loss:
+            if verbose:
+                logger.info(f"Calculating smooth lDDT loss within EDM")
+
             assert exists(
                 is_molecule_types
             ), "The argument `is_molecule_types` must be passed in if adding the smooth lDDT loss."
@@ -7314,6 +7344,9 @@ class Alphafold3(Module):
                 aug_atom_mask = atom_mask
 
                 if self.stochastic_frame_average:
+                    if verbose:
+                        logger.info("Applying stochastic frame averaging...")
+
                     fa_atom_pos, atom_pos = atom_pos[:1], atom_pos[1:]
                     fa_atom_mask, aug_atom_mask = atom_mask[:1], atom_mask[1:]
 
@@ -7323,12 +7356,18 @@ class Alphafold3(Module):
 
                 # normal random augmentations, 48 times in paper
 
+                if verbose:
+                    logger.info("Applying random augmentations...")
+
                 atom_pos = self.augmenter(atom_pos.float(), mask=aug_atom_mask).type(dtype)
 
                 # concat back the stochastic frame averaged position
 
                 if self.stochastic_frame_average:
                     atom_pos = torch.cat((fa_atom_pos, atom_pos), dim=0)
+
+            if verbose:
+                logger.info("Calculating diffusion loss within EDM...")
 
             (
                 diffusion_loss,
@@ -7359,6 +7398,7 @@ class Alphafold3(Module):
                 ligand_loss_weight=self.ligand_loss_weight,
                 single_structure_input=single_structure_input,
                 filepaths=filepaths,
+                verbose=verbose,
             )
 
         # confidence head
