@@ -6122,8 +6122,11 @@ class Alphafold3(Module):
         plm_kwargs: dict | tuple[dict, ...] | None = None,
         nlm_kwargs: dict | tuple[dict, ...] | None = None,
         constraints: List[CONSTRAINTS] | None = None,
+        verbose: bool = False,
     ):
         super().__init__()
+
+        self.verbose = verbose
 
         # store atom and atompair input dimensions for shape validation
 
@@ -6627,7 +6630,7 @@ class Alphafold3(Module):
         min_conf_resolution: float = 0.1,
         max_conf_resolution: float = 4.0,
         hard_validate: bool = False,
-        verbose: bool = False,
+        verbose: bool | None = None,
         filepaths: List[str] | None = None,
     ) -> (
         Float["b m 3"]  # type: ignore
@@ -6689,6 +6692,8 @@ class Alphafold3(Module):
         :return: The atomic coordinates, the confidence head logits, the distogram head logits, the
             loss, or the loss breakdown.
         """
+        verbose = default(verbose, self.verbose)
+
         atom_seq_len = atom_inputs.shape[-2]
         single_structure_input = atom_inputs.shape[0] == 1
 
