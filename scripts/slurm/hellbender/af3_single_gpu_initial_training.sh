@@ -33,7 +33,7 @@ mkdir -p "$TORCH_HOME"
 mkdir -p "$HF_HOME"
 
 # Define WandB run ID
-RUN_ID="tg9ds475" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="8t2ja1re" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run script
 bash -c "
