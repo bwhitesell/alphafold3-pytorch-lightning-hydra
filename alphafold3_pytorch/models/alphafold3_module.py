@@ -100,10 +100,6 @@ class Alphafold3LitModule(LightningModule):
         self.val_top_ranked_lddt = MeanMetric()
         self.test_top_ranked_lddt = MeanMetric()
 
-        # activate manual optimization for fault-tolerant backward passes
-
-        self.automatic_optimization = False
-
     @typecheck
     def prepare_batch_dict(self, batch_dict: Dict[str, Any]) -> Dict[str, Any]:
         """Prepare the input batch dictionary for the model.
@@ -206,31 +202,6 @@ class Alphafold3LitModule(LightningModule):
         if filepaths_available and self.hparams.visualize_train_samples_every_n_steps > 0:
             if batch_idx % self.hparams.visualize_train_samples_every_n_steps == 0:
                 self.sample_and_visualize(batch, batch_idx, phase="train")
-
-        # backprop loss and take a step with the optimizer and learning rate scheduler,
-        # e.g., while elucidating ambiguous AMD HIP errors during backpropagation
-
-        opt = self.optimizers()
-        sch = self.lr_schedulers()
-
-        try:
-            opt.zero_grad()
-            self.manual_backward(loss)
-
-            self.clip_gradients(
-                opt,
-                gradient_clip_val=10.0,
-                gradient_clip_algorithm="norm",
-            )
-
-            opt.step()
-            sch.step()
-
-        except Exception as e:
-            log.error(
-                f"Caught an exception ({e}) during the backward pass of loss {loss} for step {self.global_step} with filepaths {self.current_filepaths}, which are associated with the following batched inputs: {[(k, batch_dict[k], (batch_dict[k].shape if torch.is_tensor(batch_dict[k]) else None)) for k in batch_dict]}."
-            )
-            raise e
 
         return loss
 
