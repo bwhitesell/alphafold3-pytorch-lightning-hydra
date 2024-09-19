@@ -7,7 +7,7 @@
 #SBATCH --gres=gpu:1                                          # e.g., request A/H100 GPU resource(s)
 #SBATCH --ntasks-per-node=1                                   # NOTE: this needs to be `1` on SLURM clusters when using Lightning's `ddp_spawn` strategy`; otherwise, set to match Lightning's quantity of `Trainer(devices=...)`
 #SBATCH --mem=59G                                             # NOTE: use `--mem=0` to request all memory "available" on the assigned node
-#SBATCH -t 28-00:00:00                                         # time limit for the job (up to 28 days: `28-00:00:00`)
+#SBATCH -t 19-00:00:00                                         # time limit for the job (up to 28 days: `28-00:00:00`)
 #SBATCH -J af3_single_gpu_initial_training                    # job name
 #SBATCH --output=J-%x.%j.out                                  # output log file
 #SBATCH --error=J-%x.%j.err                                   # error log file
@@ -33,7 +33,7 @@ mkdir -p "$TORCH_HOME"
 mkdir -p "$HF_HOME"
 
 # Define WandB run ID
-RUN_ID="sg9ds475" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="tg9ds475" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run script
 bash -c "
@@ -45,6 +45,7 @@ bash -c "
     data.batch_size=$((SLURM_JOB_NUM_NODES * SLURM_NTASKS_PER_NODE)) \
     data.kalign_binary_path=$CONDA_PREFIX/bin/kalign \
     data.msa_dir=null \
+    data.pdb_distillation=false \
     data.templates_dir=null \
     experiment=af3_initial_training \
     trainer.num_nodes=$SLURM_JOB_NUM_NODES \
