@@ -2829,7 +2829,7 @@ class ElucidatedAtomDiffusion(Module):
         # diffusion loss
 
         if verbose:
-            logger.info(f"Sampling noise distribution within EDM")
+            logger.info("Sampling noise distribution within EDM")
 
         dtype = atom_pos_ground_truth.dtype
         batch_size = atom_pos_ground_truth.shape[0]
@@ -2844,7 +2844,7 @@ class ElucidatedAtomDiffusion(Module):
         )  # alphas are 1. in the paper
 
         if verbose:
-            logger.info(f"Running preconditioned network forward pass within EDM")
+            logger.info("Running preconditioned network forward pass within EDM")
 
         denoised_atom_pos = self.preconditioned_network_forward(
             noised_atom_pos,
@@ -2869,7 +2869,7 @@ class ElucidatedAtomDiffusion(Module):
         # section 3.7.1 equation 2 - weighted rigid aligned ground truth
 
         if verbose:
-            logger.info(f"Calculating weighted rigid aligned ground truth within EDM")
+            logger.info("Calculating weighted rigid aligned ground truth within EDM")
 
         align_weights = calculate_weighted_rigid_align_weights(
             atom_pos_ground_truth=atom_pos_ground_truth,
@@ -2890,7 +2890,7 @@ class ElucidatedAtomDiffusion(Module):
 
         if exists(molecule_atom_indices) and single_structure_input:
             if verbose:
-                logger.info(f"Running multi-chain permutation alignment within EDM")
+                logger.info("Running multi-chain permutation alignment within EDM")
 
             try:
                 atom_pos_aligned_ground_truth = self.multi_chain_permutation_alignment(
@@ -2912,7 +2912,7 @@ class ElucidatedAtomDiffusion(Module):
         # main diffusion mse loss
 
         if verbose:
-            logger.info(f"Calculating main diffusion loss within EDM")
+            logger.info("Calculating main diffusion loss within EDM")
 
         losses = (
             F.mse_loss(
@@ -2949,7 +2949,7 @@ class ElucidatedAtomDiffusion(Module):
 
         if add_bond_loss:
             if verbose:
-                logger.info(f"Calculating bond loss within EDM")
+                logger.info("Calculating bond loss within EDM")
 
             atompair_mask = to_pairwise_mask(atom_mask)
 
@@ -2961,7 +2961,7 @@ class ElucidatedAtomDiffusion(Module):
 
             if atompair_mask.sum() > MAX_ELEMENTS_FOR_BACKPROP:
                 if verbose:
-                    logger.info(f"Subsetting atom pairs for backprop within EDM")
+                    logger.info("Subsetting atom pairs for backprop within EDM")
 
                 # randomly subset the atom pairs to supervise
 
@@ -2987,7 +2987,7 @@ class ElucidatedAtomDiffusion(Module):
 
         if add_smooth_lddt_loss:
             if verbose:
-                logger.info(f"Calculating smooth lDDT loss within EDM")
+                logger.info("Calculating smooth lDDT loss within EDM")
 
             assert exists(
                 is_molecule_types
