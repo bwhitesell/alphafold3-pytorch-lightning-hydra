@@ -46,6 +46,7 @@ bash -c "
     data.batch_size=$((SLURM_JOB_NUM_NODES * SLURM_NTASKS_PER_NODE)) \
     data.kalign_binary_path=$CONDA_PREFIX/bin/kalign \
     data.msa_dir=null \
+    data.pdb_distillation=false \
     data.templates_dir=null \
     experiment=af3_initial_training \
     trainer.accumulate_grad_batches=$((TARGET_BATCH_SIZE / (SLURM_JOB_NUM_NODES * SLURM_NTASKS_PER_NODE))) \

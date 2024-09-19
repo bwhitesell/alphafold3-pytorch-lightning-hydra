@@ -30,6 +30,7 @@ from alphafold3_pytorch.models.components.inputs import (
     AtomInput,
     BatchedAtomInput,
     PDBDataset,
+    PDBDistillationDataset,
     PDBInput,
     alphafold3_input_to_molecule_lengthed_molecule_input,
     maybe_transform_to_atom_inputs,
@@ -455,12 +456,17 @@ class PDBDataModule(LightningDataModule):
     def __init__(
         self,
         data_dir: str = os.path.join("data", "pdb_data"),
+        distillation_data_dir: str = os.path.join("data", "afdb_data"),
         msa_dir: str | None = os.path.join("data", "pdb_data", "data_caches", "msa"),
+        distillation_msa_dir: str | None = os.path.join("data", "afdb_data", "data_caches", "msa"),
         templates_dir: str | None = os.path.join("data", "pdb_data", "data_caches", "template"),
+        distillation_uniprot_to_pdb_id_mapping_filepath: str
+        | None = os.path.join("data", "afdb_data", "data_caches", "uniprot_to_pdb_id_mapping.dat"),
         sample_type: Literal["default", "clustered"] = "default",
         contiguous_weight: float = 0.2,
         spatial_weight: float = 0.4,
         spatial_interface_weight: float = 0.4,
+        distillation_multimer_sampling_ratio: float = (2.0 / 3.0),
         crop_size: int = 384,
         max_msas_per_chain: int | None = None,
         max_num_msa_tokens: int | None = None,
@@ -471,9 +477,8 @@ class PDBDataModule(LightningDataModule):
         max_val_length: int | None = None,
         train_cutoff_date: str | None = None,
         kalign_binary_path: str | None = None,
-        sampling_weight_for_disorder_pdb_distillation: float = 0.02,
-        train_on_transcription_factor_distillation_sets: bool = False,
-        pdb_distillation: bool | None = None,
+        sampling_weight_for_pdb_distillation: float = 0.5,
+        pdb_distillation: bool = False,
         constraints: List[str] | None = None,
         constraints_ratio: float = 0.1,
         max_number_of_chains: int = 20,
@@ -558,6 +563,15 @@ class PDBDataModule(LightningDataModule):
             )
             setattr(
                 self,
+                f"{split}_distillation_mmcifs_dir",
+                (
+                    os.path.join(self.hparams.distillation_data_dir, f"{path_split}_mmcifs")
+                    if pdb_distillation
+                    else None
+                ),
+            )
+            setattr(
+                self,
                 f"{split}_clusterings_dir",
                 os.path.join(self.hparams.data_dir, "data_caches", f"{path_split}_clusterings"),
             )
@@ -567,6 +581,15 @@ class PDBDataModule(LightningDataModule):
                 (
                     os.path.join(self.hparams.msa_dir, f"{path_split}_msas")
                     if exists(self.hparams.msa_dir)
+                    else None
+                ),
+            )
+            setattr(
+                self,
+                f"{split}_distillation_msa_dir",
+                (
+                    os.path.join(self.hparams.distillation_msa_dir, f"{path_split}_msas")
+                    if pdb_distillation and exists(self.hparams.distillation_msa_dir)
                     else None
                 ),
             )
@@ -648,6 +671,65 @@ class PDBDataModule(LightningDataModule):
             msa_dir=self.train_msa_dir,
             templates_dir=self.train_templates_dir,
         )
+
+        self.combined_sampler_train = None
+
+        if pdb_distillation:
+            assert exists(sampler_train), (
+                "When `pdb_distillation=True`, a `WeightedPDBSampler` must be provided "
+                "for the training set to ensure that the distillation data is correctly "
+                "redundancy-reduced during sampling."
+            )
+            distillation_sample_only_pdb_ids = set(sampler_train.mappings.select("pdb_id").rows())
+
+            distillation_data_train = PDBDistillationDataset(
+                folder=self.train_distillation_mmcifs_dir,
+                contiguous_weight=self.hparams.contiguous_weight,
+                spatial_weight=self.hparams.spatial_weight,
+                spatial_interface_weight=self.hparams.spatial_interface_weight,
+                crop_size=self.hparams.crop_size,
+                max_msas_per_chain=self.hparams.max_msas_per_chain,
+                max_num_msa_tokens=self.hparams.max_num_msa_tokens,
+                max_templates_per_chain=self.hparams.max_templates_per_chain,
+                num_templates_per_chain=self.hparams.num_templates_per_chain,
+                max_num_template_tokens=self.hparams.max_num_template_tokens,
+                max_length=self.hparams.max_train_length,
+                cutoff_date=self.hparams.train_cutoff_date,
+                kalign_binary_path=self.hparams.kalign_binary_path,
+                training=True,
+                inference=False,
+                distillation=True,
+                constraints=self.hparams.constraints,
+                constraints_ratio=self.hparams.constraints_ratio,
+                filter_out_pdb_ids=filter_out_pdb_ids,
+                sample_only_pdb_ids=sample_only_pdb_ids,
+                return_atom_inputs=True,
+                msa_dir=self.train_distillation_msa_dir,
+                templates_dir=self.train_templates_dir,
+                sample_only_pdb_ids=distillation_sample_only_pdb_ids,
+                multimer_sampling_ratio=self.hparams.distillation_multimer_sampling_ratio,
+                uniprot_to_pdb_id_mapping_filepath=self.hparams.distillation_uniprot_to_pdb_id_mapping_filepath,
+            )
+
+            num_data_train = len(self.data_train)
+            num_distillation_data_train = len(distillation_data_train)
+
+            data_train_weight = (1 - sampling_weight_for_pdb_distillation) / num_data_train
+            distillation_data_train_weight = (
+                sampling_weight_for_pdb_distillation / num_distillation_data_train
+            )
+
+            combined_data_train = torch.utils.data.ConcatDataset(
+                [self.data_train, distillation_data_train]
+            )
+            combined_data_train_weights = [data_train_weight] * num_data_train + [
+                distillation_data_train_weight
+            ] * num_distillation_data_train
+
+            self.data_train = combined_data_train
+            self.combined_sampler_train = torch.utils.data.WeightedRandomSampler(
+                combined_data_train_weights, num_samples=len(combined_data_train), replacement=True
+            )
 
         # validation set
         sampler_val = (
@@ -791,6 +873,7 @@ class PDBDataModule(LightningDataModule):
             multiprocessing_context=self.hparams.multiprocessing_context,
             prefetch_factor=self.hparams.prefetch_factor,
             persistent_workers=self.hparams.persistent_workers,
+            sampler=self.combined_sampler_train,
             shuffle=True,
             drop_last=True,
         )

@@ -1,11 +1,15 @@
 _target_: alphafold3_pytorch.data.pdb_datamodule.PDBDataModule
 data_dir: ${paths.data_dir}/pdb_data/ # NOTE: this is the directory where the PDB data should be set up
+distillation_data_dir: ${paths.data_dir}/afdb_data/ # NOTE: this is the directory where the PDB distillation data should be set up
 msa_dir: ${paths.data_dir}/pdb_data/data_caches/msa # NOTE: this is the directory where the MSA data should be set up
+distillation_msa_dir: ${paths.data_dir}/afdb_data/data_caches/msa # NOTE: this is the directory where the MSA distillation data should be set up
 templates_dir: ${paths.data_dir}/pdb_data/data_caches/template # NOTE: this is the directory where the template data should be set up
+distillation_uniprot_to_pdb_id_mapping_filepath: ${paths.data_dir}/afdb_data/data_caches/uniprot_to_pdb_id_mapping.dat # NOTE: this is the location where the UniProt to PDB ID mapping for SwissProt should be set up
 sample_type: default # NOTE: must be one of (`default`, `clustered`)
 contiguous_weight: 0.2 # NOTE: the sum of `contiguous_weight`, `spatial_weight`, and `spatial_interface_weight` should be 1
 spatial_weight: 0.4
 spatial_interface_weight: 0.4
+distillation_multimer_sampling_ratio: ${divide:2.0,3.0}
 crop_size: 384 # NOTE: must be one of (initial_training: 384, fine_tuning_1: 640, fine_tuning_2: 768, fine_tuning_3: 768), proceeding from left to right following Table 6 in the paper
 max_msas_per_chain: null # if specified, the maximum number of MSA sequences to include per chain (e.g., for throughput concerns)
 max_num_msa_tokens: null # if specified, the maximum number of MSA sequence tokens to include per structure (e.g., for throughput concerns)
@@ -16,9 +20,8 @@ max_train_length: null # NOTE: if specified, the maximum allowed (pre-cropping) 
 max_val_length: null # NOTE: if specified, the maximum allowed length of any validation example
 train_cutoff_date: "2021-01-12" # if specified, the effective cutoff date for training data
 kalign_binary_path: ${oc.env:CONDA_PREFIX}/bin/kalign # if specified, the path to a local Kalign3 executable
-sampling_weight_for_disorder_pdb_distillation: 0.02 # NOTE: must be one of (initial_training: 0.02, fine_tuning_1: 0.01, fine_tuning_2: 0.02, fine_tuning_3: 0.02), proceeding from left to right following Table 6 in the paper
-train_on_transcription_factor_distillation_sets: false # NOTE: must be one of (initial_training: False, fine_tuning_1: False, fine_tuning_2: True, fine_tuning_3: True), proceeding from left to right following Table 6 in the paper
-pdb_distillation: null # NOTE: does not appear to be used in Table 6 of the paper
+sampling_weight_for_pdb_distillation: 0.5 # NOTE: must be one of (initial_training: 0.5, fine_tuning_1: 0.5, fine_tuning_2: 0.5, fine_tuning_3: 0.5), proceeding from left to right
+pdb_distillation: false # whether to train on PDB distillation (SwissProt prediction) data from the AlphaFold Protein Structure Database
 constraints: null # if specified, a list of the types of pairwise token constraints to use, which must consist of (`pocket`, `contact`, `docking`)
 constraints_ratio: 0.1 # if `constraints` is specified, the ratio of times during training to provide pairwise token constraint embeddings to the model (independently for each constraint type)
 max_number_of_chains: 20 # NOTE: must be one of (initial_training: 20, fine_tuning_1: 20, fine_tuning_2: 20, fine_tuning_3: 50), proceeding from left to right following Table 6 in the paper

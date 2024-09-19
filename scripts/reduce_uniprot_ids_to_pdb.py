@@ -17,5 +17,7 @@ def filter_pdb_lines(file_path: str, output_file_path: str):
 
 if __name__ == "__main__":
     input_archive_file = "idmapping.dat.gz"
-    output_file = os.path.join("data", "afdb_data", "data_caches", "uniprot_to_pdb_id_mapping.dat")
+    output_file = os.path.join(
+        "..", "data", "afdb_data", "data_caches", "uniprot_to_pdb_id_mapping.dat"
+    )
     filter_pdb_lines(input_archive_file, output_file)
