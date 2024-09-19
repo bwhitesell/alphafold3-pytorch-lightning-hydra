@@ -114,6 +114,7 @@ from alphafold3_pytorch.models.components.inputs import (
     IS_NON_PROTEIN_INDICES,
     IS_PROTEIN,
     IS_PROTEIN_INDEX,
+    IS_PROTEIN_INDICES,
     IS_RNA,
     IS_RNA_INDEX,
     MAX_DNA_NUCLEOTIDE_ID,
@@ -6925,7 +6926,8 @@ class Alphafold3(Module):
 
         if exists(self.plms):
             aa_ids = torch.where(
-                (molecule_ids < 0) | (molecule_ids > NUM_HUMAN_AMINO_ACIDS),
+                is_molecule_types[..., IS_PROTEIN_INDICES].any(dim=-1)
+                & ((molecule_ids < 0) | (molecule_ids > NUM_HUMAN_AMINO_ACIDS)),
                 NUM_HUMAN_AMINO_ACIDS,
                 molecule_ids,
             )
@@ -6934,6 +6936,16 @@ class Alphafold3(Module):
                 -1,
                 aa_ids,
             )
+
+            molecule_aa_only_ids = molecule_aa_ids[
+                is_molecule_types[..., IS_PROTEIN_INDICES].any(dim=-1)
+            ]
+            assert (
+                0
+                <= molecule_aa_only_ids.min()
+                <= molecule_aa_only_ids.max()
+                <= NUM_HUMAN_AMINO_ACIDS
+            ), "Amino acid IDs must be within the range of human amino acids."
 
             plm_embeds = [plm(molecule_aa_ids) for plm in self.plms]
 
@@ -6963,6 +6975,16 @@ class Alphafold3(Module):
                 -1,
                 na_ids,
             )
+
+            molecule_na_only_ids = molecule_na_ids[
+                is_molecule_types[..., IS_NA_INDICES].any(dim=-1)
+            ]
+            assert (
+                MIN_RNA_NUCLEOTIDE_ID
+                <= molecule_na_only_ids.min()
+                <= molecule_na_only_ids.max()
+                <= MAX_DNA_NUCLEOTIDE_ID
+            ), "Nucleotide IDs must be within the range of RNA and DNA nucleotides."
 
             nlm_embeds = [nlm(molecule_na_ids) for nlm in self.nlms]
 
