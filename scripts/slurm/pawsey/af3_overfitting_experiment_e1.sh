@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ######################### Batch Headers #########################
-#SBATCH --partition=gpu                                       # use partition `gpu` for GPU nodes
+#SBATCH --partition=gpu-dev                                   # use partition `gpu` for GPU nodes
 #SBATCH --account=pawsey1018-gpu                              # IMPORTANT: use your own project and the -gpu suffix
 #SBATCH --nodes=1                                             # NOTE: this needs to match Lightning's `Trainer(num_nodes=...)`
 #SBATCH --gres=gpu:1                                          # NOTE: requests any GPU resource(s)
@@ -23,7 +23,7 @@ export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hy
 export OMP_NUM_THREADS=8
 
 # Define WandB run ID
-RUN_ID="tjkiejyo"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="ujkiejyo"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun singularity exec \
@@ -51,6 +51,7 @@ srun singularity exec \
         +model.net.msa_module_kwargs='{depth: 1, dim_msa: 8}' \
         +model.net.pairformer_stack='{depth: 1, pair_bias_attn_dim_head: 4, pair_bias_attn_heads: 2}' \
         +model.net.diffusion_module_kwargs='{atom_encoder_depth: 1, token_transformer_depth: 1, atom_decoder_depth: 1, atom_encoder_kwargs: {attn_pair_bias_kwargs: {dim_head: 4}}, atom_decoder_kwargs: {attn_pair_bias_kwargs: {dim_head: 4}}}' \
+        +model.net.verbose=true \
         experiment=af3_overfitting_e1 \
         trainer.num_nodes=1 \
         trainer.devices=1 \

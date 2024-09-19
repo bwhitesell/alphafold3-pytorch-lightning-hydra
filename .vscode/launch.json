@@ -139,7 +139,7 @@
                 // "data.max_msas_per_chain=128",
                 "data.constraints=[pocket, contact, docking]",
                 "data.batch_size=1",
-                "data.pdb_distillation=true",
+                "data.pdb_distillation=false",
                 "data.num_workers=0",
                 "data.multiprocessing_context=null",
                 "data.prefetch_factor=null",
