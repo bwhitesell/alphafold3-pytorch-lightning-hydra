@@ -2960,10 +2960,10 @@ class ElucidatedAtomDiffusion(Module):
             bond_losses = bond_losses * loss_weights
 
             if atompair_mask.sum() > MAX_ELEMENTS_FOR_BACKPROP:
-                # randomly subset the atom pairs to supervise
-
                 if verbose:
                     logger.info(f"Subsetting atom pairs for backprop within EDM")
+
+                # randomly subset the atom pairs to supervise
 
                 flat_atompair_mask_indices = torch.arange(
                     atompair_mask.numel(), device=self.device
@@ -7367,7 +7367,7 @@ class Alphafold3(Module):
                     atom_pos = torch.cat((fa_atom_pos, atom_pos), dim=0)
 
             if verbose:
-                logger.info("Calculating diffusion loss within EDM...")
+                logger.info("Calculating diffusion loss with EDM...")
 
             (
                 diffusion_loss,
@@ -7397,8 +7397,8 @@ class Alphafold3(Module):
                 nucleotide_loss_weight=self.nucleotide_loss_weight,
                 ligand_loss_weight=self.ligand_loss_weight,
                 single_structure_input=single_structure_input,
-                filepaths=filepaths,
                 verbose=verbose,
+                filepaths=filepaths,
             )
 
         # confidence head
@@ -7462,10 +7462,10 @@ class Alphafold3(Module):
 
                 # section 4.2 - multi-chain permutation alignment
 
-                if verbose:
-                    logger.info("Calculating multi-chain permutation alignment...")
-
                 if single_structure_input:
+                    if verbose:
+                        logger.info("Calculating multi-chain permutation alignment...")
+
                     try:
                         atom_pos = self.multi_chain_permutation_alignment(
                             pred_coords=denoised_atom_pos,
