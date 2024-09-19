@@ -3881,6 +3881,7 @@ class MultiChainPermutationAlignment(Module):
         additional_molecule_feats: Int[f"b n {ADDITIONAL_MOLECULE_FEATS}"] | None = None,  # type: ignore - additional molecule features
         is_molecule_types: Bool[f"b n {IS_MOLECULE_TYPES}"] | None = None,  # type: ignore - molecule types
         mask: Bool["b m"] | None = None,  # type: ignore - mask for variable lengths
+        eps: int = int(1e6),
     ) -> Float["b m 3"]:  # type: ignore
         """Compute the multi-chain permutation alignment.
 
@@ -3897,6 +3898,7 @@ class MultiChainPermutationAlignment(Module):
         :param token_bonds: The token bonds.
         :param is_molecule_types: Molecule type of each atom.
         :param mask: The mask for variable lengths.
+        :param eps: A large integer value to server as a placeholder asym ID.
         :return: The optimally chain-permuted aligned coordinates.
         """
         num_atoms = pred_coords.shape[1]
@@ -3942,7 +3944,7 @@ class MultiChainPermutationAlignment(Module):
         # we need to group them together by assigning covalent ligands the same
         # asym IDs as the polymer chains to which they are most frequently bonded.
         covalent_bonded_asym_id = torch.where(
-            covalent_bond_mask, token_asym_id[..., None], torch.tensor(float("nan"))
+            covalent_bond_mask, token_asym_id[..., None], torch.tensor(eps)
         )
 
         covalent_bond_mode_values, _ = covalent_bonded_asym_id.mode(dim=-1, keepdim=False)
