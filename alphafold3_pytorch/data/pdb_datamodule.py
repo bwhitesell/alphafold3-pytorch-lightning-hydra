@@ -680,7 +680,19 @@ class PDBDataModule(LightningDataModule):
                 "for the training set to ensure that the distillation data is correctly "
                 "redundancy-reduced during sampling."
             )
-            distillation_sample_only_pdb_ids = set(sampler_train.mappings.select("pdb_id").rows())
+            assert os.path.exists(self.hparams.distillation_uniprot_to_pdb_id_mapping_filepath), (
+                "When `pdb_distillation=True`, a `distillation_uniprot_to_pdb_id_mapping_filepath` "
+                "must be provided to map UniProt IDs to PDB IDs for distillation."
+            )
+
+            distillation_sample_only_pdb_ids = {
+                r[0] for r in sampler_train.mappings.select("pdb_id").rows()
+            }
+            distillation_sample_only_pdb_ids = (
+                distillation_sample_only_pdb_ids.intersection(sample_only_pdb_ids)
+                if exists(sample_only_pdb_ids)
+                else distillation_sample_only_pdb_ids
+            )
 
             distillation_data_train = PDBDistillationDataset(
                 folder=self.train_distillation_mmcifs_dir,
@@ -702,11 +714,10 @@ class PDBDataModule(LightningDataModule):
                 constraints=self.hparams.constraints,
                 constraints_ratio=self.hparams.constraints_ratio,
                 filter_out_pdb_ids=filter_out_pdb_ids,
-                sample_only_pdb_ids=sample_only_pdb_ids,
+                sample_only_pdb_ids=distillation_sample_only_pdb_ids,
                 return_atom_inputs=True,
                 msa_dir=self.train_distillation_msa_dir,
                 templates_dir=self.train_templates_dir,
-                sample_only_pdb_ids=distillation_sample_only_pdb_ids,
                 multimer_sampling_ratio=self.hparams.distillation_multimer_sampling_ratio,
                 uniprot_to_pdb_id_mapping_filepath=self.hparams.distillation_uniprot_to_pdb_id_mapping_filepath,
             )
