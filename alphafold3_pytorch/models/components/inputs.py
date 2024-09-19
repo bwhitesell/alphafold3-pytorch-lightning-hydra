@@ -2689,7 +2689,7 @@ def load_templates_from_templates_dir(
 
 
 @typecheck
-# @timeout_decorator.timeout(PDB_INPUT_TO_MOLECULE_INPUT_MAX_SECONDS_PER_INPUT, use_signals=True)
+@timeout_decorator.timeout(PDB_INPUT_TO_MOLECULE_INPUT_MAX_SECONDS_PER_INPUT, use_signals=True)
 def pdb_input_to_molecule_input(
     pdb_input: PDBInput,
     biomol: Biomolecule | None = None,
