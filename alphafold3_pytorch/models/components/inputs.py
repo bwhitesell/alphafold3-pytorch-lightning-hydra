@@ -2689,7 +2689,7 @@ def load_templates_from_templates_dir(
 
 
 @typecheck
-@timeout_decorator.timeout(PDB_INPUT_TO_MOLECULE_INPUT_MAX_SECONDS_PER_INPUT, use_signals=True)
+# @timeout_decorator.timeout(PDB_INPUT_TO_MOLECULE_INPUT_MAX_SECONDS_PER_INPUT, use_signals=True)
 def pdb_input_to_molecule_input(
     pdb_input: PDBInput,
     biomol: Biomolecule | None = None,
@@ -4064,26 +4064,35 @@ class PDBDistillationDataset(Dataset):
         )
         self.uniprot_to_pdb_id_mapping_df.drop_in_place("database")
 
-        uniprot_to_pdb_id_mapping = dict(self.uniprot_to_pdb_id_mapping_df.iter_rows())
+        uniprot_to_pdb_id_mapping = defaultdict(set)
+        for row in self.uniprot_to_pdb_id_mapping_df.iter_rows():
+            uniprot_to_pdb_id_mapping[row[0]].add(f"{row[1].lower()}-assembly1")
 
         self.files = {
             os.path.splitext(os.path.basename(file.name))[0]: file
             for file in folder.glob(os.path.join("**", "*.cif"))
-            if os.path.splitext(os.path.basename(file.name))[0] in uniprot_to_pdb_id_mapping
+            if os.path.splitext(os.path.basename(file.name))[0].split("-")[1]
+            in uniprot_to_pdb_id_mapping
         }
 
         if exists(filter_out_pdb_ids):
             self.files = {
-                accession_id: file
-                for accession_id, file in self.files.items()
-                if uniprot_to_pdb_id_mapping[accession_id] not in filter_out_pdb_ids
+                filename: file
+                for filename, file in self.files.items()
+                if not any(
+                    pdb_id in filter_out_pdb_ids
+                    for pdb_id in uniprot_to_pdb_id_mapping[filename.split("-")[1]]
+                )
             }
 
         if exists(sample_only_pdb_ids):
             self.files = {
-                accession_id: file
-                for accession_id, file in self.files.items()
-                if uniprot_to_pdb_id_mapping[accession_id] in sample_only_pdb_ids
+                filename: file
+                for filename, file in self.files.items()
+                if any(
+                    pdb_id in sample_only_pdb_ids
+                    for pdb_id in uniprot_to_pdb_id_mapping[filename.split("-")[1]]
+                )
             }
 
         self.file_index_to_id = {i: pdb_id for i, pdb_id in enumerate(self.files)}

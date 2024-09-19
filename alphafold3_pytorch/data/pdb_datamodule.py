@@ -724,22 +724,19 @@ class PDBDataModule(LightningDataModule):
 
             num_data_train = len(self.data_train)
             num_distillation_data_train = len(distillation_data_train)
+            num_data_train_total = num_data_train + num_distillation_data_train
 
-            data_train_weight = (1 - sampling_weight_for_pdb_distillation) / num_data_train
-            distillation_data_train_weight = (
-                sampling_weight_for_pdb_distillation / num_distillation_data_train
-            )
-
-            combined_data_train = torch.utils.data.ConcatDataset(
-                [self.data_train, distillation_data_train]
-            )
-            combined_data_train_weights = [data_train_weight] * num_data_train + [
-                distillation_data_train_weight
+            combined_data_train_weights = [
+                1.0 - sampling_weight_for_pdb_distillation
+            ] * num_data_train + [
+                sampling_weight_for_pdb_distillation
             ] * num_distillation_data_train
 
-            self.data_train = combined_data_train
+            self.data_train = torch.utils.data.ConcatDataset(
+                [self.data_train, distillation_data_train]
+            )
             self.combined_sampler_train = torch.utils.data.WeightedRandomSampler(
-                combined_data_train_weights, num_samples=len(combined_data_train), replacement=True
+                combined_data_train_weights, num_samples=num_data_train_total, replacement=False
             )
 
         # validation set
@@ -885,7 +882,7 @@ class PDBDataModule(LightningDataModule):
             prefetch_factor=self.hparams.prefetch_factor,
             persistent_workers=self.hparams.persistent_workers,
             sampler=self.combined_sampler_train,
-            shuffle=True,
+            shuffle=not self.hparams.pdb_distillation,
             drop_last=True,
         )
 
