@@ -14,6 +14,8 @@ from alphafold3_pytorch.models.components.inputs import (
 )
 from alphafold3_pytorch.utils.utils import exists
 
+DATA_TEST_PDB_ID = "721p"
+
 
 def test_data_input():
     """Test a PDBDataset constructed using a WeightedPDBSampler along with a
@@ -45,6 +47,7 @@ def test_data_input():
     sampler = WeightedPDBSampler(
         chain_mapping_paths=chain_mapping_paths,
         interface_mapping_path=interface_mapping_path,
+        pdb_ids_to_keep=[f"{DATA_TEST_PDB_ID}-assembly1"],
         batch_size=2,
     )
 
