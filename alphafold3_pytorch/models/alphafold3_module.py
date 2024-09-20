@@ -198,10 +198,19 @@ class Alphafold3LitModule(LightningModule):
 
         # visualize samples
 
+        seq_len = batch_dict["molecule_atom_lens"].shape[-1]
         filepaths_available = "filepath" in batch_dict and exists(batch_dict["filepath"])
-        if filepaths_available and self.hparams.visualize_train_samples_every_n_steps > 0:
-            if batch_idx % self.hparams.visualize_train_samples_every_n_steps == 0:
-                self.sample_and_visualize(batch, batch_idx, phase="train")
+        visualize_samples = (
+            # NOTE: we cannot visualize cropped examples, since the sampled atom positions
+            # would then not be of the same shape as the original atom positions
+            filepaths_available
+            and self.hparams.visualize_train_samples_every_n_steps > 0
+            and batch_idx % self.hparams.visualize_train_samples_every_n_steps == 0
+            and seq_len <= self.hparams.crop_size
+        )
+
+        if visualize_samples:
+            self.sample_and_visualize(batch, batch_idx, phase="train")
 
         return loss
 
@@ -295,30 +304,40 @@ class Alphafold3LitModule(LightningModule):
 
         # visualize (top) samples
 
-        if self.hparams.visualize_val_samples_every_n_steps > 0:
-            if batch_idx % self.hparams.visualize_val_samples_every_n_steps == 0:
-                assert exists(
-                    top_batch_sampled_atom_pos
-                ), "The top sampled atom positions must be provided to visualize them."
-                filename_suffixes = [
-                    f"-score-{score:.4f}" for score in top_model_selection_score.tolist()
-                ]
-                filepaths = (
-                    list(batch_dict["filepath"])
-                    if "filepath" in batch_dict and exists(batch_dict["filepath"])
-                    else None
+        seq_len = batch_dict["molecule_atom_lens"].shape[-1]
+        filepaths_available = "filepath" in batch_dict and exists(batch_dict["filepath"])
+        visualize_samples = (
+            # NOTE: we cannot visualize cropped examples, since the sampled atom positions
+            # would then not be of the same shape as the original atom positions
+            filepaths_available
+            and self.hparams.visualize_val_samples_every_n_steps > 0
+            and batch_idx % self.hparams.visualize_val_samples_every_n_steps == 0
+            and seq_len <= self.hparams.crop_size
+        )
+
+        if visualize_samples:
+            assert exists(
+                top_batch_sampled_atom_pos
+            ), "The top sampled atom positions must be provided to visualize them."
+            filename_suffixes = [
+                f"-score-{score:.4f}" for score in top_model_selection_score.tolist()
+            ]
+            filepaths = (
+                list(batch_dict["filepath"])
+                if "filepath" in batch_dict and exists(batch_dict["filepath"])
+                else None
+            )
+            if exists(filepaths):
+                self.visualize(
+                    sampled_atom_pos=top_batch_sampled_atom_pos,
+                    atom_mask=~batch_dict["missing_atom_mask"],
+                    filepaths=filepaths,
+                    batch_idx=batch_idx,
+                    phase="val",
+                    sample_idx=top_sample_idx,
+                    filename_suffixes=filename_suffixes,
+                    b_factors=top_sample_plddt,
                 )
-                if exists(filepaths):
-                    self.visualize(
-                        sampled_atom_pos=top_batch_sampled_atom_pos,
-                        atom_mask=~batch_dict["missing_atom_mask"],
-                        filepaths=filepaths,
-                        batch_idx=batch_idx,
-                        phase="val",
-                        sample_idx=top_sample_idx,
-                        filename_suffixes=filename_suffixes,
-                        b_factors=top_sample_plddt,
-                    )
 
     def on_validation_epoch_end(self) -> None:
         "Lightning hook that is called when a validation epoch ends."
@@ -436,30 +455,40 @@ class Alphafold3LitModule(LightningModule):
 
         # visualize (top) samples
 
-        if self.hparams.visualize_test_samples_every_n_steps > 0:
-            if batch_idx % self.hparams.visualize_test_samples_every_n_steps == 0:
-                assert exists(
-                    top_batch_sampled_atom_pos
-                ), "The top sampled atom positions must be provided to visualize them."
-                filename_suffixes = [
-                    f"-score-{score:.4f}" for score in top_model_selection_score.tolist()
-                ]
-                filepaths = (
-                    list(batch_dict["filepath"])
-                    if "filepath" in batch_dict and exists(batch_dict["filepath"])
-                    else None
+        seq_len = batch_dict["molecule_atom_lens"].shape[-1]
+        filepaths_available = "filepath" in batch_dict and exists(batch_dict["filepath"])
+        visualize_samples = (
+            # NOTE: we cannot visualize cropped examples, since the sampled atom positions
+            # would then not be of the same shape as the original atom positions
+            filepaths_available
+            and self.hparams.visualize_test_samples_every_n_steps > 0
+            and batch_idx % self.hparams.visualize_test_samples_every_n_steps == 0
+            and seq_len <= self.hparams.crop_size
+        )
+
+        if visualize_samples:
+            assert exists(
+                top_batch_sampled_atom_pos
+            ), "The top sampled atom positions must be provided to visualize them."
+            filename_suffixes = [
+                f"-score-{score:.4f}" for score in top_model_selection_score.tolist()
+            ]
+            filepaths = (
+                list(batch_dict["filepath"])
+                if "filepath" in batch_dict and exists(batch_dict["filepath"])
+                else None
+            )
+            if exists(filepaths):
+                self.visualize(
+                    sampled_atom_pos=top_batch_sampled_atom_pos,
+                    atom_mask=~batch_dict["missing_atom_mask"],
+                    filepaths=filepaths,
+                    batch_idx=batch_idx,
+                    phase="test",
+                    sample_idx=top_sample_idx,
+                    filename_suffixes=filename_suffixes,
+                    b_factors=top_sample_plddt,
                 )
-                if exists(filepaths):
-                    self.visualize(
-                        sampled_atom_pos=top_batch_sampled_atom_pos,
-                        atom_mask=~batch_dict["missing_atom_mask"],
-                        filepaths=filepaths,
-                        batch_idx=batch_idx,
-                        phase="test",
-                        sample_idx=top_sample_idx,
-                        filename_suffixes=filename_suffixes,
-                        b_factors=top_sample_plddt,
-                    )
 
     @typecheck
     @torch.inference_mode()

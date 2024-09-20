@@ -43,7 +43,7 @@ def test_template_loading():
         folder=data_test_mmcif_dir,
         sampler=sampler,
         sample_type="default",
-        crop_size=128,
+        crop_size=4,
         templates_dir=str(data_test_template_dir),
         sample_only_pdb_ids=test_ids,
         training=False,

@@ -11,20 +11,18 @@ spatial_weight: 0.4
 spatial_interface_weight: 0.4
 distillation_multimer_sampling_ratio: ${divide:2.0,3.0}
 crop_size: 384 # NOTE: must be one of (initial_training: 384, fine_tuning_1: 640, fine_tuning_2: 768, fine_tuning_3: 768), proceeding from left to right following Table 6 in the paper
-max_msas_per_chain: null # if specified, the maximum number of MSA sequences to include per chain (e.g., for throughput concerns)
-max_num_msa_tokens: null # if specified, the maximum number of MSA sequence tokens to include per structure (e.g., for throughput concerns)
-max_templates_per_chain: null # if specified, the maximum number of templates to include per chain (e.g., for throughput concerns)
-num_templates_per_chain: null # if specified, the effective number number of templates to include per chain (e.g., for throughput concerns)
-max_num_template_tokens: null # if specified, the maximum number of template sequence tokens to include per structure (e.g., for throughput concerns)
-max_train_length: null # NOTE: if specified, the maximum allowed (pre-cropping) length of any training example
-max_val_length: null # NOTE: if specified, the maximum allowed length of any validation example
-train_cutoff_date: "2021-01-12" # if specified, the effective cutoff date for training data
+max_msas_per_chain: 16384 # if specified, the maximum number of MSA sequences to include per chain (e.g., for throughput concerns)
+max_num_msa_tokens: 41943040 # if specified, the maximum number of MSA sequence tokens to include per structure (e.g., for throughput concerns)
+max_templates_per_chain: 20 # if specified, the maximum number of templates to include per chain (e.g., for throughput concerns)
+num_templates_per_chain: 4 # if specified, the effective number number of templates to include per chain (e.g., for throughput concerns)
+max_num_template_tokens: 5120 # if specified, the maximum number of template sequence tokens to include per structure (e.g., for throughput concerns)
+max_length: 10240 # NOTE: if specified, the maximum allowed (pre-cropping) token length of any training, validation, or test example
+train_cutoff_date: "2021-01-12" # if specified, the effective cutoff date for training data at runtime
 kalign_binary_path: ${oc.env:CONDA_PREFIX}/bin/kalign # if specified, the path to a local Kalign3 executable
 sampling_weight_for_pdb_distillation: 0.5 # NOTE: must be one of (initial_training: 0.5, fine_tuning_1: 0.5, fine_tuning_2: 0.5, fine_tuning_3: 0.5), proceeding from left to right
 pdb_distillation: false # whether to train on PDB distillation (SwissProt prediction) data from the AlphaFold Protein Structure Database
 constraints: null # if specified, a list of the types of pairwise token constraints to use, which must consist of (`pocket`, `contact`, `docking`)
 constraints_ratio: 0.1 # if `constraints` is specified, the ratio of times during training to provide pairwise token constraint embeddings to the model (independently for each constraint type)
-max_number_of_chains: 20 # NOTE: must be one of (initial_training: 20, fine_tuning_1: 20, fine_tuning_2: 20, fine_tuning_3: 50), proceeding from left to right following Table 6 in the paper
 atoms_per_window: null # if specified, the number of atoms to include in each window
 map_dataset_input_fn: null # if specified, a function that should be applied to dataset examples for batching - NOTE: to specify, use resolver syntax such as `${resolve_variable:alphafold3_pytorch.utils.model_utils.default_map_dataset_input_fn}`
 train_val_test_split: null # NOTE: if specified, the number of examples to use for training, validation, and testing, respectively

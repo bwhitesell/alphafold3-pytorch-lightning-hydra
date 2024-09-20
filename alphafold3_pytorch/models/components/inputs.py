@@ -3007,9 +3007,9 @@ def pdb_input_to_molecule_input(
     templates = template_features.get("templates")
     template_mask = template_features.get("template_mask")
 
-    # crop the `Biomolecule` object during training only
+    # crop the `Biomolecule` object during training, validation, and testing (but not inference)
 
-    if i.training:
+    if not i.inference:
         assert exists(
             i.cropping_config
         ), "A cropping configuration must be provided during training."
@@ -3925,7 +3925,8 @@ class PDBDataset(Dataset):
         spatial_weight: float = 0.4,
         spatial_interface_weight: float = 0.4,
         crop_size: int = 384,
-        training: bool | None = None,  # extra training flag placed by Alex on PDBInput
+        training: bool | None = None,
+        inference: bool | None = None,
         filter_out_pdb_ids: Set[str] | None = None,
         sample_only_pdb_ids: Set[str] | None = None,
         return_atom_inputs: bool = False,
@@ -3940,6 +3941,7 @@ class PDBDataset(Dataset):
         self.sampler = sampler
         self.sample_type = sample_type
         self.training = training
+        self.inference = inference
         self.filter_out_pdb_ids = filter_out_pdb_ids
         self.sample_only_pdb_ids = sample_only_pdb_ids
         self.return_atom_inputs = return_atom_inputs
@@ -4043,16 +4045,17 @@ class PDBDataset(Dataset):
             logger.warning(f"mmCIF file {mmcif_filepath} not found.")
             return None
 
-        cropping_config = None
+        cropping_config = self.cropping_config
 
-        if self.training:
-            cropping_config = self.cropping_config
+        if self.inference:
+            cropping_config = None
 
         i = PDBInput(
             mmcif_filepath=str(mmcif_filepath),
             chains=(chain_id_1, chain_id_2),
             cropping_config=cropping_config,
             training=self.training,
+            inference=self.inference,
             **self.pdb_input_kwargs,
         )
 
@@ -4089,7 +4092,8 @@ class PDBDistillationDataset(Dataset):
         spatial_weight: float = 0.4,
         spatial_interface_weight: float = 0.4,
         crop_size: int = 384,
-        training: bool | None = None,  # extra training flag placed by Alex on PDBInput
+        training: bool | None = None,
+        inference: bool | None = None,
         filter_out_pdb_ids: Set[str] | None = None,
         sample_only_pdb_ids: Set[str] | None = None,
         return_atom_inputs: bool = False,
@@ -4106,6 +4110,7 @@ class PDBDistillationDataset(Dataset):
         self.folder = folder
 
         self.training = training
+        self.inference = inference
         self.filter_out_pdb_ids = filter_out_pdb_ids
         self.sample_only_pdb_ids = sample_only_pdb_ids
         self.return_atom_inputs = return_atom_inputs
@@ -4199,16 +4204,17 @@ class PDBDistillationDataset(Dataset):
             logger.warning(f"mmCIF file {mmcif_filepath} not found.")
             return None
 
-        cropping_config = None
+        cropping_config = self.cropping_config
 
-        if self.training:
-            cropping_config = self.cropping_config
+        if self.inference:
+            cropping_config = None
 
         i = PDBInput(
             mmcif_filepath=str(mmcif_filepath),
             chains=(chain_id_1, chain_id_2),
             cropping_config=cropping_config,
             training=self.training,
+            inference=self.inference,
             distillation_multimer_sampling_ratio=self.multimer_sampling_ratio,
             distillation_pdb_ids=list(self.uniprot_to_pdb_id_mapping[accession_id.split("-")[1]]),
             **self.pdb_input_kwargs,

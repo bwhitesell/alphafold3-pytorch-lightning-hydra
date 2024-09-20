@@ -146,6 +146,7 @@
                 "~logger",
                 "~logger.wandb",
                 // "model.compile=true",
+                "model.is_fine_tuning=true",
                 // "model.net.diffusion_num_augmentations=4",
                 "+model.net.dim_atom=8",
                 "+model.net.dim_pairwise=8",

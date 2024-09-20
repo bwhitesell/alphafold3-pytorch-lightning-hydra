@@ -43,7 +43,7 @@ def test_msa_loading():
         folder=data_test_mmcif_dir,
         sampler=sampler,
         sample_type="default",
-        crop_size=128,
+        crop_size=4,
         msa_dir=str(data_test_msa_dir),
         sample_only_pdb_ids=test_ids,
         training=False,
