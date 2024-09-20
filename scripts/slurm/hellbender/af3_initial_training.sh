@@ -36,7 +36,7 @@ mkdir -p "$TORCH_HOME"
 mkdir -p "$HF_HOME"
 
 # Define WandB run ID
-RUN_ID="wktgqd1m" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="25fx5g0z" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run script
 bash -c "
@@ -54,8 +54,7 @@ bash -c "
     trainer.accumulate_grad_batches=$((TARGET_BATCH_SIZE / (SLURM_JOB_NUM_NODES * SLURM_NTASKS_PER_NODE))) \
     trainer.devices=$SLURM_NTASKS_PER_NODE \
     trainer.max_epochs=5 \
-    trainer.num_nodes=$SLURM_JOB_NUM_NODES \
-    +trainer.precision=bf16-mixed
+    trainer.num_nodes=$SLURM_JOB_NUM_NODES
 "
 
 # Inform user of run completion
