@@ -36,7 +36,7 @@ mkdir -p "$TORCH_HOME"
 mkdir -p "$HF_HOME"
 
 # Define WandB run ID
-RUN_ID="me2doqfk" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="wktgqd1m" # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run script
 bash -c "
@@ -51,8 +51,6 @@ bash -c "
     data.pdb_distillation=false \
     data.templates_dir=null \
     experiment=af3_initial_training \
-    model.net.checkpoint_input_embedding=false \
-    model.net.checkpoint_distogram_head=false \
     trainer.accumulate_grad_batches=$((TARGET_BATCH_SIZE / (SLURM_JOB_NUM_NODES * SLURM_NTASKS_PER_NODE))) \
     trainer.devices=$SLURM_NTASKS_PER_NODE \
     trainer.max_epochs=5 \
