@@ -5,7 +5,7 @@ from torch.utils.data import Sampler
 
 from alphafold3_pytorch.data.weighted_pdb_sampler import WeightedPDBSampler
 
-TEST_FOLDER = Path("./data/test/data_caches/clusterings/")
+TEST_FOLDER = Path("data", "test", "pdb_data", "data_caches", "clusterings")
 
 INTERFACE_MAPPING_PATH = str(TEST_FOLDER / "interface_cluster_mapping.csv")
 

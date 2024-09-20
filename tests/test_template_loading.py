@@ -10,7 +10,7 @@ from alphafold3_pytorch.utils.utils import exists
 
 def test_template_loading():
     """Test a template-featurized PDBDataset constructed using a WeightedPDBSampler."""
-    data_test = Path("data", "test")
+    data_test = Path("data", "test", "pdb_data")
     data_test_mmcif_dir = data_test / "mmcifs"
     data_test_clusterings_dir = data_test / "data_caches" / "clusterings"
     data_test_template_dir = data_test / "data_caches" / "template" / "templates"

@@ -14,7 +14,7 @@ from alphafold3_pytorch.models.components.inputs import (
 
 def test_data_input():
     """Test a PDBDataset constructed using a WeightedPDBSampler."""
-    data_test = Path("data", "test")
+    data_test = Path("data", "test", "pdb_data")
     data_test_mmcif_dir = data_test / "mmcifs"
     data_test_clusterings_dir = data_test / "data_caches" / "clusterings"
 
