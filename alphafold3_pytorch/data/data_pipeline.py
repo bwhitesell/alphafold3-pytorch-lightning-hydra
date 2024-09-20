@@ -217,8 +217,7 @@ def make_msa_features(
             deletion_matrix.append(msa_deletion_values)
 
             # Parse species ID for MSA pairing if possible.
-            identifiers = msa_parsing.get_identifiers(msa.descriptions[sequence_index])
-            species_id = identifiers.species_id if hasattr(identifiers, "species_id") else ""
+            species_id = msa_parsing.get_identifiers(msa.descriptions[sequence_index]).species_id
 
             if sequence_index == 0:
                 species_id = "-1"  # Tag target sequence for filtering.

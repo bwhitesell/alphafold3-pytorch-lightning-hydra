@@ -166,9 +166,49 @@ def parse_hhr(
     :param verbose: Whether to log verbose output.
     :return: A list of template Biomolecule objects and their template types.
     """
+    # Define the column names and types.
+    schema = {
+        "No": pl.Int32,
+        "Hit": pl.Utf8,
+        "Prob": pl.Float64,
+        "E-value": pl.Float64,
+        "P-value": pl.Float64,
+        "Score": pl.Float64,
+        "SS": pl.Float64,
+        "Cols": pl.Int32,
+        "Query HMM": pl.Utf8,
+        "Template HMM": pl.Utf8,
+    }
+
+    # Identify how many rows to parse.
+    rows = []
+    rows_found = False
+    with open(hhr_filepath, "r") as f:
+        for line in f:
+            if line.startswith(" No Hit"):
+                rows_found = True
+            elif line.startswith("No 1"):
+                rows_found = False
+
+            if rows_found and not line.startswith(" No Hit") and line.strip():
+                line_parts = line.strip().split()
+
+                # NOTE: The `Hit` and `Template HMM` columns may contain spaces.
+                if len(line_parts) > 10:
+                    num_hit_parts = len(line_parts) - 10
+                    line_parts = (
+                        [line_parts[0], " ".join(line_parts[1 : 1 + num_hit_parts])]
+                        + line_parts[1 + num_hit_parts : -2]
+                        + [" ".join(line_parts[-2:])]
+                    )
+
+                rows.append(line_parts)
+
+    assert len(rows) > 0, f"No parseable rows found in HHR file {hhr_filepath}."
+
     # Read the HHR file as a DataFrame.
     try:
-        df = pl.read_csv(hhr_filepath, separator="\t", skip_rows=8)
+        df = pl.DataFrame(rows, schema=schema, orient="row")
     except Exception as e:
         if verbose:
             logger.warning(f"Skipping loading HHR file {hhr_filepath} due to: {e}")
@@ -177,16 +217,20 @@ def parse_hhr(
     # Add shortcut columns to the DataFrame.
     df = df.with_columns(
         [
-            # NOTE: `Identity`` is `Cols`` / the second integer in Query HMM
-            (pl.col("Cols") / pl.col("Query HMM").apply(lambda x: int(x.split("-")[1]))).alias(
-                "Identity"
-            ),
-            # NOTE: `Template Start` and `Template End` are constructed from `Template HMM`
+            # `Identity` is `Cols` divided by the second integer in `Query HMM`
+            (
+                pl.col("Cols")
+                / pl.col("Query HMM").map_elements(
+                    lambda x: int(x.split("-")[1]), return_dtype=pl.Float64
+                )
+            ).alias("Identity"),
+            # `Template Start` extracted from `Template HMM`
             pl.col("Template HMM")
-            .apply(lambda x: extract_template_hmm_range(x)[0])
+            .map_elements(lambda x: extract_template_hmm_range(x)[0], return_dtype=pl.Int32)
             .alias("Template Start"),
+            # `Template End` extracted from `Template HMM`
             pl.col("Template HMM")
-            .apply(lambda x: extract_template_hmm_range(x)[1])
+            .map_elements(lambda x: extract_template_hmm_range(x)[1], return_dtype=pl.Int32)
             .alias("Template End"),
         ]
     )
@@ -232,7 +276,7 @@ def parse_hhr(
             ):
                 continue
             template_biomol = _from_mmcif_object(
-                template_mmcif_object, chain_ids=set(template_chain)
+                template_mmcif_object, chain_ids=set(template_chain.upper())
             )
             if len(template_biomol.atom_positions):
                 template_biomols.append((template_biomol, template_type))

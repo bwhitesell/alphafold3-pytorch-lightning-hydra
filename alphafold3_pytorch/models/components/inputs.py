@@ -2546,18 +2546,20 @@ def load_msa_from_msa_dir(
             # NOTE: For distillation PDB examples, we must search for all possible MSAs with a chain's expected sequence length
             # (since we don't have a precise mapping from AFDB UniProt accession IDs to PDB chain IDs), whereas for the original
             # PDB examples, we can directly identify the corresponding MSAs.
-            msa_fpath_pattern = (
-                os.path.join(msa_dir, f"{pdb_id}_*", "a3m", "*.a3m")
-                if distillation
-                else os.path.join(msa_dir, f"{file_id}{chain_id}_*.a3m")
-            )
-            msa_fpaths = glob.glob(msa_fpath_pattern) if exists(msa_dir) else []
+            msa_fpaths = []
+            if exists(msa_dir):
+                msa_fpath_pattern = (
+                    os.path.join(msa_dir, f"{pdb_id.split('-assembly1')[0]}_*", "a3m", "*.a3m")
+                    if distillation
+                    else os.path.join(msa_dir, f"{file_id}{chain_id}_*.a3m")
+                )
+                msa_fpaths = glob.glob(msa_fpath_pattern)
+
             if not msa_fpaths:
                 if verbose:
                     logger.warning(
-                        f"Could not find MSA for chain {chain_id} of file {file_id}. A dummy MSA will be installed for this chain."
+                        f"Could not find MSAs matching the pattern {msa_fpath_pattern} for chain {chain_id} of file {file_id}. If no other MSAs are found, a dummy MSA will be installed for this chain."
                     )
-                msas[chain_id] = dummy_msa
                 continue
 
             try:
@@ -2596,9 +2598,16 @@ def load_msa_from_msa_dir(
             except Exception as e:
                 if verbose:
                     logger.warning(
-                        f"Failed to load MSA for chain {chain_id} of file {file_id} due to: {e}. A dummy MSA will be installed for this chain."
+                        f"Failed to load MSAs for chain {chain_id} of file {file_id} due to: {e}. If no other MSAs are found, a dummy MSA will be installed for this chain."
                     )
-                msas[chain_id] = dummy_msa
+
+        # Install a dummy MSA as necessary.
+        if chain_id not in msas:
+            if verbose:
+                logger.warning(
+                    f"Failed to load any MSAs for chain {chain_id} of file {file_id} due to: {e}. A dummy MSA will be installed for this chain."
+                )
+            msas[chain_id] = dummy_msa
 
     chains = make_msa_features(
         msas,
@@ -2662,50 +2671,69 @@ def load_templates_from_templates_dir(
             # NOTE: For distillation PDB examples, we must search for all possible chain templates
             # (since we don't have a precise mapping from AFDB UniProt accession IDs to PDB chain IDs),
             # whereas for the original PDB examples, we can directly identify the corresponding templates.
-            template_fpath_pattern = (
-                os.path.join(templates_dir, f"{pdb_id}_*", "hhr", "*.hhr")
-                if distillation
-                else os.path.join(templates_dir, f"{file_id}{chain_id}_*.m8")
-            )
-            template_fpaths = glob.glob(template_fpath_pattern) if exists(templates_dir) else []
+            template_fpaths = []
+            if exists(templates_dir):
+                template_fpath_pattern = (
+                    os.path.join(
+                        templates_dir, f"{pdb_id.split('-assembly1')[0]}_*", "hhr", "*.hhr"
+                    )
+                    if distillation
+                    else os.path.join(templates_dir, f"{file_id}{chain_id}_*.m8")
+                )
+                template_fpaths = glob.glob(template_fpath_pattern)
+
             if not template_fpaths:
                 if verbose:
                     logger.warning(
-                        f"Could not find template for chain {chain_id} of file {file_id}. A dummy template will be installed for this chain."
+                        f"Could not find templates matching the pattern {template_fpath_pattern} for chain {chain_id} of file {file_id}. If no other templates are found, a dummy template will be installed for this chain."
                     )
-                templates[chain_id] = []
                 continue
 
-            # NOTE: Each chain-specific template file contains a template for all polymer residues in the chain,
-            # but the chain's ligands are not included in the template file and therefore must be manually inserted
-            # into the templates as unknown amino acid residues.
-            for template_fpath in template_fpaths:
-                query_id = file_id.split("-assembly1")[0]
+            try:
+                # NOTE: Each chain-specific template file contains a template for all polymer residues in the chain,
+                # but the chain's ligands are not included in the template file and therefore must be manually inserted
+                # into the templates as unknown amino acid residues.
+                for template_fpath in template_fpaths:
+                    query_id = pdb_id.split("-assembly1")[0]
 
-                template_type = (
-                    "protein"
-                    if distillation
-                    else os.path.splitext(os.path.basename(template_fpath))[0].split("_")[1]
-                )
-                template_parsing_fn = (
-                    template_parsing.parse_hhr
-                    if template_fpath.endswith(".hhr")
-                    else template_parsing.parse_m8
-                )
+                    template_type = (
+                        "protein"
+                        if distillation
+                        else os.path.splitext(os.path.basename(template_fpath))[0].split("_")[1]
+                    )
+                    template_parsing_fn = (
+                        template_parsing.parse_hhr
+                        if template_fpath.endswith(".hhr")
+                        else template_parsing.parse_m8
+                    )
 
-                template_biomols = template_parsing_fn(
-                    template_fpath,
-                    template_type,
-                    query_id,
-                    mmcif_dir,
-                    max_templates=max_templates_per_chain,
-                    num_templates=num_templates_per_chain,
-                    template_cutoff_date=template_cutoff_date,
-                    randomly_sample_num_templates=randomly_sample_num_templates,
-                    verbose=verbose,
-                )
+                    template_biomols = template_parsing_fn(
+                        template_fpath,
+                        template_type,
+                        query_id,
+                        mmcif_dir,
+                        max_templates=max_templates_per_chain,
+                        num_templates=num_templates_per_chain,
+                        template_cutoff_date=template_cutoff_date,
+                        randomly_sample_num_templates=randomly_sample_num_templates,
+                        verbose=verbose,
+                    )
 
-                templates[chain_id].extend(template_biomols)
+                    templates[chain_id].extend(template_biomols)
+
+            except Exception as e:
+                if verbose:
+                    logger.warning(
+                        f"Failed to load templates for chain {chain_id} of file {file_id} due to: {e}. If no other templates are found, a dummy template will be installed for this chain."
+                    )
+
+        if chain_id not in templates:
+            if verbose:
+                logger.warning(
+                    f"Could not find any templates for chain {chain_id} of file {file_id}. A dummy template will be installed for this chain."
+                )
+            templates[chain_id] = []
+            continue
 
     features = make_template_features(
         templates,
@@ -3581,7 +3609,7 @@ def pdb_input_to_molecule_input(
         resolved_labels = torch.full((num_atoms,), is_resolved_label, dtype=torch.long)
     elif i.distillation:
         # NOTE: distillation examples are assigned a minimal resolution label to enable confidence head scoring
-        resolution = torch.tensor([0.1])
+        resolution = torch.tensor(0.1)
 
     # craft optional pairwise token constraints
 
@@ -4182,7 +4210,7 @@ class PDBDistillationDataset(Dataset):
             cropping_config=cropping_config,
             training=self.training,
             distillation_multimer_sampling_ratio=self.multimer_sampling_ratio,
-            distillation_pdb_ids=list(self.uniprot_to_pdb_id_mapping[accession_id]),
+            distillation_pdb_ids=list(self.uniprot_to_pdb_id_mapping[accession_id.split("-")[1]]),
             **self.pdb_input_kwargs,
         )
 
@@ -4250,9 +4278,11 @@ def maybe_transform_to_atom_input(i: Any, raise_exception: bool = False) -> Atom
     try:
         return maybe_to_atom_fn(i)
     except Exception as e:
-        logger.warning(f"Failed to convert input {i} to AtomInput due to: {e}")
-        if raise_exception:
-            raise e
+        if "exceeds the accepted cutoff date" not in str(e):
+            # NOTE: By default, we don't raise exceptions for cutoff date violations.
+            logger.warning(f"Failed to convert input {i} to AtomInput due to: {e}")
+            if raise_exception:
+                raise e
         return None
 
 
