@@ -1,0 +1,54 @@
+# @package _global_
+
+# lists the experiment parameters corresponding to "Fine tuning 1" in Table 6 of the paper
+
+# to execute this experiment run:
+# python train.py experiment=af3_fine_tuning_1
+
+defaults:
+  - override /callbacks: default
+  - override /data: pdb
+  - override /environment: default
+  - override /logger: wandb
+  - override /model: alphafold3
+  - override /strategy: deepspeed
+  - override /trainer: deepspeed
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+tags: ["pdb", "alphafold3", "fine_tuning_1", "full_dataset"]
+
+seed: 12345
+
+# initial training experiment parameters:
+
+data:
+  crop_size: 640
+  pdb_distillation: true
+  constraints: [pocket, contact, docking]
+
+logger:
+  wandb:
+    entity: bml-lab
+    group: "af3-training"
+    tags: ${tags}
+    name: ${now:%Y%m%d%H%M%S}
+
+model:
+  diffusion_add_smooth_lddt_loss: false
+  diffusion_add_bond_loss: true
+  is_fine_tuning: true
+  net:
+    plm_embeddings: ${resolve_list_as_tuple:[esm2_t33_650M_UR50D,prostT5]}
+    nlm_embeddings: ${resolve_list_as_tuple:[rinalmo]}
+
+# NOTE: the following argument is only needed when using the `fsdp` strategy
+# strategy:
+#   ignored_modules: [network.plms]
+#   ignored_modules: [network.nlms]
+
+trainer:
+  # NOTE: a valid `ckpt_path` to the stage 1 weights must be specified to perform fine-tuning
+  ckpt_path: logs/train/runs/stage_1/checkpoints/last.ckpt
+  max_epochs: 3

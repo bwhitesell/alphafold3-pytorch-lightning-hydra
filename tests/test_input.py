@@ -582,7 +582,12 @@ def test_atompos_input():
 def test_pdbinput_input():
     """Test the PDBInput class, particularly its input transformations for mmCIF files."""
     filepath = os.path.join(
-        "data", "test", "mmcifs", DATA_TEST_PDB_ID[1:3], f"{DATA_TEST_PDB_ID}-assembly1.cif"
+        "data",
+        "test",
+        "pdb_data",
+        "mmcifs",
+        DATA_TEST_PDB_ID[1:3],
+        f"{DATA_TEST_PDB_ID}-assembly1.cif",
     )
     file_id = os.path.splitext(os.path.basename(filepath))[0]
     assert os.path.exists(filepath), f"File {filepath} does not exist."

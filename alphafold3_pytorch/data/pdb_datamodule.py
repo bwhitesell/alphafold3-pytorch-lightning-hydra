@@ -458,7 +458,8 @@ class PDBDataModule(LightningDataModule):
         data_dir: str = os.path.join("data", "pdb_data"),
         distillation_data_dir: str = os.path.join("data", "afdb_data"),
         msa_dir: str | None = os.path.join("data", "pdb_data", "data_caches", "msa"),
-        distillation_msa_dir: str | None = os.path.join("data", "afdb_data", "data_caches", "msa"),
+        distillation_data_caches_dir: str
+        | None = os.path.join("data", "afdb_data", "data_caches", "train"),
         templates_dir: str | None = os.path.join("data", "pdb_data", "data_caches", "template"),
         distillation_uniprot_to_pdb_id_mapping_filepath: str
         | None = os.path.join("data", "afdb_data", "data_caches", "uniprot_to_pdb_id_mapping.dat"),
@@ -473,15 +474,13 @@ class PDBDataModule(LightningDataModule):
         max_templates_per_chain: int | None = None,
         num_templates_per_chain: int | None = None,
         max_num_template_tokens: int | None = None,
-        max_train_length: int | None = None,
-        max_val_length: int | None = None,
+        max_length: int | None = None,
         train_cutoff_date: str | None = None,
         kalign_binary_path: str | None = None,
         sampling_weight_for_pdb_distillation: float = 0.5,
         pdb_distillation: bool = False,
         constraints: List[str] | None = None,
         constraints_ratio: float = 0.1,
-        max_number_of_chains: int = 20,
         atoms_per_window: int | None = None,
         map_dataset_input_fn: Callable | None = None,
         train_val_test_split: Tuple[int, int, int] | None = None,
@@ -586,10 +585,10 @@ class PDBDataModule(LightningDataModule):
             )
             setattr(
                 self,
-                f"{split}_distillation_msa_dir",
+                f"{split}_distillation_data_caches_dir",
                 (
-                    os.path.join(self.hparams.distillation_msa_dir, f"{path_split}_msas")
-                    if pdb_distillation and exists(self.hparams.distillation_msa_dir)
+                    os.path.join(self.hparams.distillation_data_caches_dir, path_split)
+                    if pdb_distillation and exists(self.hparams.distillation_data_caches_dir)
                     else None
                 ),
             )
@@ -658,7 +657,7 @@ class PDBDataModule(LightningDataModule):
             max_templates_per_chain=self.hparams.max_templates_per_chain,
             num_templates_per_chain=self.hparams.num_templates_per_chain,
             max_num_template_tokens=self.hparams.max_num_template_tokens,
-            max_length=self.hparams.max_train_length,
+            max_length=self.hparams.max_length,
             cutoff_date=self.hparams.train_cutoff_date,
             kalign_binary_path=self.hparams.kalign_binary_path,
             training=True,
@@ -705,7 +704,7 @@ class PDBDataModule(LightningDataModule):
                 max_templates_per_chain=self.hparams.max_templates_per_chain,
                 num_templates_per_chain=self.hparams.num_templates_per_chain,
                 max_num_template_tokens=self.hparams.max_num_template_tokens,
-                max_length=self.hparams.max_train_length,
+                max_length=self.hparams.max_length,
                 cutoff_date=self.hparams.train_cutoff_date,
                 kalign_binary_path=self.hparams.kalign_binary_path,
                 training=True,
@@ -716,9 +715,10 @@ class PDBDataModule(LightningDataModule):
                 filter_out_pdb_ids=filter_out_pdb_ids,
                 sample_only_pdb_ids=distillation_sample_only_pdb_ids,
                 return_atom_inputs=True,
-                msa_dir=self.train_distillation_msa_dir,
-                templates_dir=self.train_templates_dir,
+                msa_dir=self.train_distillation_data_caches_dir,
+                templates_dir=self.train_distillation_data_caches_dir,
                 multimer_sampling_ratio=self.hparams.distillation_multimer_sampling_ratio,
+                distillation_template_mmcif_dir=self.train_mmcifs_dir,
                 uniprot_to_pdb_id_mapping_filepath=self.hparams.distillation_uniprot_to_pdb_id_mapping_filepath,
             )
 
@@ -764,7 +764,7 @@ class PDBDataModule(LightningDataModule):
             max_templates_per_chain=self.hparams.max_templates_per_chain,
             num_templates_per_chain=self.hparams.num_templates_per_chain,
             max_num_template_tokens=self.hparams.max_num_template_tokens,
-            max_length=self.hparams.max_val_length,
+            max_length=self.hparams.max_length,
             kalign_binary_path=self.hparams.kalign_binary_path,
             training=False,
             inference=False,
@@ -802,6 +802,7 @@ class PDBDataModule(LightningDataModule):
             max_templates_per_chain=self.hparams.max_templates_per_chain,
             num_templates_per_chain=self.hparams.num_templates_per_chain,
             max_num_template_tokens=self.hparams.max_num_template_tokens,
+            max_length=self.hparams.max_length,
             kalign_binary_path=self.hparams.kalign_binary_path,
             training=False,
             inference=False,

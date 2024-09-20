@@ -25,13 +25,6 @@ seed: 12345
 
 data:
   crop_size: 384
-  max_msas_per_chain: 16384
-  max_num_msa_tokens: 41943040
-  max_templates_per_chain: 20
-  num_templates_per_chain: 4
-  max_num_template_tokens: 5120
-  max_train_length: 10240
-  max_val_length: 2560
   pdb_distillation: true
   constraints: [pocket, contact, docking]
 
@@ -43,14 +36,17 @@ logger:
     name: ${now:%Y%m%d%H%M%S}
 
 model:
-  parameters_initialized_from: random
-  train_structure_and_distogram: true
-  train_pae_head: true
   diffusion_add_smooth_lddt_loss: true
-  diffusion_add_bond_loss: true
+  diffusion_add_bond_loss: false
+  is_fine_tuning: false
   net:
     plm_embeddings: ${resolve_list_as_tuple:[esm2_t33_650M_UR50D,prostT5]}
     nlm_embeddings: ${resolve_list_as_tuple:[rinalmo]}
+
 # NOTE: the following argument is only needed when using the `fsdp` strategy
 # strategy:
 #   ignored_modules: [network.plms]
+#   ignored_modules: [network.nlms]
+
+trainer:
+  max_epochs: 20
