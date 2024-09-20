@@ -5906,14 +5906,8 @@ class ComputeModelSelectionScore(Module):
         is_molecule_types = batch_dict["is_molecule_types"]
 
         chains = [
-            # NOTE: e.g., since validation examples are already cropped, we can
-            # safely assume that the sampled chains are the same as the asym IDs
-            tuple(
-                chain.item()
-                for chain in torch.unique_consecutive(a_id, return_counts=False)
-                if chain.item() != missing_chain_index
-            )
-            for a_id in asym_id
+            tuple(chain for chain in chains_list if chain != missing_chain_index)
+            for chains_list in batch_dict["chains"].tolist()
         ]
         molecule_atom_lens = batch_dict["molecule_atom_lens"]
         molecule_ids = batch_dict["molecule_ids"]
