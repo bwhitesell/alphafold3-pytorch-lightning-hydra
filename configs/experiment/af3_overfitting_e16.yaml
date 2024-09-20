@@ -52,7 +52,7 @@ data:
   num_templates_per_chain: 4
   max_num_template_tokens: 5120
   max_train_length: 10240
-  max_val_length: 2560
+  max_val_length: 1024 # NOTE: Specified according to LM memory requirements
 
   overfitting_train_examples: true
   sample_only_pdb_ids:
@@ -98,3 +98,4 @@ trainer:
 # NOTE: the following argument is only needed when using the `fsdp` strategy
 # strategy:
 #   ignored_modules: [network.plms]
+#   ignored_modules: [network.nlms]
