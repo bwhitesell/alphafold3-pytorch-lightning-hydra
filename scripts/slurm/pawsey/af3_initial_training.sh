@@ -10,6 +10,7 @@
 #SBATCH --output=J-%x.%j.out                                  # output log file
 #SBATCH --error=J-%x.%j.err                                   # error log file
 #SBATCH --exclusive                                           # request exclusive node access
+#SBATCH --qos=high                                            # request extraordinary resources
 #################################################################
 
 # Load required modules
