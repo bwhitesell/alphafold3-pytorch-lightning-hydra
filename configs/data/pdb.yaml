@@ -2,7 +2,7 @@ _target_: alphafold3_pytorch.data.pdb_datamodule.PDBDataModule
 data_dir: ${paths.data_dir}/pdb_data/ # NOTE: this is the directory where the PDB data should be set up
 distillation_data_dir: ${paths.data_dir}/afdb_data/ # NOTE: this is the directory where the PDB distillation data should be set up
 msa_dir: ${paths.data_dir}/pdb_data/data_caches/msa # NOTE: this is the directory where the MSA data should be set up
-distillation_msa_dir: ${paths.data_dir}/afdb_data/data_caches/msa # NOTE: this is the directory where the MSA distillation data should be set up
+distillation_data_caches_dir: ${paths.data_dir}/afdb_data/data_caches # NOTE: this is the directory where the MSA and template distillation data should be set up
 templates_dir: ${paths.data_dir}/pdb_data/data_caches/template # NOTE: this is the directory where the template data should be set up
 distillation_uniprot_to_pdb_id_mapping_filepath: ${paths.data_dir}/afdb_data/data_caches/uniprot_to_pdb_id_mapping.dat # NOTE: this is the location where the UniProt to PDB ID mapping for SwissProt should be set up
 sample_type: default # NOTE: must be one of (`default`, `clustered`)

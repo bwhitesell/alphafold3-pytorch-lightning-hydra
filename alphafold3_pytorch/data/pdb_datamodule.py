@@ -458,7 +458,8 @@ class PDBDataModule(LightningDataModule):
         data_dir: str = os.path.join("data", "pdb_data"),
         distillation_data_dir: str = os.path.join("data", "afdb_data"),
         msa_dir: str | None = os.path.join("data", "pdb_data", "data_caches", "msa"),
-        distillation_msa_dir: str | None = os.path.join("data", "afdb_data", "data_caches", "msa"),
+        distillation_data_caches_dir: str
+        | None = os.path.join("data", "afdb_data", "data_caches", "train"),
         templates_dir: str | None = os.path.join("data", "pdb_data", "data_caches", "template"),
         distillation_uniprot_to_pdb_id_mapping_filepath: str
         | None = os.path.join("data", "afdb_data", "data_caches", "uniprot_to_pdb_id_mapping.dat"),
@@ -586,10 +587,10 @@ class PDBDataModule(LightningDataModule):
             )
             setattr(
                 self,
-                f"{split}_distillation_msa_dir",
+                f"{split}_distillation_data_caches_dir",
                 (
-                    os.path.join(self.hparams.distillation_msa_dir, f"{path_split}_msas")
-                    if pdb_distillation and exists(self.hparams.distillation_msa_dir)
+                    os.path.join(self.hparams.distillation_data_caches_dir, path_split)
+                    if pdb_distillation and exists(self.hparams.distillation_data_caches_dir)
                     else None
                 ),
             )
@@ -716,9 +717,10 @@ class PDBDataModule(LightningDataModule):
                 filter_out_pdb_ids=filter_out_pdb_ids,
                 sample_only_pdb_ids=distillation_sample_only_pdb_ids,
                 return_atom_inputs=True,
-                msa_dir=self.train_distillation_msa_dir,
-                templates_dir=self.train_templates_dir,
+                msa_dir=self.train_distillation_data_caches_dir,
+                templates_dir=self.train_distillation_data_caches_dir,
                 multimer_sampling_ratio=self.hparams.distillation_multimer_sampling_ratio,
+                distillation_template_mmcif_dir=self.train_mmcifs_dir,
                 uniprot_to_pdb_id_mapping_filepath=self.hparams.distillation_uniprot_to_pdb_id_mapping_filepath,
             )
 

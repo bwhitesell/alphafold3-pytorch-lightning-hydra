@@ -1899,7 +1899,6 @@ class PDBInput:
     cropping_config: Dict[str, float | int] | None = None
     msa_dir: str | None = None
     templates_dir: str | None = None
-    uniprot_accession_to_tax_id_mapping: Dict[str, str] | None = None
     add_atom_ids: bool = False
     add_atompair_ids: bool = False
     directed_bonds: bool = False
@@ -1907,6 +1906,8 @@ class PDBInput:
     inference: bool = False
     distillation: bool = False
     distillation_multimer_sampling_ratio: float = 2.0 / 3.0
+    distillation_pdb_ids: List[str] | None = None
+    distillation_template_mmcif_dir: str | None = None
     resolution: float | None = None
     constraints: List[CONSTRAINTS] | None = None
     constraints_ratio: float = 0.1
@@ -2500,9 +2501,10 @@ def load_msa_from_msa_dir(
     msa_dir: str | None,
     file_id: str,
     chain_id_to_residue: Dict[str, Dict[str, List[int]]],
-    uniprot_accession_to_tax_id_mapping: Dict[str, str] | None = None,
     max_msas_per_chain: int | None = None,
     randomly_truncate: bool = False,
+    distillation: bool = False,
+    distillation_pdb_ids: List[str] | None = None,
     verbose: bool = False,
 ) -> FeatureDict:
     """Load MSA from a directory containing MSA files."""
@@ -2525,6 +2527,7 @@ def load_msa_from_msa_dir(
                 chain_chemtype, chain_restype, unique_chain_residue_indices
             )
         ]
+        chain_sequence = chain_sequences[0]
         chain_deletion_matrix = [[0] * len(sequence) for sequence in chain_sequences]
         chain_descriptions = ["101" for _ in chain_sequences]
 
@@ -2538,60 +2541,74 @@ def load_msa_from_msa_dir(
             msa_type=chain_msa_type,
         )
 
-        msa_fpaths = (
-            glob.glob(os.path.join(msa_dir, f"{file_id}{chain_id}_*.a3m"))
-            if exists(msa_dir)
-            else []
-        )
-        if not msa_fpaths:
-            if verbose:
-                logger.warning(
-                    f"Could not find MSA for chain {chain_id} of file {file_id}. A dummy MSA will be installed for this chain."
-                )
-            msas[chain_id] = dummy_msa
-            continue
-
-        try:
-            # NOTE: A single chain-specific MSA file contains alignments for all polymer residues in the chain,
-            # but the chain's ligands are not included in the MSA file and therefore must be manually inserted
-            # into the MSAs as unknown amino acid residues.
-            assert len(msa_fpaths) == 1, (
-                f"{len(msa_fpaths)} MSA files found for chain {chain_id} of file {file_id}. "
-                "Please ensure that one MSA file is present for each chain."
+        pdb_ids = distillation_pdb_ids if distillation else [file_id]
+        for pdb_id in pdb_ids:
+            # NOTE: For distillation PDB examples, we must search for all possible MSAs with a chain's expected sequence length
+            # (since we don't have a precise mapping from AFDB UniProt accession IDs to PDB chain IDs), whereas for the original
+            # PDB examples, we can directly identify the corresponding MSAs.
+            msa_fpath_pattern = (
+                os.path.join(msa_dir, f"{pdb_id}_*", "a3m", "*.a3m")
+                if distillation
+                else os.path.join(msa_dir, f"{file_id}{chain_id}_*.a3m")
             )
-            msa_fpath = msa_fpaths[0]
-
-            with open(msa_fpath, "r") as f:
-                msa = f.read()
-                msa = msa_parsing.parse_a3m(msa, chain_msa_type)
-                msa = (
-                    (
-                        msa.random_truncate(max_msas_per_chain)
-                        if randomly_truncate
-                        else msa.truncate(max_msas_per_chain)
+            msa_fpaths = glob.glob(msa_fpath_pattern) if exists(msa_dir) else []
+            if not msa_fpaths:
+                if verbose:
+                    logger.warning(
+                        f"Could not find MSA for chain {chain_id} of file {file_id}. A dummy MSA will be installed for this chain."
                     )
-                    if exists(max_msas_per_chain)
-                    else msa
-                )
-                msas[chain_id] = msa
+                msas[chain_id] = dummy_msa
+                continue
 
-        except Exception as e:
-            if verbose:
-                logger.warning(
-                    f"Failed to load MSA for chain {chain_id} of file {file_id} due to: {e}. A dummy MSA will be installed for this chain."
+            try:
+                # NOTE: Each chain-specific MSA file contains alignments for all polymer residues in the chain,
+                # but the chain's ligands are not included in the MSA file and therefore must be manually inserted
+                # into the MSAs as unknown amino acid residues.
+                chain_msas = []
+                for msa_fpath in msa_fpaths:
+                    with open(msa_fpath, "r") as f:
+                        msa = f.read()
+                        msa = msa_parsing.parse_a3m(msa, chain_msa_type)
+                        if len(chain_sequence) == len(msa.sequences[0]):
+                            chain_msas.append(msa)
+
+                if not chain_msas:
+                    raise ValueError(
+                        f"Could not find any MSAs with the expected sequence length for chain {chain_id} of file {file_id}."
+                    )
+
+                # Keep the top `max_msas_per_chain` MSAs per chain proportionally across all available chain MSAs.
+                max_msas_per_chain_proportional = (
+                    max_msas_per_chain // len(chain_msas) if exists(max_msas_per_chain) else None
                 )
-            msas[chain_id] = dummy_msa
+                for chain_msa in chain_msas:
+                    chain_msa = (
+                        (
+                            chain_msa.random_truncate(max_msas_per_chain_proportional)
+                            if randomly_truncate
+                            else chain_msa.truncate(max_msas_per_chain_proportional)
+                        )
+                        if exists(max_msas_per_chain_proportional)
+                        else chain_msa
+                    )
+                    msas[chain_id] = msas[chain_id] + chain_msa if chain_id in msas else chain_msa
+
+            except Exception as e:
+                if verbose:
+                    logger.warning(
+                        f"Failed to load MSA for chain {chain_id} of file {file_id} due to: {e}. A dummy MSA will be installed for this chain."
+                    )
+                msas[chain_id] = dummy_msa
 
     chains = make_msa_features(
         msas,
         chain_id_to_residue,
         num_msa_one_hot=NUM_MSA_ONE_HOT,
-        uniprot_accession_to_tax_id_mapping=uniprot_accession_to_tax_id_mapping,
     )
     unique_entity_ids = set(chain["entity_id"][0] for chain in chains)
 
     is_monomer_or_homomer = len(unique_entity_ids) == 1
-    pair_msa_sequences = exists(uniprot_accession_to_tax_id_mapping) and not is_monomer_or_homomer
+    pair_msa_sequences = not is_monomer_or_homomer
 
     if pair_msa_sequences:
         try:
@@ -2623,6 +2640,8 @@ def load_templates_from_templates_dir(
     kalign_binary_path: str | None = None,
     template_cutoff_date: datetime | None = None,
     randomly_sample_num_templates: bool = False,
+    distillation: bool = False,
+    distillation_pdb_ids: List[str] | None = None,
     verbose: bool = False,
 ) -> FeatureDict:
     """Load templates from a directory containing template PDB mmCIF files."""
@@ -2638,44 +2657,55 @@ def load_templates_from_templates_dir(
 
     templates = defaultdict(list)
     for chain_id in chain_id_to_residue:
-        template_fpaths = (
-            glob.glob(os.path.join(templates_dir, f"{file_id}{chain_id}_*.m8"))
-            if exists(templates_dir)
-            else []
-        )
+        pdb_ids = distillation_pdb_ids if distillation else [file_id]
+        for pdb_id in pdb_ids:
+            # NOTE: For distillation PDB examples, we must search for all possible chain templates
+            # (since we don't have a precise mapping from AFDB UniProt accession IDs to PDB chain IDs),
+            # whereas for the original PDB examples, we can directly identify the corresponding templates.
+            template_fpath_pattern = (
+                os.path.join(templates_dir, f"{pdb_id}_*", "hhr", "*.hhr")
+                if distillation
+                else os.path.join(templates_dir, f"{file_id}{chain_id}_*.m8")
+            )
+            template_fpaths = glob.glob(template_fpath_pattern) if exists(templates_dir) else []
+            if not template_fpaths:
+                if verbose:
+                    logger.warning(
+                        f"Could not find template for chain {chain_id} of file {file_id}. A dummy template will be installed for this chain."
+                    )
+                templates[chain_id] = []
+                continue
 
-        if not template_fpaths:
-            if verbose:
-                logger.warning(
-                    f"Could not find template for chain {chain_id} of file {file_id}. A dummy template will be installed for this chain."
+            # NOTE: Each chain-specific template file contains a template for all polymer residues in the chain,
+            # but the chain's ligands are not included in the template file and therefore must be manually inserted
+            # into the templates as unknown amino acid residues.
+            for template_fpath in template_fpaths:
+                query_id = file_id.split("-assembly1")[0]
+
+                template_type = (
+                    "protein"
+                    if distillation
+                    else os.path.splitext(os.path.basename(template_fpath))[0].split("_")[1]
                 )
-            templates[chain_id] = []
-            continue
+                template_parsing_fn = (
+                    template_parsing.parse_hhr
+                    if template_fpath.endswith(".hhr")
+                    else template_parsing.parse_m8
+                )
 
-        # NOTE: A single chain-specific template file contains a template for all polymer residues in the chain,
-        # but the chain's ligands are not included in the template file and therefore must be manually inserted
-        # into the templates as unknown amino acid residues.
-        assert len(template_fpaths) == 1, (
-            f"{len(template_fpaths)} template files found for chain {chain_id} of file {file_id}. "
-            "Please ensure that one template file is present for each chain."
-        )
-        template_fpath = template_fpaths[0]
-        query_id = file_id.split("-assembly1")[0]
+                template_biomols = template_parsing_fn(
+                    template_fpath,
+                    template_type,
+                    query_id,
+                    mmcif_dir,
+                    max_templates=max_templates_per_chain,
+                    num_templates=num_templates_per_chain,
+                    template_cutoff_date=template_cutoff_date,
+                    randomly_sample_num_templates=randomly_sample_num_templates,
+                    verbose=verbose,
+                )
 
-        template_type = os.path.splitext(os.path.basename(template_fpath))[0].split("_")[1]
-
-        template_biomols = template_parsing.parse_m8(
-            template_fpath,
-            template_type,
-            query_id,
-            mmcif_dir,
-            max_templates=max_templates_per_chain,
-            num_templates=num_templates_per_chain,
-            template_cutoff_date=template_cutoff_date,
-            randomly_sample_num_templates=randomly_sample_num_templates,
-            verbose=verbose,
-        )
-        templates[chain_id].extend(template_biomols)
+                templates[chain_id].extend(template_biomols)
 
     features = make_template_features(
         templates,
@@ -2719,7 +2749,7 @@ def pdb_input_to_molecule_input(
         mmcif_release_date = extract_mmcif_metadata_field(mmcif_object, "release_date")
         biomol = (
             _from_mmcif_object(mmcif_object)
-            if "assembly" in file_id
+            if "assembly" in file_id or i.distillation
             else get_assembly(_from_mmcif_object(mmcif_object))
         )
 
@@ -2845,8 +2875,9 @@ def pdb_input_to_molecule_input(
         msa_dir,
         file_id,
         chain_id_to_residue,
-        uniprot_accession_to_tax_id_mapping=i.uniprot_accession_to_tax_id_mapping,
         max_msas_per_chain=max_msas_per_chain,
+        distillation=i.distillation,
+        distillation_pdb_ids=i.distillation_pdb_ids,
         verbose=verbose,
     )
 
@@ -2902,7 +2933,11 @@ def pdb_input_to_molecule_input(
 
     # retrieve templates for each chain
 
-    mmcif_dir = str(Path(i.mmcif_filepath).parent.parent)
+    mmcif_dir = (
+        i.distillation_template_mmcif_dir
+        if i.distillation
+        else str(Path(i.mmcif_filepath).parent.parent)
+    )
 
     # use the template cutoff dates listed in the AF3 supplement's Section 2.4
     if i.training:
@@ -2936,6 +2971,8 @@ def pdb_input_to_molecule_input(
             num_templates_per_chain=i.num_templates_per_chain,
             kalign_binary_path=i.kalign_binary_path,
             template_cutoff_date=template_cutoff_date,
+            distillation=i.distillation,
+            distillation_pdb_ids=i.distillation_pdb_ids,
             verbose=verbose,
         )
 
@@ -4056,23 +4093,23 @@ class PDBDistillationDataset(Dataset):
 
         # subsample mmCIF files
 
-        self.uniprot_to_pdb_id_mapping_df = pl.read_csv(
+        uniprot_to_pdb_id_mapping_df = pl.read_csv(
             uniprot_to_pdb_id_mapping_filepath,
             has_header=False,
             separator="\t",
             new_columns=["uniprot_accession", "database", "pdb_id"],
         )
-        self.uniprot_to_pdb_id_mapping_df.drop_in_place("database")
+        uniprot_to_pdb_id_mapping_df.drop_in_place("database")
 
-        uniprot_to_pdb_id_mapping = defaultdict(set)
-        for row in self.uniprot_to_pdb_id_mapping_df.iter_rows():
-            uniprot_to_pdb_id_mapping[row[0]].add(f"{row[1].lower()}-assembly1")
+        self.uniprot_to_pdb_id_mapping = defaultdict(set)
+        for row in uniprot_to_pdb_id_mapping_df.iter_rows():
+            self.uniprot_to_pdb_id_mapping[row[0]].add(f"{row[1].lower()}-assembly1")
 
         self.files = {
             os.path.splitext(os.path.basename(file.name))[0]: file
             for file in folder.glob(os.path.join("**", "*.cif"))
             if os.path.splitext(os.path.basename(file.name))[0].split("-")[1]
-            in uniprot_to_pdb_id_mapping
+            in self.uniprot_to_pdb_id_mapping
         }
 
         if exists(filter_out_pdb_ids):
@@ -4081,7 +4118,7 @@ class PDBDistillationDataset(Dataset):
                 for filename, file in self.files.items()
                 if not any(
                     pdb_id in filter_out_pdb_ids
-                    for pdb_id in uniprot_to_pdb_id_mapping[filename.split("-")[1]]
+                    for pdb_id in self.uniprot_to_pdb_id_mapping[filename.split("-")[1]]
                 )
             }
 
@@ -4091,7 +4128,7 @@ class PDBDistillationDataset(Dataset):
                 for filename, file in self.files.items()
                 if any(
                     pdb_id in sample_only_pdb_ids
-                    for pdb_id in uniprot_to_pdb_id_mapping[filename.split("-")[1]]
+                    for pdb_id in self.uniprot_to_pdb_id_mapping[filename.split("-")[1]]
                 )
             }
 
@@ -4145,6 +4182,7 @@ class PDBDistillationDataset(Dataset):
             cropping_config=cropping_config,
             training=self.training,
             distillation_multimer_sampling_ratio=self.multimer_sampling_ratio,
+            distillation_pdb_ids=list(self.uniprot_to_pdb_id_mapping[accession_id]),
             **self.pdb_input_kwargs,
         )
 
