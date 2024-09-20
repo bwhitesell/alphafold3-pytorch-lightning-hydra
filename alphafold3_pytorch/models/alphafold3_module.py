@@ -206,7 +206,7 @@ class Alphafold3LitModule(LightningModule):
             filepaths_available
             and self.hparams.visualize_train_samples_every_n_steps > 0
             and batch_idx % self.hparams.visualize_train_samples_every_n_steps == 0
-            and seq_len <= self.hparams.crop_size
+            and seq_len < self.hparams.crop_size
         )
 
         if visualize_samples:
@@ -312,7 +312,7 @@ class Alphafold3LitModule(LightningModule):
             filepaths_available
             and self.hparams.visualize_val_samples_every_n_steps > 0
             and batch_idx % self.hparams.visualize_val_samples_every_n_steps == 0
-            and seq_len <= self.hparams.crop_size
+            and seq_len < self.hparams.crop_size
         )
 
         if visualize_samples:
@@ -463,7 +463,7 @@ class Alphafold3LitModule(LightningModule):
             filepaths_available
             and self.hparams.visualize_test_samples_every_n_steps > 0
             and batch_idx % self.hparams.visualize_test_samples_every_n_steps == 0
-            and seq_len <= self.hparams.crop_size
+            and seq_len < self.hparams.crop_size
         )
 
         if visualize_samples:

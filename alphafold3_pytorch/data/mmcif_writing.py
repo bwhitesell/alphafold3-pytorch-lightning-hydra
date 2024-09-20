@@ -21,7 +21,7 @@ def write_mmcif_from_filepath_and_id(
         return write_mmcif(mmcif_object, output_filepath=output_filepath, **kwargs)
     except Exception as e:
         logger.warning(
-            f"Failed to write mmCIF file {output_filepath} due to: {e}. Perhaps (pre)cropping was performed on this example?"
+            f"Failed to write mmCIF file {output_filepath} due to: {e}. Perhaps cropping was performed on this example?"
         )
 
 

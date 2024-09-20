@@ -3017,7 +3017,7 @@ def pdb_input_to_molecule_input(
             assert exists(i.chains), "Chain IDs must be provided for cropping during training."
             chain_id_1, chain_id_2 = i.chains
 
-            biomol, chain_ids_and_lengths, crop_masks = biomol.crop(
+            cropped_biomol, chain_ids_and_lengths, crop_masks = biomol.crop(
                 contiguous_weight=i.cropping_config["contiguous_weight"],
                 spatial_weight=i.cropping_config["spatial_weight"],
                 spatial_interface_weight=i.cropping_config["spatial_interface_weight"],
@@ -3028,10 +3028,10 @@ def pdb_input_to_molecule_input(
 
             # retrieve cropped residue and token metadata
             residue_index = (
-                torch.from_numpy(biomol.residue_index) - 1
+                torch.from_numpy(cropped_biomol.residue_index) - 1
             )  # NOTE: `Biomolecule.residue_index` is 1-based originally
-            chain_index = torch.from_numpy(biomol.chain_index)
-            num_tokens = len(biomol.atom_mask)
+            chain_index = torch.from_numpy(cropped_biomol.chain_index)
+            num_tokens = len(cropped_biomol.atom_mask)
 
             # update MSA and template features after cropping
             chain_id_sorted_indices = get_sorted_tuple_indices(
@@ -3040,7 +3040,7 @@ def pdb_input_to_molecule_input(
             sorted_crop_mask = np.concatenate([crop_masks[idx] for idx in chain_id_sorted_indices])
 
             biomol_chain_ids = list(
-                dict.fromkeys(biomol.chain_id.tolist())
+                dict.fromkeys(cropped_biomol.chain_id.tolist())
             )  # NOTE: we must maintain the order of unique chain IDs
 
             # crop MSA features
@@ -3053,6 +3053,47 @@ def pdb_input_to_molecule_input(
             # crop template features
             if exists(templates):
                 templates = templates[:, sorted_crop_mask][:, :, sorted_crop_mask]
+
+            # update sampled chain indices
+            uncropped_chain_id_to_cropped_chain_idx = {
+                uncropped_chain_id: cropped_chain_idx.item()
+                for (uncropped_chain_id, cropped_chain_idx) in zip(
+                    biomol.chain_id[sorted_crop_mask], cropped_biomol.chain_index
+                )
+            }
+
+            if chain_id_1:
+                chain_idx_1 = uncropped_chain_id_to_cropped_chain_idx.get(chain_id_1)
+            else:
+                chain_idx_1 = None
+            if chain_id_2:
+                chain_idx_2 = uncropped_chain_id_to_cropped_chain_idx.get(chain_id_2)
+            else:
+                chain_idx_2 = None
+
+            # NOTE: e.g., when contiguously cropping structures, the sampled chains
+            # may be missing from the cropped structure, in which case we must
+            # re-sample new chains specifically for validation model selection scoring
+            if not_exists(chain_idx_1) and not_exists(chain_idx_2):
+                input_chain_id_1, input_chain_id_2 = i.chains
+
+                if (
+                    exists(input_chain_id_1)
+                    and exists(input_chain_id_2)
+                    and len(uncropped_chain_id_to_cropped_chain_idx) > 1
+                ):
+                    chain_idx_1, chain_idx_2 = sorted(
+                        random.sample(list(uncropped_chain_id_to_cropped_chain_idx.values()), 2)
+                    )  # nosec
+                else:
+                    chain_idx_1 = random.choice(
+                        list(uncropped_chain_id_to_cropped_chain_idx.values())
+                    )  # nosec
+
+            chains = (chain_idx_1, chain_idx_2)
+
+            # update biomolecule after cropping
+            biomol = cropped_biomol
 
         except Exception as e:
             raise ValueError(f"Failed to crop the biomolecule for input {file_id} due to: {e}")
