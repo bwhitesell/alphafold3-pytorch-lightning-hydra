@@ -5,7 +5,7 @@ import os
 import numpy as np
 import torch
 import torch.nn.functional as F
-from beartype.typing import Dict, List, MutableMapping, Optional, Set, Tuple
+from beartype.typing import Dict, List, MutableMapping, Optional, Tuple
 from torch import Tensor
 
 from alphafold3_pytorch.common.biomolecule import (
