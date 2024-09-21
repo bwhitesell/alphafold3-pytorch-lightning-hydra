@@ -1,6 +1,5 @@
 """General-purpose data pipeline."""
 
-import copy
 import os
 
 import numpy as np
