@@ -131,7 +131,7 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "experiment=af3_overfitting_e16",
+                "experiment=af3_overfitting_e1",
                 "~callbacks.learning_rate_monitor",
                 // "data.ablate_weighted_pdb_sampler=true",
                 // "data.num_tax_id_mappings_to_keep=10000000",
