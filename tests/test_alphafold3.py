@@ -51,7 +51,6 @@ from alphafold3_pytorch.models.components.alphafold3 import (
 from alphafold3_pytorch.models.components.inputs import (
     IS_MOLECULE_TYPES,
     IS_PROTEIN,
-    Alphafold3Input,
     PDBInput,
     atom_ref_pos_to_atompair_inputs,
     molecule_to_atom_input,
