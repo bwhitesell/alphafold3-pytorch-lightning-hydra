@@ -31,6 +31,6 @@ def test_atom_datamodule(batch_size: int) -> None:
     assert num_datapoints == sum(train_val_test_split)
 
     batch = next(iter(dm.train_dataloader()))
-    x = batch.model_forward_dict()
+    x = batch.dict()
     assert len(x["atom_inputs"]) == batch_size
     assert x["atom_inputs"].dtype == torch.float32

@@ -5,6 +5,7 @@ from functools import partial
 
 import numpy as np
 import rootutils
+import sh
 import torch
 from beartype import beartype
 from beartype.door import is_bearable
@@ -13,6 +14,7 @@ from Bio.PDB.Chain import Chain
 from Bio.PDB.Residue import DisorderedResidue, Residue
 from environs import Env
 from jaxtyping import Bool, Float, Int, Shaped, jaxtyped
+from packaging import version
 from torch import Tensor
 
 from alphafold3_pytorch.utils.utils import always, identity
@@ -81,6 +83,22 @@ if DEEPSPEED_CHECKPOINTING:
 else:
     checkpoint = partial(torch.utils.checkpoint.checkpoint, use_reentrant=False)
 
+# whether to use Nim or not, depending on if available and version is adequate
+try:
+    sh.which("nim")
+    HAS_NIM = True
+    NIM_VERSION = sh.nim(eval="echo NimVersion", hints="off")
+except sh.ErrorReturnCode_1:
+    HAS_NIM = False
+    NIM_VERSION = None
+
+USE_NIM = env.bool("USE_NIM", HAS_NIM)
+
+assert not (USE_NIM and not HAS_NIM), "you cannot use Nim if it is not available"
+assert not HAS_NIM or version.parse(NIM_VERSION) >= version.parse(
+    "2.0.8"
+), "nim version must be 2.0.8 or above"
+
 # check is GitHub CI
 
 IS_GITHUB_CI = env.bool("IS_GITHUB_CI", False)
@@ -116,4 +134,5 @@ __all__ = [
     typecheck,
     IS_DEBUGGING,
     IS_GITHUB_CI,
+    USE_NIM,
 ]

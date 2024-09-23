@@ -103,5 +103,5 @@ def test_data_input():
         ),
     )
 
-    loss = alphafold3(**batched_atom_input.model_forward_dict())
+    loss = alphafold3(**batched_atom_input.dict())
     loss.backward()

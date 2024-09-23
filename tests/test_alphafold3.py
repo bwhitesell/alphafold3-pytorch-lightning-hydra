@@ -1298,9 +1298,7 @@ def test_collate_fn():
 
     batched_atom_inputs = collate_inputs_to_batched_atom_input([dataset[i] for i in range(3)])
 
-    _, breakdown = alphafold3(
-        **batched_atom_inputs.model_forward_dict(), return_loss_breakdown=True
-    )
+    _, breakdown = alphafold3(**batched_atom_inputs.dict(), return_loss_breakdown=True)
 
 
 # test compute ranking score
@@ -1518,7 +1516,7 @@ def test_unresolved_protein_rasa():
     mol_input = pdb_input_to_molecule_input(pdb_input)
     atom_input = molecule_to_atom_input(mol_input)
     batched_atom_input = collate_inputs_to_batched_atom_input([atom_input], atoms_per_window=27)
-    batched_atom_input_dict = batched_atom_input.model_forward_dict()
+    batched_atom_input_dict = batched_atom_input.dict()
 
     _, _, asym_id, _, _ = batched_atom_input_dict["additional_molecule_feats"].unbind(dim=-1)
 

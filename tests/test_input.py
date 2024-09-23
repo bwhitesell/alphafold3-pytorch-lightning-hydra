@@ -121,7 +121,7 @@ def test_alphafold3_input(directed_bonds):
         ),
     )
 
-    alphafold3(**batched_atom_input.model_forward_dict(), num_sample_steps=1)
+    alphafold3(**batched_atom_input.dict(), num_sample_steps=1)
 
 
 def test_alphafold3_input_to_biomolecule():
@@ -505,7 +505,7 @@ def test_return_bio_pdb_structures():
     )
 
     alphafold3(
-        **batched_atom_input.model_forward_dict(),
+        **batched_atom_input.dict(),
         num_sample_steps=1,
         return_bio_pdb_structures=True,
     )
@@ -562,7 +562,7 @@ def test_atompos_input():
         ),
     )
 
-    loss = alphafold3(**batched_atom_input.model_forward_dict())
+    loss = alphafold3(**batched_atom_input.dict())
     loss.backward()
 
     # sampling
@@ -572,9 +572,7 @@ def test_atompos_input():
     )
 
     alphafold3.eval()
-    sampled_atom_pos = alphafold3(
-        **batched_eval_atom_input.model_forward_dict(), return_loss=False
-    )
+    sampled_atom_pos = alphafold3(**batched_eval_atom_input.dict(), return_loss=False)
 
     assert sampled_atom_pos.shape == (1, (5 + 4 + 21 + 3), 3)
 
@@ -642,7 +640,7 @@ def test_pdbinput_input():
         ),
     )
 
-    loss = alphafold3(**batched_atom_input.model_forward_dict())
+    loss = alphafold3(**batched_atom_input.dict())
     loss.backward()
 
     # sampling is too much for github ci for now
@@ -656,7 +654,7 @@ def test_pdbinput_input():
 
     alphafold3.eval()
 
-    batch_dict = batched_eval_atom_input.model_forward_dict()
+    batch_dict = batched_eval_atom_input.dict()
     sampled_atom_pos = alphafold3(
         **batch_dict,
         return_loss=False,

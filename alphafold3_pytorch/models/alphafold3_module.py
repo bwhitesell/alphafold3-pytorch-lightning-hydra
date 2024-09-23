@@ -118,8 +118,7 @@ class Alphafold3LitModule(LightningModule):
         :param x: A batch of `AtomInput` data.
         :return: A tensor of losses as well as a breakdown of the component losses.
         """
-        batch_dict = batch.dict()
-        batch_model_forward_dict = self.prepare_batch_dict(batch.model_forward_dict())
+        batch_dict = self.prepare_batch_dict(batch.dict())
 
         # cache the current filepaths for logging errors
         filepaths = (
@@ -132,7 +131,7 @@ class Alphafold3LitModule(LightningModule):
         log.info(f"Forward pass for step {self.global_step} with filepaths: {filepaths}")
 
         return self.network(
-            **batch_model_forward_dict,
+            **batch_dict,
             return_loss_breakdown=True,
             diffusion_add_bond_loss=self.hparams.diffusion_add_bond_loss,
             diffusion_add_smooth_lddt_loss=self.hparams.diffusion_add_smooth_lddt_loss,
@@ -221,8 +220,7 @@ class Alphafold3LitModule(LightningModule):
         :param batch: A batch of `AtomInput` data.
         :param batch_idx: The index of the current batch.
         """
-        batch_dict = batch.dict()
-        prepared_model_batch_dict = self.prepare_batch_dict(batch.model_forward_dict())
+        batch_dict = self.prepare_batch_dict(batch.dict())
 
         # generate multiple samples per example in each batch
 
@@ -230,7 +228,7 @@ class Alphafold3LitModule(LightningModule):
 
         for _ in range(self.hparams.num_samples_per_example):
             batch_sampled_atom_pos, logits = self.network(
-                **prepared_model_batch_dict,
+                **batch_dict,
                 return_loss=False,
                 return_confidence_head_logits=True,
                 return_distogram_head_logits=True,
@@ -368,8 +366,7 @@ class Alphafold3LitModule(LightningModule):
         :param batch: A batch of `AtomInput` data.
         :param batch_idx: The index of the current batch.
         """
-        batch_dict = batch.dict()
-        prepared_model_batch_dict = self.prepare_batch_dict(batch.model_forward_dict())
+        batch_dict = self.prepare_batch_dict(batch.dict())
 
         # generate multiple samples per example in each batch
 
@@ -377,7 +374,7 @@ class Alphafold3LitModule(LightningModule):
 
         for _ in range(self.hparams.num_samples_per_example):
             batch_sampled_atom_pos, logits = self.network(
-                **prepared_model_batch_dict,
+                **batch_dict,
                 return_loss=False,
                 return_confidence_head_logits=True,
                 return_distogram_head_logits=True,
@@ -568,11 +565,10 @@ class Alphafold3LitModule(LightningModule):
         :param sample_idx: The index of the sample to visualize.
         :param filename_suffixes: The suffixes to append to the filenames.
         """
-        batch_dict = batch.dict()
-        prepared_model_batch_dict = self.prepare_batch_dict(batch.model_forward_dict())
+        batch_dict = self.prepare_batch_dict(batch.dict())
 
         batch_sampled_atom_pos = self.network(
-            **prepared_model_batch_dict,
+            **batch_dict,
             return_loss=False,
         )
 

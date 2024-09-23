@@ -1,6 +1,6 @@
 [project]
 name = "alphafold3-pytorch-lightning-hydra"
-version = "0.5.31"
+version = "0.5.36"
 description = "AlphaFold 3 - Pytorch"
 authors = [
     { name = "Phil Wang", email = "lucidrains@gmail.com" },
@@ -72,6 +72,7 @@ dependencies = [
     "lion-pytorch>=0.2.2",    # for optimization with Lion
     "loguru",          # for cleaner logging
     "multimolecule",   # for working with biomolecular language models
+    "nimporter",       # for importing Nim
     "numpy==1.23.5",   # for numerical operations
     "pandas>=1.5.3",   # for data parsing and analysis
     "pdbeccdutils==0.8.5", # for parsing the Protein Data Bank's Chemical Component Dictionary (CCD)

@@ -6,6 +6,7 @@ import json
 import os
 import random  # nosec
 import statistics
+import traceback
 from collections import defaultdict
 from collections.abc import Iterable
 from contextlib import redirect_stderr
@@ -35,7 +36,12 @@ from torch import repeat_interleave, tensor
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 
-from alphafold3_pytorch.common import amino_acid_constants, dna_constants, rna_constants
+from alphafold3_pytorch.common import (
+    amino_acid_constants,
+    dna_constants,
+    ligand_constants,
+    rna_constants,
+)
 from alphafold3_pytorch.common.biomolecule import (
     Biomolecule,
     _from_mmcif_object,
@@ -67,6 +73,10 @@ from alphafold3_pytorch.data.life import (
     reverse_complement_tensor,
 )
 from alphafold3_pytorch.data.weighted_pdb_sampler import WeightedPDBSampler
+from alphafold3_pytorch.models.components.attention import (
+    full_attn_bias_to_windowed,
+    full_pairwise_repr_to_windowed,
+)
 from alphafold3_pytorch.utils.data_utils import (
     PDB_INPUT_RESIDUE_MOLECULE_TYPE,
     extract_mmcif_metadata_field,
@@ -82,6 +92,8 @@ from alphafold3_pytorch.utils.model_utils import (
     get_frames_from_atom_pos,
     maybe,
     offset_only_positive,
+    pack_one,
+    pad_at_dim,
     remove_consecutive_duplicate,
     to_pairwise_mask,
 )
@@ -234,7 +246,7 @@ def hard_validate_atom_indices_ascending(
 
         # NOTE: this is a relaxed assumption, i.e., that if empty, all -1, or only one molecule, then it passes the test
 
-        if present_indices.numel() == 0 or present_indices.shape[-1] <= 1:
+        if present_indices.numel() == 0 or present_indices.shape[0] <= 1:
             continue
 
         difference = einx.subtract(
@@ -250,7 +262,7 @@ def hard_validate_atom_indices_ascending(
 
 UNCOLLATABLE_ATOM_INPUT_FIELDS = {"filepath"}
 
-ATOM_INPUT_EXCLUDE_MODEL_FIELDS = {"filepath", "chains"}
+ATOM_INPUT_EXCLUDE_MODEL_FIELDS = {}
 
 ATOM_DEFAULT_PAD_VALUES = dict(molecule_atom_lens=0, missing_atom_mask=True)
 
@@ -452,7 +464,7 @@ def pdb_dataset_to_atom_inputs(
 class AtomDataset(Dataset):
     """Dataset for AtomInput stored on disk."""
 
-    def __init__(self, folder: str | Path):
+    def __init__(self, folder: str | Path, **kwargs):
         if isinstance(folder, str):
             folder = Path(folder)
 
@@ -740,7 +752,10 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
             num_atoms = mol.GetNumAtoms()
             mol_atompair_ids = torch.zeros(num_atoms, num_atoms).long()
 
-            for bond in mol.GetBonds():
+            bonds = mol.GetBonds()
+            num_bonds = len(bonds)
+
+            for bond in bonds:
                 atom_start_index = bond.GetBeginAtomIdx()
                 atom_end_index = bond.GetEndAtomIdx()
 
@@ -766,12 +781,21 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
 
                 updates.extend([bond_to, bond_from])
 
-            coordinates = tensor(coordinates).long()
-            updates = tensor(updates).long()
+            if num_bonds > 0:
+                coordinates = tensor(coordinates).long()
+                updates = tensor(updates).long()
 
-            mol_atompair_ids = einx.set_at(
-                "[h w], c [2], c -> [h w]", mol_atompair_ids, coordinates, updates
-            )
+                # mol_atompair_ids = einx.set_at("[h w], c [2], c -> [h w]", mol_atompair_ids, coordinates, updates)
+
+                molpair_strides = tensor(mol_atompair_ids.stride())
+                flattened_coordinates = (coordinates * molpair_strides).sum(dim=-1)
+
+                packed_atompair_ids, unpack_one = pack_one(mol_atompair_ids, "*")
+                packed_atompair_ids[flattened_coordinates] = updates
+
+                mol_atompair_ids = unpack_one(packed_atompair_ids)
+
+            # /einx.set_at
 
             row_col_slice = slice(offset, offset + num_atoms)
             atompair_ids[row_col_slice, row_col_slice] = mol_atompair_ids
@@ -1091,11 +1115,11 @@ def molecule_lengthed_molecule_input_to_atom_input(
 
         if mol_is_one_token_per_atom:
             coordinates = []
-            updates = []
 
-            has_bond = torch.zeros(num_atoms, num_atoms).bool()
+            bonds = mol.GetBonds()
+            num_bonds = len(bonds)
 
-            for bond in mol.GetBonds():
+            for bond in bonds:
                 atom_start_index = bond.GetBeginAtomIdx()
                 atom_end_index = bond.GetEndAtomIdx()
 
@@ -1106,15 +1130,24 @@ def molecule_lengthed_molecule_input_to_atom_input(
                     ]
                 )
 
-                updates.extend([True, True])
+            if num_bonds > 0:
+                has_bond = torch.zeros(num_atoms, num_atoms).bool()
 
-            coordinates = tensor(coordinates).long()
-            updates = tensor(updates).bool()
+                coordinates = tensor(coordinates).long()
 
-            has_bond = einx.set_at("[h w], c [2], c -> [h w]", has_bond, coordinates, updates)
+                # has_bond = einx.set_at("[h w], c [2], c -> [h w]", has_bond, coordinates, updates)
 
-            row_col_slice = slice(offset, offset + num_atoms)
-            token_bonds[row_col_slice, row_col_slice] = has_bond
+                has_bond_stride = tensor(has_bond.stride())
+                flattened_coordinates = (coordinates * has_bond_stride).sum(dim=-1)
+                packed_has_bond, unpack_has_bond = pack_one(has_bond, "*")
+
+                packed_has_bond[flattened_coordinates] = True
+                has_bond = unpack_has_bond(packed_has_bond, "*")
+
+                # / ein.set_at
+
+                row_col_slice = slice(offset, offset + num_atoms)
+                token_bonds[row_col_slice, row_col_slice] = has_bond
 
         offset += num_atoms if mol_is_one_token_per_atom else 1
 
@@ -1260,9 +1293,7 @@ def molecule_lengthed_molecule_input_to_atom_input(
             coordinates = tensor(coordinates).long()
             updates = tensor(updates).long()
 
-            mol_atompair_ids = einx.set_at(
-                "[h w], c [2], c -> [h w]", mol_atompair_ids, coordinates, updates
-            )
+            # mol_atompair_ids = einx.set_at("[h w], c [2], c -> [h w]", mol_atompair_ids, coordinates, updates)
 
             row_col_slice = slice(offset, offset + num_atoms)
             atompair_ids[row_col_slice, row_col_slice] = mol_atompair_ids
@@ -3380,13 +3411,14 @@ def pdb_input_to_molecule_input(
             # construct ligand and modified polymer chain token bonds
 
             coordinates = []
-            updates = []
 
             ligand = molecules[ligand_offset]
             num_atoms = ligand.GetNumAtoms()
-            has_bond = torch.zeros(num_atoms, num_atoms).bool()
 
-            for bond in ligand.GetBonds():
+            bonds = ligand.GetBonds()
+            num_bonds = len(bonds)
+
+            for bond in bonds:
                 atom_start_index = bond.GetBeginAtomIdx()
                 atom_end_index = bond.GetEndAtomIdx()
 
@@ -3397,15 +3429,24 @@ def pdb_input_to_molecule_input(
                     ]
                 )
 
-                updates.extend([True, True])
+            if num_bonds > 0:
+                has_bond = torch.zeros(num_atoms, num_atoms).bool()
 
-            coordinates = tensor(coordinates).long()
-            updates = tensor(updates).bool()
+                coordinates = tensor(coordinates).long()
 
-            has_bond = einx.set_at("[h w], c [2], c -> [h w]", has_bond, coordinates, updates)
+                # has_bond = einx.set_at("[h w], c [2], c -> [h w]", has_bond, coordinates, updates)
 
-            row_col_slice = slice(polymer_offset, polymer_offset + num_atoms)
-            token_bonds[row_col_slice, row_col_slice] = has_bond
+                has_bond_stride = tensor(has_bond.stride())
+                flattened_coordinates = (coordinates * has_bond_stride).sum(dim=-1)
+                packed_has_bond, unpack_has_bond = pack_one(has_bond, "*")
+
+                packed_has_bond[flattened_coordinates] = True
+                has_bond = unpack_has_bond(packed_has_bond, "*")
+
+                # / einx.set_at
+
+                row_col_slice = slice(polymer_offset, polymer_offset + num_atoms)
+                token_bonds[row_col_slice, row_col_slice] = has_bond
 
             polymer_offset += num_atoms
             ligand_offset += 1
@@ -3974,6 +4015,10 @@ class PDBDataset(Dataset):
         return_atom_inputs: bool = False,
         **pdb_input_kwargs,
     ):
+        assert (
+            sum([contiguous_weight, spatial_weight, spatial_interface_weight]) == 1.0
+        ), "The sum of contiguous_weight, spatial_weight, and spatial_interface_weight must be equal to 1.0."
+
         if isinstance(folder, str):
             folder = Path(folder)
 
@@ -4328,7 +4373,9 @@ def maybe_transform_to_atom_input(i: Any, raise_exception: bool = False) -> Atom
     except Exception as e:
         if "exceeds the accepted cutoff date" not in str(e):
             # NOTE: By default, we don't raise exceptions for cutoff date violations.
-            logger.warning(f"Failed to convert input {i} to AtomInput due to: {e}")
+            logger.warning(
+                f"Failed to convert input {i} to AtomInput due to: {e}, {traceback.format_exc()}"
+            )
             if raise_exception:
                 raise e
         return None

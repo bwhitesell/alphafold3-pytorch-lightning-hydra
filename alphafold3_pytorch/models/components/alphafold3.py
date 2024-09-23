@@ -2792,7 +2792,7 @@ class ElucidatedAtomDiffusion(Module):
         return_loss_breakdown=False,
         single_structure_input=False,
         verbose=None,
-        filepaths: List[str] | None = None,
+        filepath: List[str] | Tuple[str] | None = None,
     ) -> ElucidatedAtomDiffusionReturn:
         """Perform the forward pass.
 
@@ -2820,7 +2820,7 @@ class ElucidatedAtomDiffusion(Module):
         :param return_loss_breakdown: Whether to return the loss breakdown.
         :param single_structure_input: Whether to the input(s) represent a single structure.
         :param verbose: Whether to be verbose.
-        :param filepaths: The input filepaths.
+        :param filepath: The file path(s).
         :return: The output tensor.
         """
         verbose = default(verbose, self.verbose)
@@ -2905,7 +2905,7 @@ class ElucidatedAtomDiffusion(Module):
             except Exception as e:
                 # NOTE: For many (random) unit test inputs, permutation alignment can be unstable
                 logger.warning(
-                    f"Skipping multi-chain permutation alignment {f'for {filepaths}' if exists(filepaths) else ''} due to: {e}"
+                    f"Skipping multi-chain permutation alignment {f'for {filepath}' if exists(filepath) else ''} due to: {e}"
                 )
 
         # main diffusion mse loss
@@ -5999,7 +5999,7 @@ class ComputeModelSelectionScore(Module):
                 alphafold.eval()
 
                 pred_atom_pos, logits = alphafold(
-                    **batched_atom_inputs.model_forward_dict(),
+                    **batched_atom_inputs.dict(),
                     return_loss=False,
                     return_confidence_head_logits=True,
                     return_distogram_head_logits=True,
@@ -6606,7 +6606,7 @@ class Alphafold3(Module):
             alphafold3_inputs, atoms_per_window=self.w
         )
 
-        atom_dict = batched_atom_inputs.model_forward_dict()
+        atom_dict = batched_atom_inputs.dict()
         atom_dict = dict_to_device(atom_dict, device=self.device)
 
         return self.forward(**atom_dict, **kwargs)
@@ -6660,7 +6660,8 @@ class Alphafold3(Module):
         max_conf_resolution: float = 4.0,
         hard_validate: bool = False,
         verbose: bool | None = None,
-        filepaths: List[str] | None = None,
+        chains: Int["b 2"] | None = None,  # type: ignore
+        filepath: List[str] | Tuple[str] | None = None,
     ) -> (
         Float["b m 3"]  # type: ignore
         | List[Structure]
@@ -6717,7 +6718,8 @@ class Alphafold3(Module):
             confidence head predictions.
         :param hard_validate: Whether to hard validate the input tensors.
         :param verbose: Whether to print verbose output.
-        :param filepaths: The input filepaths.
+        :param chains: The chains tensor.
+        :param filepath: The file path.
         :return: The atomic coordinates, the confidence head logits, the distogram head logits, the
             loss, or the loss breakdown.
         """
@@ -7394,7 +7396,7 @@ class Alphafold3(Module):
                 ligand_loss_weight=self.ligand_loss_weight,
                 single_structure_input=single_structure_input,
                 verbose=verbose,
-                filepaths=filepaths,
+                filepath=filepath,
             )
 
         # confidence head
@@ -7476,7 +7478,7 @@ class Alphafold3(Module):
                     except Exception as e:
                         # NOTE: For many (random) unit test inputs, permutation alignment can be unstable
                         logger.warning(
-                            f"Skipping multi-chain permutation alignment {f'for {filepaths}' if exists(filepaths) else ''} due to: {e}"
+                            f"Skipping multi-chain permutation alignment {f'for {filepath}' if exists(filepath) else ''} due to: {e}"
                         )
 
                 assert exists(
