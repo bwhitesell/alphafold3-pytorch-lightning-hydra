@@ -135,7 +135,7 @@ class Alphafold3LitModule(LightningModule):
             return_loss_breakdown=True,
             diffusion_add_bond_loss=self.hparams.diffusion_add_bond_loss,
             diffusion_add_smooth_lddt_loss=self.hparams.diffusion_add_smooth_lddt_loss,
-            filepaths=filepaths,
+            filepath=filepaths,
         )
 
     def on_train_start(self) -> None:
