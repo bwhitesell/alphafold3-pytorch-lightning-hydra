@@ -31,6 +31,7 @@ from alphafold3_pytorch.models.alphafold3_module import Sample
 EXPECTED_DIM_ATOM_INPUT: int = 3
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 MAX_NUM_IDENTICAL_ENTITIES_FOR_EXHAUSTIVE_SEARCH: int = 8
+INT_PAD_VALUE: int = -1
 
 
 def group_identical_entity_asym_ids(asym_ids, entity_ids) -> Set[Tuple[int]]:
@@ -60,10 +61,6 @@ def group_identical_entity_asym_ids(asym_ids, entity_ids) -> Set[Tuple[int]]:
         identical_asym_ids.setdefault(chain_identifier, []).append(asym_id)
 
     return set([tuple(x) for x in identical_asym_ids.values()])
-
-
-
-
 
 
 
@@ -102,7 +99,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--inference-batch-size",
         dest="inference_batch_size",
-        default=1,
+        default=2,
         required=False,
         type=int,
         help="The size of batches to use for inference.",
@@ -154,9 +151,9 @@ if __name__ == "__main__":
         atoms_per_window=args.inference_atoms_per_window,
         pin_memory=True,
         shuffle=True,
-        drop_last=True,
+        drop_last=False,
+        int_pad_value=INT_PAD_VALUE,
     )
-
     
     for batched_atom_input in dataloader:
 
@@ -168,12 +165,12 @@ if __name__ == "__main__":
 
         with torch.no_grad():
             # Perform inference.
-            # batch_sampled_atom_pos, logits = alphafold3(
-            #     **batch_dict,
-            #     return_loss=False,
-            #     return_confidence_head_logits=True,
-            #     return_distogram_head_logits=True,
-            # )
+            batch_sampled_atom_pos, logits = alphafold3(
+                **batch_dict,
+                return_loss=False,
+                return_confidence_head_logits=True,
+                return_distogram_head_logits=True,
+            )
 
             batch_sampled_atom_pos = torch.randn([1, 3012, 3])
 
@@ -190,6 +187,12 @@ if __name__ == "__main__":
                 batched_atom_input.additional_molecule_feats[batch_idx].unbind(dim=-1)
             )
 
+            token_idx_mask = torch.where(
+                condition=(token_idx != INT_PAD_VALUE),
+                input=torch.tensor(1),
+                other=torch.tensor(0)
+            )
+
             # Group all the asym_ids that are "identical" together.
             identical_entity_asym_id_groups = group_identical_entity_asym_ids(
                 asym_ids=asym_ids,
@@ -198,6 +201,7 @@ if __name__ == "__main__":
 
             for entity_group in identical_entity_asym_id_groups:
                 if len(entity_group) <= MAX_NUM_IDENTICAL_ENTITIES_FOR_EXHAUSTIVE_SEARCH:
+                    pass
                     # Exhausive search.
 
                 else:
