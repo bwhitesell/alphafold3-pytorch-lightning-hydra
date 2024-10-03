@@ -126,7 +126,7 @@ if __name__ == "__main__":
 
     # Load the model-weights into an Alphafold3 obj.
     alphafold3 = Alphafold3.init_and_load(path=args.inference_model_weights)
-    # alphafold3.to(DEVICE)
+    alphafold3.to(DEVICE)
     alphafold3.eval()
 
     # Validate the alphafold3 dimensions meet the script's expectations.
@@ -165,14 +165,15 @@ if __name__ == "__main__":
 
         with torch.no_grad():
             # Perform inference.
-            batch_sampled_atom_pos, logits = alphafold3(
-                **batch_dict,
-                return_loss=False,
-                return_confidence_head_logits=True,
-                return_distogram_head_logits=True,
-            )
+            # batch_sampled_atom_pos, logits = alphafold3(
+            #     **batch_dict,
+            #     return_loss=False,
+            #     return_confidence_head_logits=True,
+            #     return_distogram_head_logits=True,
+            # )
 
-            batch_sampled_atom_pos = torch.randn([1, 3012, 3])
+            batch_sampled_atom_pos = torch.randn((2, 2957, 3))
+
 
 
 
@@ -195,8 +196,8 @@ if __name__ == "__main__":
 
             # Group all the asym_ids that are "identical" together.
             identical_entity_asym_id_groups = group_identical_entity_asym_ids(
-                asym_ids=asym_ids,
-                entity_ids=entity_ids
+                asym_ids=asym_ids[torch.where(asym_ids != INT_PAD_VALUE)],
+                entity_ids=entity_ids[torch.where(entity_ids != INT_PAD_VALUE)]
             )
 
             for entity_group in identical_entity_asym_id_groups:
