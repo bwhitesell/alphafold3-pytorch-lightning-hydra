@@ -7,6 +7,7 @@ https://static-content.springer.com/esm/art%3A10.1038%2Fs41586-024-07487-w/Media
 """
 
 import argparse
+import itertools
 import multiprocessing as mp
 from pathlib import Path
 from typing import Any
@@ -32,21 +33,29 @@ EXPECTED_DIM_ATOM_INPUT: int = 3
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 MAX_NUM_IDENTICAL_ENTITIES_FOR_EXHAUSTIVE_SEARCH: int = 8
 INT_PAD_VALUE: int = -1
+FLOAT_PAD_VALUE: float = 0.0
 
 
-def group_identical_entity_asym_ids(asym_ids, entity_ids) -> Set[Tuple[int]]:
-    """ Collate all the asym_ids in a complex into 'identical' entity groups. """
+def group_identical_entity_asym_ids(
+    token_idx_to_asym_ids,
+    token_idx_to_entity_ids,
+) -> Set[Tuple[int]]:
+    """ 
+    Evaluate the token to asym and token to entity mappings of a complex. Assign the 
+    complex's asym ids into 'identical' entity groups. Entity groups are defined as sets 
+    of asym ids that have all equal counts of tokens from the same entity ids.
+    """
 
     identical_asym_ids = {}
 
-    for asym_id in [x.item() for x in asym_ids.unique()]:
+    for asym_id in [x.item() for x in token_idx_to_asym_ids.unique()]:
 
         # Fetch the token indices that make up the asym_id/chain.
-        asym_id_idxs = torch.where(asym_ids == asym_id)
+        asym_id_idxs = torch.where(token_idx_to_asym_ids == asym_id)
 
         # Get the entities that compose the chain and their counts (in chain).
         entity_ids_in_asym_id, entity_id_counts_in_asym_id = torch.unique(
-            entity_ids[asym_id_idxs], 
+            token_idx_to_entity_ids[asym_id_idxs], 
             return_counts=True
         )
 
@@ -61,6 +70,44 @@ def group_identical_entity_asym_ids(asym_ids, entity_ids) -> Set[Tuple[int]]:
         identical_asym_ids.setdefault(chain_identifier, []).append(asym_id)
 
     return set([tuple(x) for x in identical_asym_ids.values()])
+
+
+def get_atom_to_asym_id_map(
+    token_idx_to_asym_ids,
+    token_atom_lens,
+):
+
+
+
+
+def exhaustive_search_for_optimal_entity_assignments(
+    entity_group_asym_ids: Tuple[int],
+    atom_to_asym_id_map,
+    predicted_atom_pos,    
+    actual_atom_pos,
+):
+
+    # Identify all permutations of the ordering of the listed asym ids.
+    entity_group_asym_id_permutations = itertools.permutations(entity_group_asym_ids)
+
+    # Iterate through each permutation of possible asym_id swaps to find the one
+    # that maximizes the lddt of the complex.
+    for entity_group_asym_id_permutation in entity_group_asym_id_permutations:
+
+        # Use the indexes of the asym ids between the provided arg and each permutation
+        # to define the entity swap mapping.
+        for idx, asym_id in enumerate(entity_group_asym_id_permutation):
+            permutations_predicted_atom_pos = torch.clone(predicted_atom_pos)
+
+
+
+
+
+
+
+
+    print(predicted_atom_pos)
+    print(predicted_atom_pos.shape)
 
 
 
@@ -184,24 +231,51 @@ if __name__ == "__main__":
         for batch_idx in range(batched_atom_input.atom_inputs.size(0)):
 
             # Pull out tensorized mappings between atomic indices and parent entities.
-            res_idx, token_idx, asym_ids, entity_ids, sym_id = (
+            _, _, padded_token_idx_to_asym_ids, padded_token_idx_to_entity_id, _= (
                 batched_atom_input.additional_molecule_feats[batch_idx].unbind(dim=-1)
             )
 
-            token_idx_mask = torch.where(
-                condition=(token_idx != INT_PAD_VALUE),
-                input=torch.tensor(1),
-                other=torch.tensor(0)
-            )
+            # Remove the padding from the mappings.
+            token_idx_to_asym_ids = padded_token_idx_to_asym_ids[
+                torch.where(padded_token_idx_to_asym_ids != INT_PAD_VALUE)
+            ]
+            token_idx_to_entity_ids = padded_token_idx_to_entity_id[
+                torch.where(padded_token_idx_to_entity_id != INT_PAD_VALUE)
+            ]
+
+            # The unpadded lengths of the two mappings should be equal -- because the non
+            # padded tokens should be the same for the same complex.
+            if token_idx_to_asym_ids.shape != token_idx_to_entity_ids.shape:
+                raise ValueError(
+                    "Something wen't wrong, the unpadded asym_id and entity_id maps should "
+                    "be of equal shape for a single complex, but got: "
+                    f"[{token_idx_to_asym_ids.shape}] and [{token_idx_to_entity_ids.shape}]."
+
+                )
 
             # Group all the asym_ids that are "identical" together.
             identical_entity_asym_id_groups = group_identical_entity_asym_ids(
-                asym_ids=asym_ids[torch.where(asym_ids != INT_PAD_VALUE)],
-                entity_ids=entity_ids[torch.where(entity_ids != INT_PAD_VALUE)]
+                asym_ids=token_idx_to_asym_ids,
+                entity_ids=token_idx_to_entity_ids
             )
 
-            for entity_group in identical_entity_asym_id_groups:
-                if len(entity_group) <= MAX_NUM_IDENTICAL_ENTITIES_FOR_EXHAUSTIVE_SEARCH:
+            # Construct the mapping from atom idx to asym_id.
+            atom_to_asym_id_map = token_idx_to_asym_ids.repeat_interleave(
+                batched_atom_input.molecule_atom_lens[batch_idx]
+            )
+
+            # For each group of matching asym_ids, swap their positions to find the
+            # arrangement that most closely matches the obersrved arrangement.
+            for entity_group_asym_ids in identical_entity_asym_id_groups:
+                if len(entity_group_asym_ids) <= MAX_NUM_IDENTICAL_ENTITIES_FOR_EXHAUSTIVE_SEARCH:
+
+                    
+
+
+                    exhaustive_search_for_optimal_entity_assignments(
+                        entity_group_asym_ids=entity_group_asym_ids,
+                        predicted_atom_pos=batch_sampled_atom_pos[batch_idx]
+                    )
                     pass
                     # Exhausive search.
 
