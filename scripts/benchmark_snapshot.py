@@ -79,6 +79,7 @@ def group_identical_entity_asym_ids(
 def exhaustive_search_for_optimal_entity_assignments(
     entity_group_asym_ids: Tuple[int],
     atom_to_asym_id_map,
+    molecule_types,
     predicted_atom_pos,    
     actual_atom_pos,
 ):
@@ -89,6 +90,8 @@ def exhaustive_search_for_optimal_entity_assignments(
     # Iterate through each permutation of possible asym_id swaps to find the one
     # that maximizes the lddt of the complex.
     for entity_group_asym_id_permutation in entity_group_asym_id_permutations:
+
+        permutations_predicted_atom_pos = torch.clone(predicted_atom_pos)
 
         # Use the indexes of the asym ids between the provided arg and each permutation
         # to define the entity swap mapping.
@@ -117,7 +120,6 @@ def exhaustive_search_for_optimal_entity_assignments(
                 )
             
             # Perform the swap on a copy of the predictions.
-            permutations_predicted_atom_pos = torch.clone(predicted_atom_pos)
             permutations_predicted_atom_pos[original_atom_position_idxs] = (
                 predicted_atom_pos[swap_atom_position_idxs]
             )
@@ -125,24 +127,17 @@ def exhaustive_search_for_optimal_entity_assignments(
                 predicted_atom_pos[original_atom_position_idxs]
             )
 
-            # Caluclate the lddt between the two 
-            lddt_calc_module.compute_chain_pair_lddt(
-                asym_mask_a=atom_to_asym_id_map == base_asym_id
-            )
-
-
-
-
-
-
-
-
-
-
-
-    print(predicted_atom_pos)
-    print(predicted_atom_pos.shape)
-
+        # Caluclate the lddt between the positions of the actual and predicted 
+        # asym id.
+        lddt = lddt_calc_module.compute_chain_pair_lddt(
+            # We don't need different masks for the same asym id.
+            asym_mask_a=(predicted_atom_pos != FLOAT_PAD_VALUE),
+            asym_mask_b=(actual_atom_pos != FLOAT_PAD_VALUE),
+            true_coords=actual_atom_pos,
+            pred_coords=predicted_atom_pos,
+            molecule_types=molecule_types,
+        )
+        print(lddt)
 
 
 # Analogs of methods from lightining/hydra code so eval can be run outside a lightning context.
@@ -310,6 +305,7 @@ if __name__ == "__main__":
                     exhaustive_search_for_optimal_entity_assignments(
                         entity_group_asym_ids=entity_group_asym_ids,
                         atom_to_asym_id_map=atom_to_asym_id_map,
+                        molecule_types=batch_sampled_atom_pos.is_molecule_types[batch_idx],
                         pred_pos=batch_sampled_atom_pos[batch_idx],
                         true_pos=batched_atom_input.atom_pos[batch_idx]
                     )
