@@ -24,6 +24,7 @@ from alphafold3_pytorch.models.components.inputs import PDBDataset
 from alphafold3_pytorch.models.components.inputs import pdb_input_to_molecule_input
 from alphafold3_pytorch.models.components.inputs import molecule_to_atom_input
 from alphafold3_pytorch.models.components.inputs import pdb_dataset_to_atom_inputs
+from alphafold3_pytorch.models.components.alphafold3 import ComputeModelSelectionScore
 from alphafold3_pytorch.data.pdb_datamodule import AF3DataLoader
 from alphafold3_pytorch.models.alphafold3_module import Sample
 
@@ -35,10 +36,13 @@ MAX_NUM_IDENTICAL_ENTITIES_FOR_EXHAUSTIVE_SEARCH: int = 8
 INT_PAD_VALUE: int = -1
 FLOAT_PAD_VALUE: float = 0.0
 
+# Supporting utils.
+lddt_calc_module = ComputeModelSelectionScore()
+
 
 def group_identical_entity_asym_ids(
-    token_idx_to_asym_ids,
-    token_idx_to_entity_ids,
+    token_idx_to_asym_ids_map,
+    token_idx_to_entity_ids_map,
 ) -> Set[Tuple[int]]:
     """ 
     Evaluate the token to asym and token to entity mappings of a complex. Assign the 
@@ -48,14 +52,14 @@ def group_identical_entity_asym_ids(
 
     identical_asym_ids = {}
 
-    for asym_id in [x.item() for x in token_idx_to_asym_ids.unique()]:
+    for asym_id in [x.item() for x in token_idx_to_asym_ids_map.unique()]:
 
         # Fetch the token indices that make up the asym_id/chain.
-        asym_id_idxs = torch.where(token_idx_to_asym_ids == asym_id)
+        asym_id_idxs = torch.where(token_idx_to_asym_ids_map == asym_id)
 
         # Get the entities that compose the chain and their counts (in chain).
         entity_ids_in_asym_id, entity_id_counts_in_asym_id = torch.unique(
-            token_idx_to_entity_ids[asym_id_idxs], 
+            token_idx_to_entity_ids_map[asym_id_idxs], 
             return_counts=True
         )
 
@@ -70,14 +74,6 @@ def group_identical_entity_asym_ids(
         identical_asym_ids.setdefault(chain_identifier, []).append(asym_id)
 
     return set([tuple(x) for x in identical_asym_ids.values()])
-
-
-def get_atom_to_asym_id_map(
-    token_idx_to_asym_ids,
-    token_atom_lens,
-):
-
-
 
 
 def exhaustive_search_for_optimal_entity_assignments(
@@ -96,8 +92,46 @@ def exhaustive_search_for_optimal_entity_assignments(
 
         # Use the indexes of the asym ids between the provided arg and each permutation
         # to define the entity swap mapping.
-        for idx, asym_id in enumerate(entity_group_asym_id_permutation):
+        for idx, swap_asym_id in enumerate(entity_group_asym_id_permutation):
+
+            # The asym id to be swapped with.
+            base_asym_id = entity_group_asym_ids[idx]
+
+            # Skip self-swaps.
+            if base_asym_id == swap_asym_id:
+                continue
+
+            # Isolate the atomic idxs to swap values for.
+            original_atom_position_idxs = torch.where(atom_to_asym_id_map == base_asym_id)
+            swap_atom_position_idxs = torch.where(atom_to_asym_id_map == swap_asym_id)
+
+            # Ensure the number of atoms composing the two asym ids are identical. If 
+            # they're not, something went wrong.
+            if original_atom_position_idxs.size(0) != swap_atom_position_idxs.size(0):
+                raise ValueError(
+                    "Something went wrong, when trying to swap asym_ids to find the "
+                    "closest matching assignment to the ground truth, the num atoms "
+                    "beloinging to both asym ids do not match. Thus they must not be "
+                    f"identical. Found shapes [{original_atom_position_idxs.size(0)}] "
+                    f"and [{swap_atom_position_idxs.size(0)}]."
+                )
+            
+            # Perform the swap on a copy of the predictions.
             permutations_predicted_atom_pos = torch.clone(predicted_atom_pos)
+            permutations_predicted_atom_pos[original_atom_position_idxs] = (
+                predicted_atom_pos[swap_atom_position_idxs]
+            )
+            permutations_predicted_atom_pos[swap_atom_position_idxs] = (
+                predicted_atom_pos[original_atom_position_idxs]
+            )
+
+            # Caluclate the lddt between the two 
+            lddt_calc_module.compute_chain_pair_lddt(
+                asym_mask_a=atom_to_asym_id_map == base_asym_id
+            )
+
+
+
 
 
 
@@ -222,12 +256,8 @@ if __name__ == "__main__":
             batch_sampled_atom_pos = torch.randn((2, 2957, 3))
 
 
-
-
-
-
         # Note: A for loop here because complexs will have irregular numbers and types of 
-        # enities, meaning descriptive tensors would have irregular dimensional shapes.
+        # enities, meaning descriptive tensors would have irregular dimensional shapes. 
         for batch_idx in range(batched_atom_input.atom_inputs.size(0)):
 
             # Pull out tensorized mappings between atomic indices and parent entities.
@@ -255,8 +285,8 @@ if __name__ == "__main__":
 
             # Group all the asym_ids that are "identical" together.
             identical_entity_asym_id_groups = group_identical_entity_asym_ids(
-                asym_ids=token_idx_to_asym_ids,
-                entity_ids=token_idx_to_entity_ids
+                token_idx_to_asym_ids=token_idx_to_asym_ids,
+                token_idx_to_entity_ids=token_idx_to_entity_ids
             )
 
             # Construct the mapping from atom idx to asym_id.
@@ -264,20 +294,26 @@ if __name__ == "__main__":
                 batched_atom_input.molecule_atom_lens[batch_idx]
             )
 
+            if atom_to_asym_id_map.size(0) != batch_sampled_atom_pos[batch_idx].size(0):
+                raise ValueError(
+                    "Something went wrong, the reconstructed atom idx to asym map should "
+                    "have the same number of atoms as the number of atoms whose positions "
+                    f"are being predicted, but got [{atom_to_asym_id_map.size(0)}] and"
+                    f"[{batch_sampled_atom_pos[batch_idx].size(0)}]"
+                )
+
             # For each group of matching asym_ids, swap their positions to find the
             # arrangement that most closely matches the obersrved arrangement.
             for entity_group_asym_ids in identical_entity_asym_id_groups:
                 if len(entity_group_asym_ids) <= MAX_NUM_IDENTICAL_ENTITIES_FOR_EXHAUSTIVE_SEARCH:
-
                     
-
-
                     exhaustive_search_for_optimal_entity_assignments(
                         entity_group_asym_ids=entity_group_asym_ids,
-                        predicted_atom_pos=batch_sampled_atom_pos[batch_idx]
+                        atom_to_asym_id_map=atom_to_asym_id_map,
+                        pred_pos=batch_sampled_atom_pos[batch_idx],
+                        true_pos=batched_atom_input.atom_pos[batch_idx]
                     )
-                    pass
-                    # Exhausive search.
+
 
                 else:
                     # Annealing simulation.
