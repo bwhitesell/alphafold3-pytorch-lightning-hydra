@@ -17,13 +17,14 @@ from typing import Set
 from typing import Tuple
 
 import torch
+from torch.nn import functional as F
 
 from alphafold3_pytorch import Alphafold3
 from alphafold3_pytorch.utils.model_utils import dict_to_device
 from alphafold3_pytorch.models.components.inputs import PDBDataset
-from alphafold3_pytorch.models.components.inputs import pdb_input_to_molecule_input
-from alphafold3_pytorch.models.components.inputs import molecule_to_atom_input
 from alphafold3_pytorch.models.components.inputs import pdb_dataset_to_atom_inputs
+from alphafold3_pytorch.models.components.inputs import IS_RNA_INDEX 
+from alphafold3_pytorch.models.components.inputs import IS_DNA_INDEX
 from alphafold3_pytorch.models.components.alphafold3 import ComputeModelSelectionScore
 from alphafold3_pytorch.data.pdb_datamodule import AF3DataLoader
 from alphafold3_pytorch.models.alphafold3_module import Sample
@@ -79,13 +80,16 @@ def group_identical_entity_asym_ids(
 def exhaustive_search_for_optimal_entity_assignments(
     entity_group_asym_ids: Tuple[int],
     atom_to_asym_id_map,
-    molecule_types,
+    is_molecule_types,
     predicted_atom_pos,    
-    actual_atom_pos,
+    true_atom_pos,
 ):
 
     # Identify all permutations of the ordering of the listed asym ids.
     entity_group_asym_id_permutations = itertools.permutations(entity_group_asym_ids)
+    max_lddt = float('-inf')
+    best_permutation = None
+    best_predicted_atom_pos = None
 
     # Iterate through each permutation of possible asym_id swaps to find the one
     # that maximizes the lddt of the complex.
@@ -105,12 +109,12 @@ def exhaustive_search_for_optimal_entity_assignments(
                 continue
 
             # Isolate the atomic idxs to swap values for.
-            original_atom_position_idxs = torch.where(atom_to_asym_id_map == base_asym_id)
-            swap_atom_position_idxs = torch.where(atom_to_asym_id_map == swap_asym_id)
+            original_atom_position_idxs = atom_to_asym_id_map == base_asym_id
+            swap_atom_position_idxs = atom_to_asym_id_map == swap_asym_id
 
             # Ensure the number of atoms composing the two asym ids are identical. If 
             # they're not, something went wrong.
-            if original_atom_position_idxs.size(0) != swap_atom_position_idxs.size(0):
+            if original_atom_position_idxs.sum() != swap_atom_position_idxs.sum():
                 raise ValueError(
                     "Something went wrong, when trying to swap asym_ids to find the "
                     "closest matching assignment to the ground truth, the num atoms "
@@ -118,7 +122,7 @@ def exhaustive_search_for_optimal_entity_assignments(
                     f"identical. Found shapes [{original_atom_position_idxs.size(0)}] "
                     f"and [{swap_atom_position_idxs.size(0)}]."
                 )
-            
+
             # Perform the swap on a copy of the predictions.
             permutations_predicted_atom_pos[original_atom_position_idxs] = (
                 predicted_atom_pos[swap_atom_position_idxs]
@@ -129,15 +133,20 @@ def exhaustive_search_for_optimal_entity_assignments(
 
         # Caluclate the lddt between the positions of the actual and predicted 
         # asym id.
-        lddt = lddt_calc_module.compute_chain_pair_lddt(
+        lddt = lddt_calc_module.compute_lddt(
             # We don't need different masks for the same asym id.
-            asym_mask_a=(predicted_atom_pos != FLOAT_PAD_VALUE),
-            asym_mask_b=(actual_atom_pos != FLOAT_PAD_VALUE),
-            true_coords=actual_atom_pos,
-            pred_coords=predicted_atom_pos,
-            molecule_types=molecule_types,
+            true_coords=true_atom_pos.unsqueeze(0),
+            pred_coords=permutations_predicted_atom_pos.unsqueeze(0),
+            is_dna= is_molecule_types[..., IS_DNA_INDEX].unsqueeze(0),
+            is_rna=is_molecule_types[..., IS_RNA_INDEX].unsqueeze(0),
+            pairwise_mask=(torch.ones(len(true_atom_pos), len(true_atom_pos)) * True).unsqueeze(0),
         )
-        print(lddt)
+        if lddt.item() > max_lddt:
+            best_predicted_atom_pos = permutations_predicted_atom_pos
+            best_permutation = entity_group_asym_id_permutation
+            max_lddt = lddt.item()
+
+    return best_predicted_atom_pos, best_permutation, max_lddt
 
 
 # Analogs of methods from lightining/hydra code so eval can be run outside a lightning context.
@@ -217,7 +226,7 @@ if __name__ == "__main__":
     pdb_dataset = PDBDataset(folder=args.pdb_dataset)
     atom_dataset = pdb_dataset_to_atom_inputs(
         pdb_dataset=pdb_dataset,
-        return_atom_dataset=True
+        return_atom_dataset=True,
     )
 
     dataloader = AF3DataLoader(
@@ -250,66 +259,64 @@ if __name__ == "__main__":
 
             batch_sampled_atom_pos = torch.randn((2, 2957, 3))
 
-
         # Note: A for loop here because complexs will have irregular numbers and types of 
         # enities, meaning descriptive tensors would have irregular dimensional shapes. 
         for batch_idx in range(batched_atom_input.atom_inputs.size(0)):
 
-            # Pull out tensorized mappings between atomic indices and parent entities.
+            # Pull out tensorized mappings between tensor indices and parent entities
+            # for a single sample.
+            padded_atom_lens_per_token_idx = batched_atom_input.molecule_atom_lens[batch_idx]
+            padded_token_idx_to_is_molecule_types = batched_atom_input.is_molecule_types[batch_idx]
             _, _, padded_token_idx_to_asym_ids, padded_token_idx_to_entity_id, _= (
                 batched_atom_input.additional_molecule_feats[batch_idx].unbind(dim=-1)
             )
 
-            # Remove the padding from the mappings.
-            token_idx_to_asym_ids = padded_token_idx_to_asym_ids[
-                torch.where(padded_token_idx_to_asym_ids != INT_PAD_VALUE)
+            # Find the unpadded token indices of this sample.
+            sample_unpadded_token_idxs = padded_token_idx_to_asym_ids != INT_PAD_VALUE
+
+            # Remove the padding from all the descriptive batched tensors.
+            token_idx_to_asym_ids = padded_token_idx_to_asym_ids[sample_unpadded_token_idxs]
+            token_idx_to_entity_ids = padded_token_idx_to_entity_id[sample_unpadded_token_idxs]
+            atom_lens_per_token_idx = padded_atom_lens_per_token_idx[sample_unpadded_token_idxs]
+            token_idx_to_is_molecule_types = padded_token_idx_to_is_molecule_types[
+                sample_unpadded_token_idxs
             ]
-            token_idx_to_entity_ids = padded_token_idx_to_entity_id[
-                torch.where(padded_token_idx_to_entity_id != INT_PAD_VALUE)
-            ]
 
-            # The unpadded lengths of the two mappings should be equal -- because the non
-            # padded tokens should be the same for the same complex.
-            if token_idx_to_asym_ids.shape != token_idx_to_entity_ids.shape:
-                raise ValueError(
-                    "Something wen't wrong, the unpadded asym_id and entity_id maps should "
-                    "be of equal shape for a single complex, but got: "
-                    f"[{token_idx_to_asym_ids.shape}] and [{token_idx_to_entity_ids.shape}]."
-
-                )
-
-            # Group all the asym_ids that are "identical" together.
+            # Group all the asym_ids that are "identical" together at the token level.
             identical_entity_asym_id_groups = group_identical_entity_asym_ids(
-                token_idx_to_asym_ids=token_idx_to_asym_ids,
-                token_idx_to_entity_ids=token_idx_to_entity_ids
+                token_idx_to_asym_ids_map=token_idx_to_asym_ids,
+                token_idx_to_entity_ids_map=token_idx_to_entity_ids
             )
 
-            # Construct the mapping from atom idx to asym_id.
+            # Find the unpadded atomic indices of this sample.
+            sample_unpadded_atom_idxs = torch.arange(0, atom_lens_per_token_idx.sum()).long()
+
+            # Construct unpadded atom level mappings to various atomic attributes.
             atom_to_asym_id_map = token_idx_to_asym_ids.repeat_interleave(
-                batched_atom_input.molecule_atom_lens[batch_idx]
+                atom_lens_per_token_idx,
             )
-
-            if atom_to_asym_id_map.size(0) != batch_sampled_atom_pos[batch_idx].size(0):
-                raise ValueError(
-                    "Something went wrong, the reconstructed atom idx to asym map should "
-                    "have the same number of atoms as the number of atoms whose positions "
-                    f"are being predicted, but got [{atom_to_asym_id_map.size(0)}] and"
-                    f"[{batch_sampled_atom_pos[batch_idx].size(0)}]"
-                )
+            atom_to_is_molecule_types = token_idx_to_is_molecule_types.repeat_interleave(
+                atom_lens_per_token_idx,
+                dim=0,
+            )
 
             # For each group of matching asym_ids, swap their positions to find the
             # arrangement that most closely matches the obersrved arrangement.
             for entity_group_asym_ids in identical_entity_asym_id_groups:
-                if len(entity_group_asym_ids) <= MAX_NUM_IDENTICAL_ENTITIES_FOR_EXHAUSTIVE_SEARCH:
-                    
+
+                if len(entity_group_asym_ids) <= 1:
+                    # No swapping arrangements to search through.
+                    continue
+
+                elif len(entity_group_asym_ids) <= MAX_NUM_IDENTICAL_ENTITIES_FOR_EXHAUSTIVE_SEARCH:
+                    # Few enough matching entities to do an exhaustive search.
                     exhaustive_search_for_optimal_entity_assignments(
                         entity_group_asym_ids=entity_group_asym_ids,
                         atom_to_asym_id_map=atom_to_asym_id_map,
-                        molecule_types=batch_sampled_atom_pos.is_molecule_types[batch_idx],
-                        pred_pos=batch_sampled_atom_pos[batch_idx],
-                        true_pos=batched_atom_input.atom_pos[batch_idx]
+                        is_molecule_types=atom_to_is_molecule_types,
+                        predicted_atom_pos=batch_sampled_atom_pos[batch_idx][sample_unpadded_atom_idxs, ...],
+                        true_atom_pos=batched_atom_input.atom_pos[batch_idx][sample_unpadded_atom_idxs, ...],
                     )
-
 
                 else:
                     # Annealing simulation.
