@@ -8,8 +8,10 @@ https://static-content.springer.com/esm/art%3A10.1038%2Fs41586-024-07487-w/Media
 
 import argparse
 import itertools
+import math
 import multiprocessing as mp
 from pathlib import Path
+import random
 from typing import Any
 from typing import Dict
 from typing import Optional
@@ -17,7 +19,6 @@ from typing import Set
 from typing import Tuple
 
 import torch
-from torch.nn import functional as F
 
 from alphafold3_pytorch import Alphafold3
 from alphafold3_pytorch.utils.model_utils import dict_to_device
@@ -33,7 +34,7 @@ from alphafold3_pytorch.models.alphafold3_module import Sample
 # Constants.
 EXPECTED_DIM_ATOM_INPUT: int = 3
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-MAX_NUM_IDENTICAL_ENTITIES_FOR_EXHAUSTIVE_SEARCH: int = 8
+MAX_NUM_IDENTICAL_ENTITIES_FOR_EXHAUSTIVE_SEARCH: int = 3
 INT_PAD_VALUE: int = -1
 FLOAT_PAD_VALUE: float = 0.0
 
@@ -77,13 +78,14 @@ def group_identical_entity_asym_ids(
     return set([tuple(x) for x in identical_asym_ids.values()])
 
 
-def exhaustive_search_for_optimal_entity_assignments(
+def exhaustive_search_for_optimal_asym_id_assignments(
     entity_group_asym_ids: Tuple[int],
     atom_to_asym_id_map,
     is_molecule_types,
     predicted_atom_pos,    
     true_atom_pos,
 ):
+    """ Exhaustive search of all possible identical asym_id swaps to maximizes lddt. """
 
     # Identify all permutations of the ordering of the listed asym ids.
     entity_group_asym_id_permutations = itertools.permutations(entity_group_asym_ids)
@@ -97,8 +99,7 @@ def exhaustive_search_for_optimal_entity_assignments(
 
         permutations_predicted_atom_pos = torch.clone(predicted_atom_pos)
 
-        # Use the indexes of the asym ids between the provided arg and each permutation
-        # to define the entity swap mapping.
+        # Create a new predicted atom pos tensor by performing the asym id pos swaps.
         for idx, swap_asym_id in enumerate(entity_group_asym_id_permutation):
 
             # The asym id to be swapped with.
@@ -134,10 +135,9 @@ def exhaustive_search_for_optimal_entity_assignments(
         # Caluclate the lddt between the positions of the actual and predicted 
         # asym id.
         lddt = lddt_calc_module.compute_lddt(
-            # We don't need different masks for the same asym id.
             true_coords=true_atom_pos.unsqueeze(0),
             pred_coords=permutations_predicted_atom_pos.unsqueeze(0),
-            is_dna= is_molecule_types[..., IS_DNA_INDEX].unsqueeze(0),
+            is_dna=is_molecule_types[..., IS_DNA_INDEX].unsqueeze(0),
             is_rna=is_molecule_types[..., IS_RNA_INDEX].unsqueeze(0),
             pairwise_mask=(torch.ones(len(true_atom_pos), len(true_atom_pos)) * True).unsqueeze(0),
         )
@@ -147,6 +147,102 @@ def exhaustive_search_for_optimal_entity_assignments(
             max_lddt = lddt.item()
 
     return best_predicted_atom_pos, best_permutation, max_lddt
+
+
+def sa_search_for_optimal_asym_id_assignments(
+    entity_group_asym_ids: Tuple[int],
+    atom_to_asym_id_map,
+    is_molecule_types,
+    predicted_atom_pos,    
+    true_atom_pos,
+    starting_temp: float = 0.25,
+    cooling_rate: float = 0.99,
+    num_steps: int = 50,
+):
+    """ Simulated annealing search for identical asym_id swaps that maximize lddt. """
+
+    temp: float = starting_temp
+    iter_num: int = 0
+
+
+    cstate: Tuple[int] = entity_group_asym_ids
+    cstate_atom_pos = torch.clone(predicted_atom_pos)
+    
+    
+    cstate_lddt = lddt_calc_module.compute_lddt(
+        true_coords=true_atom_pos.unsqueeze(0),
+        pred_coords=predicted_atom_pos.unsqueeze(0),
+        is_dna=is_molecule_types[..., IS_DNA_INDEX].unsqueeze(0),
+        is_rna=is_molecule_types[..., IS_RNA_INDEX].unsqueeze(0),
+        pairwise_mask=(torch.ones(len(true_atom_pos), len(true_atom_pos)) * True).unsqueeze(0),
+    )
+
+    while iter_num < num_steps:
+        iter_num += 1
+
+        neighboring_assignment_predicted_atom_pos = torch.clone(predicted_atom_pos)
+        nstate = list(cstate)
+
+        # Generate a 'neighboring' state by swapping two asym_ids.
+        swap_idxs = random.sample(range(0, len(cstate)), 2)
+        nstate[swap_idxs[0]] = cstate[swap_idxs[1]]
+        nstate[swap_idxs[1]] = cstate[swap_idxs[0]]
+
+
+        # Create a new predicted atom pos tensor by performing the asym id pos swaps.
+        for idx, swap_asym_id in enumerate(nstate):
+
+            # The asym id to be swapped with.
+            base_asym_id = entity_group_asym_ids[idx]
+
+            # Skip self-swaps.
+            if base_asym_id == swap_asym_id:
+                continue
+
+            # Isolate the atomic idxs to swap values for.
+            original_atom_position_idxs = atom_to_asym_id_map == base_asym_id
+            swap_atom_position_idxs = atom_to_asym_id_map == swap_asym_id
+
+            # Ensure the number of atoms composing the two asym ids are identical. If 
+            # they're not, something went wrong.
+            if original_atom_position_idxs.sum() != swap_atom_position_idxs.sum():
+                raise ValueError(
+                    "Something went wrong, when trying to swap asym_ids to find the "
+                    "closest matching assignment to the ground truth, the num atoms "
+                    "beloinging to both asym ids do not match. Thus they must not be "
+                    f"identical. Found shapes [{original_atom_position_idxs.size(0)}] "
+                    f"and [{swap_atom_position_idxs.size(0)}]."
+                )
+
+            # Perform the swap on a copy of the predictions.
+            neighboring_assignment_predicted_atom_pos[original_atom_position_idxs] = (
+                predicted_atom_pos[swap_atom_position_idxs]
+            )
+            neighboring_assignment_predicted_atom_pos[swap_atom_position_idxs] = (
+                predicted_atom_pos[original_atom_position_idxs]
+            )
+
+        # Caluclate the lddt between the positions of the actual and the new
+        # neighboring swap assignment.
+        nstate_lddt = lddt_calc_module.compute_lddt(
+            # We don't need different masks for the same asym id.
+            true_coords=true_atom_pos.unsqueeze(0),
+            pred_coords=neighboring_assignment_predicted_atom_pos.unsqueeze(0),
+            is_dna= is_molecule_types[..., IS_DNA_INDEX].unsqueeze(0),
+            is_rna=is_molecule_types[..., IS_RNA_INDEX].unsqueeze(0),
+            pairwise_mask=(torch.ones(len(true_atom_pos), len(true_atom_pos)) * True).unsqueeze(0),
+        )
+
+        # Probabilistically accept a new state.
+        acceptance_threshold = (math.e)**((nstate_lddt - cstate_lddt) / temp)
+        if random.random() < acceptance_threshold:
+            cstate = nstate
+            cstate_lddt = nstate_lddt
+
+        # Update the temperature.
+        temp = temp * cooling_rate**(iter_num)
+
+    return neighboring_assignment_predicted_atom_pos, cstate, cstate_lddt 
 
 
 # Analogs of methods from lightining/hydra code so eval can be run outside a lightning context.
@@ -162,6 +258,7 @@ def prepare_batch_dict(af3: Alphafold3, batch_dict: Dict[str, Any]) -> Dict[str,
     return batch_dict
 
 
+# Core benchmarking script.
 if __name__ == "__main__":
 
     # Define the command line interface.
@@ -250,14 +347,12 @@ if __name__ == "__main__":
 
         with torch.no_grad():
             # Perform inference.
-            # batch_sampled_atom_pos, logits = alphafold3(
-            #     **batch_dict,
-            #     return_loss=False,
-            #     return_confidence_head_logits=True,
-            #     return_distogram_head_logits=True,
-            # )
-
-            batch_sampled_atom_pos = torch.randn((2, 2957, 3))
+            batch_sampled_atom_pos, logits = alphafold3(
+                **batch_dict,
+                return_loss=False,
+                return_confidence_head_logits=True,
+                return_distogram_head_logits=True,
+            )
 
         # Note: A for loop here because complexs will have irregular numbers and types of 
         # enities, meaning descriptive tensors would have irregular dimensional shapes. 
@@ -310,23 +405,74 @@ if __name__ == "__main__":
 
                 elif len(entity_group_asym_ids) <= MAX_NUM_IDENTICAL_ENTITIES_FOR_EXHAUSTIVE_SEARCH:
                     # Few enough matching entities to do an exhaustive search.
-                    exhaustive_search_for_optimal_entity_assignments(
-                        entity_group_asym_ids=entity_group_asym_ids,
-                        atom_to_asym_id_map=atom_to_asym_id_map,
-                        is_molecule_types=atom_to_is_molecule_types,
-                        predicted_atom_pos=batch_sampled_atom_pos[batch_idx][sample_unpadded_atom_idxs, ...],
-                        true_atom_pos=batched_atom_input.atom_pos[batch_idx][sample_unpadded_atom_idxs, ...],
+                    best_predicted_atom_pos, best_permutation, max_lddt = (
+                        exhaustive_search_for_optimal_asym_id_assignments(
+                            entity_group_asym_ids=entity_group_asym_ids,
+                            atom_to_asym_id_map=atom_to_asym_id_map,
+                            is_molecule_types=atom_to_is_molecule_types,
+                            predicted_atom_pos=batch_sampled_atom_pos[batch_idx][sample_unpadded_atom_idxs, ...],
+                            true_atom_pos=batched_atom_input.atom_pos[batch_idx][sample_unpadded_atom_idxs, ...],
+                        )
                     )
 
                 else:
-                    # Annealing simulation.
-                    pass
+                    best_predicted_atom_pos, best_permutation, max_lddt = (
+                        sa_search_for_optimal_asym_id_assignments(
+                            entity_group_asym_ids=entity_group_asym_ids,
+                            atom_to_asym_id_map=atom_to_asym_id_map,
+                            is_molecule_types=atom_to_is_molecule_types,
+                            predicted_atom_pos=batch_sampled_atom_pos[batch_idx][sample_unpadded_atom_idxs, ...],
+                            true_atom_pos=batched_atom_input.atom_pos[batch_idx][sample_unpadded_atom_idxs, ...],
+                        )
+                    )
 
+                # Update the token and atom mappings to use the new asym id assignments.
 
-        # Entity resolution logic.
+                # Create copies so the partial updates don't remove information needed
+                # to finish the mapping.
+                atom_to_asym_id_map_copy = torch.clone(atom_to_asym_id_map)
+                token_idx_to_asym_ids_copy = torch.clone(token_idx_to_asym_ids)
+                token_idx_to_entity_ids_copy = torch.clone(token_idx_to_entity_ids)
+                atom_lens_per_token_idx_copy = torch.clone(atom_lens_per_token_idx)
+                token_idx_to_is_molecule_types_copy = torch.clone(token_idx_to_is_molecule_types)
+                atom_to_is_molecule_types_copy = torch.clone(atom_to_is_molecule_types)
 
+                for t, new_asym_id in enumerate(best_permutation):
+                    old_asym_id = entity_group_asym_ids[t]
 
-        # Ligand symmetry resolution logic.
+                    is_old_asym_id_token = token_idx_to_asym_ids == old_asym_id
+                    is_new_asym_id_token = token_idx_to_asym_ids == new_asym_id
+
+                    is_old_asym_id_atom = atom_to_asym_id_map == old_asym_id
+                    is_new_asym_id_atom = atom_to_asym_id_map == new_asym_id
+
+                    # Perform the old asym id to new asym id swaps in all supporting tensor copies.
+                    atom_to_asym_id_map_copy[is_old_asym_id_atom] = new_asym_id
+                    token_idx_to_asym_ids_copy[is_old_asym_id_token] = new_asym_id
+                    token_idx_to_is_molecule_types_copy[is_old_asym_id_token, ...] = token_idx_to_is_molecule_types[
+                        is_new_asym_id_token
+                    ]
+                    atom_to_is_molecule_types_copy[is_old_asym_id_atom, ...] = atom_to_is_molecule_types[
+                        is_new_asym_id_atom
+                    ]
+                    atom_lens_per_token_idx_copy[is_old_asym_id_token] = atom_lens_per_token_idx[
+                        is_new_asym_id_token
+                    ]
+                    token_idx_to_entity_ids_copy[is_old_asym_id_token] = token_idx_to_entity_ids[
+                        is_new_asym_id_token
+                    ]
+            
+                # Reassign the tensors to the copies that have been successfully swapped.
+                atom_to_asym_id_map = atom_to_asym_id_map_copy
+                token_idx_to_asym_ids = token_idx_to_asym_ids_copy
+                token_idx_to_entity_ids = token_idx_to_entity_ids_copy
+                atom_lens_per_token_ids = atom_lens_per_token_idx_copy
+                token_idx_to_is_molecule_types_copy = token_idx_to_is_molecule_types
+                atom_to_is_molecule_types_copy = atom_to_is_molecule_types
+
+            # Ligand symmetry resolution logic?
+
+            # Compute evaluation metrics.
 
 
 

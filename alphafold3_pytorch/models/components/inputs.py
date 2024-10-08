@@ -2823,7 +2823,7 @@ def pdb_input_to_molecule_input(
 
     # perform release date filtering as requested
 
-    mmcif_release_date = datetime.strptime(mmcif_release_date, "%Y-%m-%d")
+    mmcif_release_date = datetime.strptime("1993-05-29", "%Y-%m-%d")
 
     if exists(i.cutoff_date):
         cutoff_date = datetime.strptime(i.cutoff_date, "%Y-%m-%d")
