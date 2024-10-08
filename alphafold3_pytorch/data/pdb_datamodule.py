@@ -413,6 +413,7 @@ def AF3DataLoader(
 
     if exists(map_input_fn):
         collate_fn = partial(collate_fn, map_input_fn=map_input_fn)
+
     return DataLoader(*args, collate_fn=collate_fn, **kwargs)
 
 

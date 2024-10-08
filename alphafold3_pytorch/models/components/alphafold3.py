@@ -5491,6 +5491,7 @@ class ComputeModelSelectionScore(Module):
         :param coords_mask: boolean tensor indicating valid atoms
         :return: lDDT
         """
+
         dtype = pred_coords.dtype
         atom_seq_len, device = pred_coords.shape[1], pred_coords.device
 
