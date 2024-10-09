@@ -32,9 +32,9 @@ from alphafold3_pytorch.models.alphafold3_module import Sample
 
 
 # Constants.
-EXPECTED_DIM_ATOM_INPUT: int = 3
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 MAX_NUM_IDENTICAL_ENTITIES_FOR_EXHAUSTIVE_SEARCH: int = 3
+EXPECTED_DIM_ATOM_INPUT: int = 3
 INT_PAD_VALUE: int = -1
 FLOAT_PAD_VALUE: float = 0.0
 
