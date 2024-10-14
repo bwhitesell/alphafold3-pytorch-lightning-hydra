@@ -245,6 +245,41 @@ def sa_search_for_optimal_asym_id_assignments(
     return neighboring_assignment_predicted_atom_pos, cstate, cstate_lddt 
 
 
+def calculate_complexs_interface_atoms(atom_pos, atom_to_asym_id_map, interface_threshold: float = 30):
+    distinct_asym_ids = [x.item() for x in atom_to_asym_id_map.unique()]
+    interfaces = []
+    for asym_id_a in distinct_asym_ids:
+        for asym_id_b in distinct_asym_ids:
+
+            # Don't do self comparisons.
+            if asym_id_a == asym_id_b:
+                continue
+
+            # Get the atom positions of the two asym ids.
+            a_pos = atom_pos[atom_to_asym_id_map == asym_id_a]
+            b_pos = atom_pos[atom_to_asym_id_map == asym_id_b]
+
+            pairwise_dists = torch.norm(a_pos.unsqueeze(0) - b_pos.unsqueeze(1), dim=2)
+
+            is_interface_pair = pairwise_dists < interface_threshold
+
+            asym_a_is_interface_atom_map = torch.any(is_interface_pair, dim=0)
+            asym_b_is_interface_atom_map = torch.any(is_interface_pair, dim=1)
+
+            is_atom_in_b_interface_stucture = torch.zeros_like(atom_to_asym_id_map, dtype=torch.bool)
+            is_atom_in_b_interface_stucture = torch.zeros_like(atom_to_asym_id_map, dtype=torch.bool)
+
+            if len(asym_a_is_interface_atom_map) > 0 and len(asym_b_is_interface_atom_map) > 0:
+
+                interfaces.append({
+                    "asym_id_a": asym_id_a,
+                    "asym_id_b": asym_id_b,
+                })
+
+
+
+
+
 # Analogs of methods from lightining/hydra code so eval can be run outside a lightning context.
 
 def prepare_batch_dict(af3: Alphafold3, batch_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -377,12 +412,6 @@ if __name__ == "__main__":
                 sample_unpadded_token_idxs
             ]
 
-            # Group all the asym_ids that are "identical" together at the token level.
-            identical_entity_asym_id_groups = group_identical_entity_asym_ids(
-                token_idx_to_asym_ids_map=token_idx_to_asym_ids,
-                token_idx_to_entity_ids_map=token_idx_to_entity_ids
-            )
-
             # Find the unpadded atomic indices of this sample.
             sample_unpadded_atom_idxs = torch.arange(0, atom_lens_per_token_idx.sum()).long()
 
@@ -393,6 +422,12 @@ if __name__ == "__main__":
             atom_to_is_molecule_types = token_idx_to_is_molecule_types.repeat_interleave(
                 atom_lens_per_token_idx,
                 dim=0,
+            )
+
+            # Group all the asym_ids that are "identical" together at the token level.
+            identical_entity_asym_id_groups = group_identical_entity_asym_ids(
+                token_idx_to_asym_ids_map=token_idx_to_asym_ids,
+                token_idx_to_entity_ids_map=token_idx_to_entity_ids
             )
 
             # For each group of matching asym_ids, swap their positions to find the
