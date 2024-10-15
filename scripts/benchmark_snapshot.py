@@ -26,6 +26,7 @@ from alphafold3_pytorch.models.components.inputs import PDBDataset
 from alphafold3_pytorch.models.components.inputs import pdb_dataset_to_atom_inputs
 from alphafold3_pytorch.models.components.inputs import IS_RNA_INDEX 
 from alphafold3_pytorch.models.components.inputs import IS_DNA_INDEX
+from alphafold3_pytorch.models.components.inputs import IS_LIGAND_INDEX
 from alphafold3_pytorch.models.components.alphafold3 import ComputeModelSelectionScore
 from alphafold3_pytorch.data.pdb_datamodule import AF3DataLoader
 from alphafold3_pytorch.models.alphafold3_module import Sample
@@ -245,39 +246,115 @@ def sa_search_for_optimal_asym_id_assignments(
     return neighboring_assignment_predicted_atom_pos, cstate, cstate_lddt 
 
 
-def calculate_complexs_interface_atoms(atom_pos, atom_to_asym_id_map, interface_threshold: float = 30):
-    distinct_asym_ids = [x.item() for x in atom_to_asym_id_map.unique()]
-    interfaces = []
-    for asym_id_a in distinct_asym_ids:
+def find_interface_atoms_in_complex(
+    atom_pos,
+    atom_to_asym_id_map,
+    asym_id_candidate_filter: Optional[Set[int]] = None,
+    interface_threshold: float = 30
+):
+
+    # Validate the atom_pos and atom_to_asym_id_map args have the expected matching dims.
+    if atom_pos.size(0) != atom_to_asym_id_map.size(0):
+        raise ValueError(
+            "Expected the atom_pos and atom_to_asym_id_map args to be tensors of "
+            f"identical size, but got [{atom_pos.size(0)}] and [{atom_to_asym_id_map.size(0)}]"
+        )
+
+    # Init some data structures for later.
+    interfaces = {}
+    distinct_asym_ids = set([x.item() for x in atom_to_asym_id_map.unique()])
+    eligible_asym_ids = (
+        asym_id_candidate_filter 
+        if asym_id_candidate_filter is not None else 
+        distinct_asym_ids
+    )
+
+    # Loop through the (n x m)/2 asym id pairs looking for interface points.
+    for asym_id_a in eligible_asym_ids:
         for asym_id_b in distinct_asym_ids:
 
-            # Don't do self comparisons.
+            # Can't make an interface with yourself -- don't do self comparisons.
             if asym_id_a == asym_id_b:
+                continue
+
+            # Create a unique order-agnostic identifier for the interface between
+            # two asym ids.
+            interface_key = set(asym_id_a, asym_id_b)
+
+            # Don't want multiple representations of the same interface.
+            if interface_key in interfaces:
                 continue
 
             # Get the atom positions of the two asym ids.
             a_pos = atom_pos[atom_to_asym_id_map == asym_id_a]
             b_pos = atom_pos[atom_to_asym_id_map == asym_id_b]
 
+            # Calculate the pairwise distances between atoms in each asym id. This creates a
+            # n_atoms_in_asym_a x n_atoms_in_asym_b tensor where the values are the matching
+            # atomic distances.
             pairwise_dists = torch.norm(a_pos.unsqueeze(0) - b_pos.unsqueeze(1), dim=2)
 
+            # Bool mask of the atoms that are in interface with eachother.
             is_interface_pair = pairwise_dists < interface_threshold
 
-            asym_a_is_interface_atom_map = torch.any(is_interface_pair, dim=0)
+            # Agg the mask up to determine which atoms are in interface for each asym id.
+            asym_a_is_interface_atom_map = torch.any(is_interface_pair, dim=-1)
             asym_b_is_interface_atom_map = torch.any(is_interface_pair, dim=1)
 
-            is_atom_in_b_interface_stucture = torch.zeros_like(atom_to_asym_id_map, dtype=torch.bool)
+            # Create a mapping for each of the input atoms to this fn that indicates whether 
+            # the atom is part of an interface.
+            is_atom_in_a_interface_stucture = torch.zeros_like(atom_to_asym_id_map, dtype=torch.bool)
             is_atom_in_b_interface_stucture = torch.zeros_like(atom_to_asym_id_map, dtype=torch.bool)
 
             if len(asym_a_is_interface_atom_map) > 0 and len(asym_b_is_interface_atom_map) > 0:
+                is_atom_in_a_interface_stucture[atom_to_asym_id_map == asym_id_a] = asym_a_is_interface_atom_map
+                is_atom_in_b_interface_stucture[atom_to_asym_id_map == asym_id_b] = asym_b_is_interface_atom_map
+                is_atom_in_interface = is_atom_in_a_interface_stucture | is_atom_in_b_interface_stucture
 
-                interfaces.append({
+                interfaces[interface_key] = {
                     "asym_id_a": asym_id_a,
                     "asym_id_b": asym_id_b,
-                })
+                    "atom_in_interface": is_atom_in_interface,
+                }
+    
+    return interfaces
 
 
+def find_pocket_atoms_in_complex(
+    atom_pos,
+    atom_to_asym_id_map, 
+    atom_is_molecule_types, 
+    manually_exclude_atom_from_pocket,
+):
 
+    # Identify the atoms that correspond to ligands.
+    is_atom_in_ligand = atom_is_molecule_types[..., IS_LIGAND_INDEX].unsqueeze(0)
+
+    # Identify the asym_ids that correspond to ligands. If the number of atoms in
+    # the asym id is equal to the number of atoms in the asym id that are also ligand
+    # atoms then the asym id is a ligand.
+    ligand_asym_ids = torch.where(
+        torch.bincount(atom_to_asym_id_map[is_atom_in_ligand]) == 
+        torch.bincount(atom_to_asym_id_map)
+    )
+
+    # Determine which atom's are in the 'pocket'. An atom is in the pocket if it is within
+    # 10Å of any heavy atoms in the ground truth structure of a ligand -- meaning any atoms
+    # in interface within 10Å of a ligand atom is in the pocket.
+    all_ligand_interfaces = find_interface_atoms_in_complex(
+        atom_pos=atom_pos,
+        atom_to_asym_id_map=atom_to_asym_id_map,
+        asym_id_candidate_filter=set(ligand_asym_ids.tolist()),
+        interface_threshold=10,
+    )
+
+    is_atom_in_pocket = torch.zeros_like(atom_to_asym_id_map, dtype=torch.bool)
+    for interface in all_ligand_interfaces:
+        is_atom_in_pocket = is_atom_in_pocket | interface["atom_in_interface"]
+
+    is_atom_in_pocket = is_atom_in_pocket & (manually_exclude_atom_from_pocket == False)
+
+    return is_atom_in_pocket
 
 
 # Analogs of methods from lightining/hydra code so eval can be run outside a lightning context.
@@ -337,7 +414,6 @@ if __name__ == "__main__":
         help="The window size to use (None) if no windowing for atom pair tensor reprs.",
     )
 
-
     # Parse the user-provided args.
     args = parser.parse_args()
 
@@ -350,8 +426,8 @@ if __name__ == "__main__":
     if alphafold3.dim_atom_inputs != EXPECTED_DIM_ATOM_INPUT:
         raise ValueError(
             f"The alphafold3 model loaded from [{args.inference_model_weights}] uses a "
-            "atom input shape 'dim_atom_inputs' [{alphafold3.dim_atom_inputs}] that "
-            "differs from what this script expects [{EXPECTED_DIM_ATOM_INPUT}]"
+            f"atom input shape 'dim_atom_inputs' [{alphafold3.dim_atom_inputs}] that "
+            f"differs from what this script expects [{EXPECTED_DIM_ATOM_INPUT}]"
         )
 
     # Load the pdb file dataset into a reference obj.
@@ -382,12 +458,13 @@ if __name__ == "__main__":
 
         with torch.no_grad():
             # Perform inference.
-            batch_sampled_atom_pos, logits = alphafold3(
-                **batch_dict,
-                return_loss=False,
-                return_confidence_head_logits=True,
-                return_distogram_head_logits=True,
-            )
+            # batch_sampled_atom_pos, logits = alphafold3(
+            #    **batch_dict,
+            #    return_loss=False,
+            #    return_confidence_head_logits=True,
+            #    return_distogram_head_logits=True,
+            #)
+            batch_sampled_atom_pos = torch.randn(3, 2048, 3)
 
         # Note: A for loop here because complexs will have irregular numbers and types of 
         # enities, meaning descriptive tensors would have irregular dimensional shapes. 
@@ -502,12 +579,18 @@ if __name__ == "__main__":
                 token_idx_to_asym_ids = token_idx_to_asym_ids_copy
                 token_idx_to_entity_ids = token_idx_to_entity_ids_copy
                 atom_lens_per_token_ids = atom_lens_per_token_idx_copy
-                token_idx_to_is_molecule_types_copy = token_idx_to_is_molecule_types
-                atom_to_is_molecule_types_copy = atom_to_is_molecule_types
+                token_idx_to_is_molecule_types = token_idx_to_is_molecule_types_copy
+                atom_to_is_molecule_types = atom_to_is_molecule_types_copy
+                print(atom_to_is_molecule_types)
+                print(atom_to_is_molecule_types.shape)
+
 
             # Ligand symmetry resolution logic?
 
             # Compute evaluation metrics.
+
+
+
 
 
 
