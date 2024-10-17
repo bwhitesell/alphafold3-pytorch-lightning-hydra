@@ -7,6 +7,7 @@ https://static-content.springer.com/esm/art%3A10.1038%2Fs41586-024-07487-w/Media
 """
 
 import argparse
+import enum
 import itertools
 import math
 import multiprocessing as mp
@@ -14,22 +15,32 @@ from pathlib import Path
 import random
 from typing import Any
 from typing import Dict
+from typing import List
 from typing import Optional
 from typing import Set 
 from typing import Tuple
-
-import torch
+from typing import TypedDict
 
 from alphafold3_pytorch import Alphafold3
 from alphafold3_pytorch.utils.model_utils import dict_to_device
 from alphafold3_pytorch.models.components.inputs import PDBDataset
 from alphafold3_pytorch.models.components.inputs import pdb_dataset_to_atom_inputs
+from alphafold3_pytorch.models.components.inputs import IS_PROTEIN
+from alphafold3_pytorch.models.components.inputs import IS_DNA
+from alphafold3_pytorch.models.components.inputs import IS_RNA
+from alphafold3_pytorch.models.components.inputs import IS_LIGAND
 from alphafold3_pytorch.models.components.inputs import IS_RNA_INDEX 
 from alphafold3_pytorch.models.components.inputs import IS_DNA_INDEX
 from alphafold3_pytorch.models.components.inputs import IS_LIGAND_INDEX
+from alphafold3_pytorch.models.components.inputs import IS_MOLECULE_TYPES
+from alphafold3_pytorch.models.components.inputs import BatchedAtomInput
 from alphafold3_pytorch.models.components.alphafold3 import ComputeModelSelectionScore
 from alphafold3_pytorch.data.pdb_datamodule import AF3DataLoader
 from alphafold3_pytorch.models.alphafold3_module import Sample
+from alphafold3_pytorch.utils.tensor_typing import Bool
+from alphafold3_pytorch.utils.tensor_typing import Float
+from alphafold3_pytorch.utils.tensor_typing import Int
+import torch
 
 
 # Constants.
@@ -39,13 +50,61 @@ EXPECTED_DIM_ATOM_INPUT: int = 3
 INT_PAD_VALUE: int = -1
 FLOAT_PAD_VALUE: float = 0.0
 
+
+class PolymerType(str, enum.Enum):
+    PROTEIN: str = "PROTEIN"
+    NUCLEIC_ACID: str = "NUCLEIC_ACID"
+    LIGAND: str = "LIGAND"
+
+    @classmethod
+    def from_molecular_idx(cls, idx: int) -> "PolymerType":
+        if idx == IS_PROTEIN:
+            return cls.PROTEIN
+        elif idx == IS_RNA:
+            return cls.NUCLEIC_ACID
+        elif idx == IS_DNA:
+            return cls.NUCLEIC_ACID
+        elif idx == IS_LIGAND:
+            return cls.LIGAND
+        else:
+            raise ValueError(
+                f"Tried to resolve a polymer type from an unknown molecular idx [{idx}]"
+            )
+
+
+# Type annotations.
+class MolecularInterface(TypedDict):
+    asym_id_a: int
+    asym_id_b: int
+    atom_in_interface: Bool["m"]  # type: ignore
+
+
 # Supporting utils.
 lddt_calc_module = ComputeModelSelectionScore()
 
 
+def create_asym_id_to_polymer_type_map(
+    token_idx_to_asym_ids_map: Int["n"],  # type: ignore
+    is_molecule_types: Bool[f"n {IS_MOLECULE_TYPES}"],  # type: ignore
+):
+    asym_id_to_polymer_type: Dict[str, PolymerType] = {}
+    distinct_asym_ids = set([x.item() for x in token_idx_to_asym_ids_map.unique()])
+
+    for asym_id in distinct_asym_ids:
+        is_token_in_asym_id = token_idx_to_asym_ids_map == asym_id
+        polymer_types_by_token = is_molecule_types[is_token_in_asym_id].sum(axis=0)
+        polymer_type_mol_idx = torch.argmax(polymer_types_by_token.sum(axis=0)).item()
+
+        asym_id_to_polymer_type[asym_id] = PolymerType.from_molecular_idx(
+            idx=polymer_type_mol_idx
+        )
+    return asym_id_to_polymer_type
+
+
+
 def group_identical_entity_asym_ids(
-    token_idx_to_asym_ids_map,
-    token_idx_to_entity_ids_map,
+    token_idx_to_asym_ids_map: Int["n"],  # type: ignore
+    token_idx_to_entity_ids_map: Int["n"],  # type: ignore
 ) -> Set[Tuple[int]]:
     """ 
     Evaluate the token to asym and token to entity mappings of a complex. Assign the 
@@ -81,10 +140,10 @@ def group_identical_entity_asym_ids(
 
 def exhaustive_search_for_optimal_asym_id_assignments(
     entity_group_asym_ids: Tuple[int],
-    atom_to_asym_id_map,
-    is_molecule_types,
-    predicted_atom_pos,    
-    true_atom_pos,
+    atom_to_asym_id_map: Bool["m"],  # type: ignore
+    is_molecule_types: Bool[f"n {IS_MOLECULE_TYPES}"],  # type: ignore
+    predicted_atom_pos: Float["m 3"],  # type: ignore
+    true_atom_pos: Float["m 3"],  # type: ignore
 ):
     """ Exhaustive search of all possible identical asym_id swaps to maximizes lddt. """
 
@@ -152,10 +211,10 @@ def exhaustive_search_for_optimal_asym_id_assignments(
 
 def sa_search_for_optimal_asym_id_assignments(
     entity_group_asym_ids: Tuple[int],
-    atom_to_asym_id_map,
-    is_molecule_types,
-    predicted_atom_pos,    
-    true_atom_pos,
+    atom_to_asym_id_map: Int["m"],  # type: ignore
+    is_molecule_types: Bool[f"n {IS_MOLECULE_TYPES}"],  # type: ignore
+    predicted_atom_pos: Float["m 3"],  # type: ignore
+    true_atom_pos: Float["m 3"],  # type: ignore
     starting_temp: float = 0.25,
     cooling_rate: float = 0.99,
     num_steps: int = 50,
@@ -168,7 +227,6 @@ def sa_search_for_optimal_asym_id_assignments(
 
     cstate: Tuple[int] = entity_group_asym_ids
     cstate_atom_pos = torch.clone(predicted_atom_pos)
-    
     
     cstate_lddt = lddt_calc_module.compute_lddt(
         true_coords=true_atom_pos.unsqueeze(0),
@@ -247,11 +305,11 @@ def sa_search_for_optimal_asym_id_assignments(
 
 
 def find_interface_atoms_in_complex(
-    atom_pos,
-    atom_to_asym_id_map,
+    atom_pos: Float["m 3"],  # type: ignore
+    atom_to_asym_id_map: Int["m"],  # type: ignore
     asym_id_candidate_filter: Optional[Set[int]] = None,
     interface_threshold: float = 30
-):
+) -> Dict[str, MolecularInterface]:
 
     # Validate the atom_pos and atom_to_asym_id_map args have the expected matching dims.
     if atom_pos.size(0) != atom_to_asym_id_map.size(0):
@@ -321,10 +379,9 @@ def find_interface_atoms_in_complex(
 
 
 def find_pocket_atoms_in_complex(
-    atom_pos,
-    atom_to_asym_id_map, 
-    atom_is_molecule_types, 
-    manually_exclude_atom_from_pocket,
+    atom_pos: Float["m 3"],  # type: ignore
+    atom_to_asym_id_map: Int["m"],  # type: ignore
+    atom_is_molecule_types: Bool[f"n {IS_MOLECULE_TYPES}"],  # type: ignore
 ):
 
     # Identify the atoms that correspond to ligands.
@@ -338,9 +395,9 @@ def find_pocket_atoms_in_complex(
         torch.bincount(atom_to_asym_id_map)
     )
 
-    # Determine which atom's are in the 'pocket'. An atom is in the pocket if it is within
-    # 10Å of any heavy atoms in the ground truth structure of a ligand -- meaning any atoms
-    # in interface within 10Å of a ligand atom is in the pocket.
+    # Determine which atom's are in the 'pocket'. An atom is in the pocket of a complex if 
+    # it is within 10Å of any heavy atoms in the ground truth structure of a ligand -- 
+    # meaning any atom in a 10Å interface of a ligand atom is in the pocket.
     all_ligand_interfaces = find_interface_atoms_in_complex(
         atom_pos=atom_pos,
         atom_to_asym_id_map=atom_to_asym_id_map,
@@ -351,8 +408,6 @@ def find_pocket_atoms_in_complex(
     is_atom_in_pocket = torch.zeros_like(atom_to_asym_id_map, dtype=torch.bool)
     for interface in all_ligand_interfaces:
         is_atom_in_pocket = is_atom_in_pocket | interface["atom_in_interface"]
-
-    is_atom_in_pocket = is_atom_in_pocket & (manually_exclude_atom_from_pocket == False)
 
     return is_atom_in_pocket
 
@@ -455,6 +510,12 @@ if __name__ == "__main__":
             batch_dict=batched_atom_input.dict()
         )
         batch_dict = dict_to_device(batch_dict, device=alphafold3.device) 
+        print(batched_atom_input.molecule_atom_indices[0])
+        print(batched_atom_input.is_molecule_types[0].sum(axis=0))
+        import sys
+        sys.exit(1)
+
+
 
         with torch.no_grad():
             # Perform inference.
@@ -466,128 +527,98 @@ if __name__ == "__main__":
             #)
             batch_sampled_atom_pos = torch.randn(3, 2048, 3)
 
-        # Note: A for loop here because complexs will have irregular numbers and types of 
-        # enities, meaning descriptive tensors would have irregular dimensional shapes. 
+            # Perform entity resolution between the ground truth and predicted 
+            # structures such that the identical entities between the two correspond.
+            batch_sampled_atom_pos = perform_identical_entity_resolution(
+                batched_atom_input=batched_atom_input,
+                batch_sampled_atom_pos=batch_sampled_atom_pos,
+            ) 
+
         for batch_idx in range(batched_atom_input.atom_inputs.size(0)):
 
-            # Pull out tensorized mappings between tensor indices and parent entities
-            # for a single sample.
-            padded_atom_lens_per_token_idx = batched_atom_input.molecule_atom_lens[batch_idx]
-            padded_token_idx_to_is_molecule_types = batched_atom_input.is_molecule_types[batch_idx]
-            _, _, padded_token_idx_to_asym_ids, padded_token_idx_to_entity_id, _= (
-                batched_atom_input.additional_molecule_feats[batch_idx].unbind(dim=-1)
-            )
+        # Pull out tensorized mappings between tensor indices and parent entities
+        # for a single sample.
+        padded_atom_lens_per_token_idx = batched_atom_input.molecule_atom_lens[batch_idx]
+        padded_token_idx_to_is_molecule_types = batched_atom_input.is_molecule_types[batch_idx]
+        _, _, padded_token_idx_to_asym_ids, padded_token_idx_to_entity_id, _= (
+            batched_atom_input.additional_molecule_feats[batch_idx].unbind(dim=-1)
+        )
 
-            # Find the unpadded token indices of this sample.
-            sample_unpadded_token_idxs = padded_token_idx_to_asym_ids != INT_PAD_VALUE
+        # Find the unpadded token indices of this sample.
+        sample_unpadded_token_idxs = padded_token_idx_to_asym_ids != INT_PAD_VALUE
 
-            # Remove the padding from all the descriptive batched tensors.
-            token_idx_to_asym_ids = padded_token_idx_to_asym_ids[sample_unpadded_token_idxs]
-            token_idx_to_entity_ids = padded_token_idx_to_entity_id[sample_unpadded_token_idxs]
-            atom_lens_per_token_idx = padded_atom_lens_per_token_idx[sample_unpadded_token_idxs]
-            token_idx_to_is_molecule_types = padded_token_idx_to_is_molecule_types[
-                sample_unpadded_token_idxs
-            ]
+        # Remove the padding from all the descriptive batched tensors.
+        token_idx_to_asym_ids = padded_token_idx_to_asym_ids[sample_unpadded_token_idxs]
+        token_idx_to_entity_ids = padded_token_idx_to_entity_id[sample_unpadded_token_idxs]
+        atom_lens_per_token_idx = padded_atom_lens_per_token_idx[sample_unpadded_token_idxs]
+        token_idx_to_is_molecule_types = padded_token_idx_to_is_molecule_types[
+            sample_unpadded_token_idxs
+        ]
 
-            # Find the unpadded atomic indices of this sample.
-            sample_unpadded_atom_idxs = torch.arange(0, atom_lens_per_token_idx.sum()).long()
+        # Find the unpadded atomic indices of this sample.
+        sample_unpadded_atom_idxs = torch.arange(0, atom_lens_per_token_idx.sum()).long()
 
-            # Construct unpadded atom level mappings to various atomic attributes.
-            atom_to_asym_id_map = token_idx_to_asym_ids.repeat_interleave(
-                atom_lens_per_token_idx,
-            )
-            atom_to_is_molecule_types = token_idx_to_is_molecule_types.repeat_interleave(
-                atom_lens_per_token_idx,
-                dim=0,
-            )
+        # Construct unpadded atom level mappings to various atomic attributes.
+        atom_to_asym_id_map = token_idx_to_asym_ids.repeat_interleave(
+            atom_lens_per_token_idx,
+        )
+        atom_to_is_molecule_types = token_idx_to_is_molecule_types.repeat_interleave(
+            atom_lens_per_token_idx,
+            dim=0,
+        )
 
-            # Group all the asym_ids that are "identical" together at the token level.
-            identical_entity_asym_id_groups = group_identical_entity_asym_ids(
-                token_idx_to_asym_ids_map=token_idx_to_asym_ids,
-                token_idx_to_entity_ids_map=token_idx_to_entity_ids
-            )
+        # Group all the asym_ids that are "identical" together at the token level.
+        identical_entity_asym_id_groups = group_identical_entity_asym_ids(
+            token_idx_to_asym_ids_map=token_idx_to_asym_ids,
+            token_idx_to_entity_ids_map=token_idx_to_entity_ids
+        )
 
-            # For each group of matching asym_ids, swap their positions to find the
-            # arrangement that most closely matches the obersrved arrangement.
-            for entity_group_asym_ids in identical_entity_asym_id_groups:
+        # For each group of matching asym_ids, swap their positions to find the
+        # arrangement that most closely matches the obersrved arrangement.
+        for entity_group_asym_ids in identical_entity_asym_id_groups:
 
-                if len(entity_group_asym_ids) <= 1:
-                    # No swapping arrangements to search through.
-                    continue
+            if len(entity_group_asym_ids) <= 1:
+                # No swapping arrangements to search through.
+                continue
 
-                elif len(entity_group_asym_ids) <= MAX_NUM_IDENTICAL_ENTITIES_FOR_EXHAUSTIVE_SEARCH:
-                    # Few enough matching entities to do an exhaustive search.
-                    best_predicted_atom_pos, best_permutation, max_lddt = (
-                        exhaustive_search_for_optimal_asym_id_assignments(
-                            entity_group_asym_ids=entity_group_asym_ids,
-                            atom_to_asym_id_map=atom_to_asym_id_map,
-                            is_molecule_types=atom_to_is_molecule_types,
-                            predicted_atom_pos=batch_sampled_atom_pos[batch_idx][sample_unpadded_atom_idxs, ...],
-                            true_atom_pos=batched_atom_input.atom_pos[batch_idx][sample_unpadded_atom_idxs, ...],
-                        )
+            elif len(entity_group_asym_ids) <= MAX_NUM_IDENTICAL_ENTITIES_FOR_EXHAUSTIVE_SEARCH:
+                # Few enough matching entities to do an exhaustive search.
+                best_predicted_atom_pos, best_permutation, max_lddt = (
+                    exhaustive_search_for_optimal_asym_id_assignments(
+                        entity_group_asym_ids=entity_group_asym_ids,
+                        atom_to_asym_id_map=atom_to_asym_id_map,
+                        is_molecule_types=atom_to_is_molecule_types,
+                        predicted_atom_pos=batch_sampled_atom_pos[batch_idx][sample_unpadded_atom_idxs, ...],
+                        true_atom_pos=batched_atom_input.atom_pos[batch_idx][sample_unpadded_atom_idxs, ...],
                     )
+                )
 
-                else:
-                    best_predicted_atom_pos, best_permutation, max_lddt = (
-                        sa_search_for_optimal_asym_id_assignments(
-                            entity_group_asym_ids=entity_group_asym_ids,
-                            atom_to_asym_id_map=atom_to_asym_id_map,
-                            is_molecule_types=atom_to_is_molecule_types,
-                            predicted_atom_pos=batch_sampled_atom_pos[batch_idx][sample_unpadded_atom_idxs, ...],
-                            true_atom_pos=batched_atom_input.atom_pos[batch_idx][sample_unpadded_atom_idxs, ...],
-                        )
+            else:
+                best_predicted_atom_pos, best_permutation, max_lddt = (
+                    sa_search_for_optimal_asym_id_assignments(
+                        entity_group_asym_ids=entity_group_asym_ids,
+                        atom_to_asym_id_map=atom_to_asym_id_map,
+                        is_molecule_types=atom_to_is_molecule_types,
+                        predicted_atom_pos=batch_sampled_atom_pos[batch_idx][sample_unpadded_atom_idxs, ...],
+                        true_atom_pos=batched_atom_input.atom_pos[batch_idx][sample_unpadded_atom_idxs, ...],
                     )
+                )
+        resolved_entity_predictions.append(best_predicted_atom_pos)
 
-                # Update the token and atom mappings to use the new asym id assignments.
 
-                # Create copies so the partial updates don't remove information needed
-                # to finish the mapping.
-                atom_to_asym_id_map_copy = torch.clone(atom_to_asym_id_map)
-                token_idx_to_asym_ids_copy = torch.clone(token_idx_to_asym_ids)
-                token_idx_to_entity_ids_copy = torch.clone(token_idx_to_entity_ids)
-                atom_lens_per_token_idx_copy = torch.clone(atom_lens_per_token_idx)
-                token_idx_to_is_molecule_types_copy = torch.clone(token_idx_to_is_molecule_types)
-                atom_to_is_molecule_types_copy = torch.clone(atom_to_is_molecule_types)
-
-                for t, new_asym_id in enumerate(best_permutation):
-                    old_asym_id = entity_group_asym_ids[t]
-
-                    is_old_asym_id_token = token_idx_to_asym_ids == old_asym_id
-                    is_new_asym_id_token = token_idx_to_asym_ids == new_asym_id
-
-                    is_old_asym_id_atom = atom_to_asym_id_map == old_asym_id
-                    is_new_asym_id_atom = atom_to_asym_id_map == new_asym_id
-
-                    # Perform the old asym id to new asym id swaps in all supporting tensor copies.
-                    atom_to_asym_id_map_copy[is_old_asym_id_atom] = new_asym_id
-                    token_idx_to_asym_ids_copy[is_old_asym_id_token] = new_asym_id
-                    token_idx_to_is_molecule_types_copy[is_old_asym_id_token, ...] = token_idx_to_is_molecule_types[
-                        is_new_asym_id_token
-                    ]
-                    atom_to_is_molecule_types_copy[is_old_asym_id_atom, ...] = atom_to_is_molecule_types[
-                        is_new_asym_id_atom
-                    ]
-                    atom_lens_per_token_idx_copy[is_old_asym_id_token] = atom_lens_per_token_idx[
-                        is_new_asym_id_token
-                    ]
-                    token_idx_to_entity_ids_copy[is_old_asym_id_token] = token_idx_to_entity_ids[
-                        is_new_asym_id_token
-                    ]
-            
-                # Reassign the tensors to the copies that have been successfully swapped.
-                atom_to_asym_id_map = atom_to_asym_id_map_copy
-                token_idx_to_asym_ids = token_idx_to_asym_ids_copy
-                token_idx_to_entity_ids = token_idx_to_entity_ids_copy
-                atom_lens_per_token_ids = atom_lens_per_token_idx_copy
-                token_idx_to_is_molecule_types = token_idx_to_is_molecule_types_copy
-                atom_to_is_molecule_types = atom_to_is_molecule_types_copy
-                print(atom_to_is_molecule_types)
-                print(atom_to_is_molecule_types.shape)
-
+        # Resolve each asym ids polymer type.
+        asym_to_polymer_type = create_asym_id_to_polymer_type_map(
+            token_idx_to_asym_ids_map = 
+            is_molecule_types
+        )
 
             # Ligand symmetry resolution logic?
 
+            # Identify all interfaces.
+
             # Compute evaluation metrics.
+
+
 
 
 
