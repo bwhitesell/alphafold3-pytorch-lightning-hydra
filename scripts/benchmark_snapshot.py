@@ -109,7 +109,6 @@ rigid_align_calc_module = WeightedRigidAlign()
 def create_eligible_asym_id_to_polymer_type_map(
     token_idx_to_asym_ids_map: Int["n"],  # type: ignore
     is_molecule_types: Bool[f"n {IS_MOLECULE_TYPES}"],  # type: ignore
-    complex_type: ComplexType,
 ):
     asym_id_to_polymer_type: Dict[str, PolymerType] = {}
     distinct_asym_ids = set([x.item() for x in token_idx_to_asym_ids_map.unique()])
@@ -119,6 +118,7 @@ def create_eligible_asym_id_to_polymer_type_map(
         polymer_types_by_token = is_molecule_types[is_token_in_asym_id].sum(axis=0)
         polymer_type_mol_idx = torch.argmax(polymer_types_by_token.sum(axis=0)).item()
         asym_id_polymer_type = PolymerType.from_molecular_idx(idx=polymer_type_mol_idx)
+        asym_id_to_polymer_type[asym_id] = asym_id_polymer_type
 
     return asym_id_to_polymer_type
 
@@ -358,7 +358,7 @@ def find_interface_atoms_in_complex(
 
             # Create a unique order-agnostic identifier for the interface between
             # two asym ids.
-            interface_key = set(asym_id_a, asym_id_b)
+            interface_key = tuple(sorted([asym_id_a, asym_id_b]))
 
             # Don't want multiple representations of the same interface.
             if interface_key in interfaces:
@@ -377,7 +377,7 @@ def find_interface_atoms_in_complex(
             is_interface_pair = pairwise_dists < interface_threshold
 
             # Agg the mask up to determine which atoms are in interface for each asym id.
-            asym_a_is_interface_atom_map = torch.any(is_interface_pair, dim=-1)
+            asym_a_is_interface_atom_map = torch.any(is_interface_pair, dim=0)
             asym_b_is_interface_atom_map = torch.any(is_interface_pair, dim=1)
 
             # Create a mapping for each of the input atoms to this fn that indicates whether 
@@ -399,65 +399,46 @@ def find_interface_atoms_in_complex(
     return interfaces
 
 
-def find_pocket_atoms_in_complex(
-    atom_pos: Float["m 3"],  # type: ignore
-    atom_to_asym_id_map: Int["m"],  # type: ignore
-    atom_is_molecule_types: Bool[f"n {IS_MOLECULE_TYPES}"],  # type: ignore
-):
-
-    # Identify the atoms that correspond to ligands.
-    is_atom_in_ligand = atom_is_molecule_types[..., IS_LIGAND_INDEX].unsqueeze(0)
-
-    # Identify the asym_ids that correspond to ligands. If the number of atoms in
-    # the asym id is equal to the number of atoms in the asym id that are also ligand
-    # atoms then the asym id is a ligand.
-    ligand_asym_ids = torch.where(
-        torch.bincount(atom_to_asym_id_map[is_atom_in_ligand]) == 
-        torch.bincount(atom_to_asym_id_map)
-    )
-
-    # Determine which atom's are in the 'pocket'. An atom is in the pocket of a complex if 
-    # it is within 10Å of any heavy atoms in the ground truth structure of a ligand -- 
-    # meaning any atom in a 10Å interface of a ligand atom is in the pocket.
-    all_ligand_interfaces = find_interface_atoms_in_complex(
-        atom_pos=atom_pos,
-        atom_to_asym_id_map=atom_to_asym_id_map,
-        asym_id_candidate_filter=set(ligand_asym_ids.tolist()),
-        interface_threshold=10,
-    )
-
-    is_atom_in_pocket = torch.zeros_like(atom_to_asym_id_map, dtype=torch.bool)
-    for interface in all_ligand_interfaces:
-        is_atom_in_pocket = is_atom_in_pocket | interface["atom_in_interface"]
-
-    return is_atom_in_pocket
-
-
 def calculate_pocket_rmsd(
     predicted_pos: Float["n_interface_atoms 3"], # type: ignore
     true_pos: Float["n_interface_atoms 3"],  # type: ignore
     atom_to_asym_id_map: Int["n_interface_atoms"],  # type: ignore
-    interface: MolecularInterface,
+    center_atom_idxs: Int["n_interface_tokens"] | None,  # type: ignore
 ):
 
+    # Find pocket atoms.
     pocket_interface = find_interface_atoms_in_complex(
         atom_pos=true_pos,
         atom_to_asym_id_map=atom_to_asym_id_map,
-        asym_id_candidate_filter=set(interface["asym_id_a"], interface["asym_id_b"]),
         interface_threshold=10,
     )
 
-    predicted_pos = predicted_pos[pocket_interface["atom_in_interface"]]
+    if center_atom_idxs is not None:
+        # Build a mask for center atoms.
+        non_center_atomic_mask = torch.zeros(predicted_pos.size(0), dtype=torch.Bool)
+        non_center_atomic_mask[center_atom_idxs] = True
 
-    # perform least squares rigid alignment using the pocket atoms.
-    with torch.no_grad():
-        aligned_predicted_pos = rigid_align_calc_module(
-            pred_coords=predicted_pos[pocket_interface["atom_in_interface"]],
-            true_coords=true_pos[pocket_interface["atom_in_interface"]]
+        # Apply the mask to the atoms in the pocket interface.
+        pocket_interface["atom_in_interface"] = (
+            pocket_interface["atom_in_interface"] & non_center_atomic_mask
         )
 
-        # RMSD calculation.
+    predicted_pos = predicted_pos[pocket_interface["atom_in_interface"]]
 
+    with torch.no_grad():
+
+        # Perform least squares rigid alignment using the pocket atoms.
+        aligned_predicted_pos = rigid_align_calc_module(
+            pred_coords=predicted_pos[pocket_interface["atom_in_interface"]].unsqueeze(0),
+            true_coords=true_pos[pocket_interface["atom_in_interface"]].unsqueeze(0),
+        ).squeeze(0)
+
+        # RMSD calculation.
+        sq_diff = torch.square(true_pos.flatten() - aligned_predicted_pos.flatten()).sum()
+        msd = torch.mean(sq_diff)
+        msd = torch.nan_to_num(msd, nan=0)
+
+    return torch.sqrt(msd).item()
 
 
 
@@ -530,11 +511,14 @@ if __name__ == "__main__":
     # Parse the user-provided args.
     args = parser.parse_args()
 
+    # What type of complexs are being evaluated? This governs what interfaces
+    # are looked for and how their prediction error is calculated.
     complex_type_eval_mode = ComplexType(args.complex_type_eval_mode)
 
+    # The radius to use when calculating interface prediction error metrics.
     inclusion_raidus = (
         30 
-        if complex_type_eval_mode == ComplexType.NUCLEICACID_PROTIEN 
+        if complex_type_eval_mode == ComplexType.NUCLEICACID_PROTEIN
         else 15
     )
 
@@ -576,12 +560,6 @@ if __name__ == "__main__":
             batch_dict=batched_atom_input.dict()
         )
         batch_dict = dict_to_device(batch_dict, device=alphafold3.device) 
-        print(batched_atom_input.molecule_atom_indices[0])
-        print(batched_atom_input.is_molecule_types[0].sum(axis=0))
-        import sys
-        sys.exit(1)
-
-
 
         with torch.no_grad():
             # Perform inference.
@@ -591,20 +569,14 @@ if __name__ == "__main__":
             #    return_confidence_head_logits=True,
             #    return_distogram_head_logits=True,
             #)
-            batch_sampled_atom_pos = torch.randn(3, 2048, 3)
-
-            # Perform entity resolution between the ground truth and predicted 
-            # structures such that the identical entities between the two correspond.
-            batch_sampled_atom_pos = perform_identical_entity_resolution(
-                batched_atom_input=batched_atom_input,
-                batch_sampled_atom_pos=batch_sampled_atom_pos,
-            ) 
+            batch_sampled_atom_pos = torch.randn(2, 3009, 3)
 
         for batch_idx in range(batched_atom_input.atom_inputs.size(0)):
 
             # Pull out tensorized mappings between tensor indices and parent entities
             # for a single complex.
             padded_atom_lens_per_token_idx = batched_atom_input.molecule_atom_lens[batch_idx]
+            padded_token_idx_to_center_atom_idx = batched_atom_input.molecule_atom_indices[batch_idx]
             padded_token_idx_to_is_molecule_types = batched_atom_input.is_molecule_types[batch_idx]
             _, _, padded_token_idx_to_asym_ids, padded_token_idx_to_entity_id, _= (
                 batched_atom_input.additional_molecule_feats[batch_idx].unbind(dim=-1)
@@ -616,6 +588,7 @@ if __name__ == "__main__":
             # Remove the padding from all the descriptive batched tensors.
             token_idx_to_asym_ids = padded_token_idx_to_asym_ids[unpadded_token_idxs]
             token_idx_to_entity_ids = padded_token_idx_to_entity_id[unpadded_token_idxs]
+            token_idx_to_center_atom_idx = padded_token_idx_to_center_atom_idx[unpadded_token_idxs]
             atom_lens_per_token_idx = padded_atom_lens_per_token_idx[unpadded_token_idxs]
             token_idx_to_is_molecule_types = padded_token_idx_to_is_molecule_types[
                 unpadded_token_idxs
@@ -645,10 +618,10 @@ if __name__ == "__main__":
             # For each group of matching asym_ids, swap their positions to find the
             # arrangement that most closely matches the obersrved arrangement.
             for entity_group_asym_ids in identical_entity_asym_id_groups:
-
+                
                 if len(entity_group_asym_ids) <= 1:
+                    best_predicted_atom_pos = predicted_atom_pos
                     # No swapping arrangements to search through.
-                    continue
 
                 elif len(entity_group_asym_ids) <= MAX_NUM_IDENTICAL_ENTITIES_FOR_EXHAUSTIVE_SEARCH:
                     # Few enough matching entities to do an exhaustive search.
@@ -673,7 +646,7 @@ if __name__ == "__main__":
                         )
                     )
 
-            # Ligand symmetry resolution logic?
+            #TODO: Ligand symmetry resolution logic?
 
             # Create a map of each asym id to its polymer type.
             asym_id_to_polymer_type = create_eligible_asym_id_to_polymer_type_map(
@@ -688,6 +661,7 @@ if __name__ == "__main__":
                 if complex_type_eval_mode.is_eligible_polymer(p=v)
             ])
 
+            # Identify all the interfaces in the complex eligible for evaluation.
             interfaces = find_interface_atoms_in_complex(
                 atom_pos=batched_atom_input.atom_pos[batch_idx][unpadded_atom_idxs, ...],
                 atom_to_asym_id_map=atom_to_asym_id_map,
@@ -695,20 +669,45 @@ if __name__ == "__main__":
                 interface_threshold=inclusion_raidus,
             )
 
-            for interface in interfaces:
-                pocket_rmsd = calculate_pocket_rmsd(
-                    predicted_pos=best_predicted_atom_pos[interface["atom_in_interface"]]
-                    true_pos=true_atom_pos[interface["atom_in_interface"]]
-                    atom_to_asym_id_map=atom_to_asym_id_map=[interface["atom_in_interface"]]
-                    interface=interface,
-                )
-                # compute interface metrics.
-                ...
+            # TODO: Remove this? Turn into warning?
+            if len(interfaces) == 0:
+                print("sus...")
 
+            # Compute interface level metrics for each interface.
+            for interface_key in interfaces:
+                interface = interfaces[interface_key]
+                center_atom_idxs = None
+
+                if complex_type_eval_mode == ComplexType.LIGAND_PROTEIN:
+                    center_atom_idxs = token_idx_to_center_atom_idx
+
+                pocket_rmsd = calculate_pocket_rmsd(
+                    predicted_pos=best_predicted_atom_pos[interface["atom_in_interface"]],
+                    true_pos=true_atom_pos[interface["atom_in_interface"]],
+                    atom_to_asym_id_map=atom_to_asym_id_map[interface["atom_in_interface"]],
+                    center_atom_idxs=center_atom_idxs,
+                )
+
+                ilddt = lddt_calc_module.compute_lddt(
+                    true_coords=true_atom_pos[interface["atom_in_interface"]].unsqueeze(0),
+                    pred_coords=best_predicted_atom_pos[interface["atom_in_interface"]].unsqueeze(0),
+                    is_dna=is_molecule_types[interface["atom_in_interface"]][..., IS_DNA_INDEX].unsqueeze(0),
+                    is_rna=is_molecule_types[interface["atom_in_interface"]][..., IS_RNA_INDEX].unsqueeze(0),
+                    pairwise_mask=(torch.ones(len(interface["atom_in_interface"]), len(interface["atom_in_interface"])))
+                )
+
+                # TODO: DockQ implementation?
 
             for asym_id in eligible_asym_ids:
-                # Compute individual entity metrics...
-                ...
+                # TODO: What does the paper mean by entity lddt radius of 30Å for nucleic
+                # acid entities?
+                lddt = lddt_calc_module.compute_lddt(
+                    true_coords=true_atom_pos[interface["atom_in_interface"]].unsqueeze(0),
+                    pred_coords=best_predicted_atom_pos[interface["atom_in_interface"]].unsqueeze(0),
+                    is_dna=is_molecule_types[interface["atom_in_interface"]][..., IS_DNA_INDEX].unsqueeze(0),
+                    is_rna=is_molecule_types[interface["atom_in_interface"]][..., IS_RNA_INDEX].unsqueeze(0),
+                    pairwise_mask=(torch.ones(len(interface["atom_in_interface"]), len(interface["atom_in_interface"])))
+                )
 
 
 
