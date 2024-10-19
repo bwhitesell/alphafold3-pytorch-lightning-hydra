@@ -35,10 +35,14 @@ from alphafold3_pytorch.models.components.inputs import IS_MOLECULE_TYPES
 from alphafold3_pytorch.models.components.alphafold3 import ComputeModelSelectionScore
 from alphafold3_pytorch.models.components.alphafold3 import WeightedRigidAlign 
 from alphafold3_pytorch.data.pdb_datamodule import AF3DataLoader
+from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import Bool
 from alphafold3_pytorch.utils.tensor_typing import Float
 from alphafold3_pytorch.utils.tensor_typing import Int
 import torch
+
+
+logger = RankedLogger(__name__, rank_zero_only=False)
 
 
 # Constants.
@@ -385,11 +389,11 @@ def find_interface_atoms_in_complex(
             is_atom_in_a_interface_stucture = torch.zeros_like(atom_to_asym_id_map, dtype=torch.bool)
             is_atom_in_b_interface_stucture = torch.zeros_like(atom_to_asym_id_map, dtype=torch.bool)
 
-            if len(asym_a_is_interface_atom_map) > 0 and len(asym_b_is_interface_atom_map) > 0:
-                is_atom_in_a_interface_stucture[atom_to_asym_id_map == asym_id_a] = asym_a_is_interface_atom_map
-                is_atom_in_b_interface_stucture[atom_to_asym_id_map == asym_id_b] = asym_b_is_interface_atom_map
-                is_atom_in_interface = is_atom_in_a_interface_stucture | is_atom_in_b_interface_stucture
+            is_atom_in_a_interface_stucture[atom_to_asym_id_map == asym_id_a] = asym_a_is_interface_atom_map
+            is_atom_in_b_interface_stucture[atom_to_asym_id_map == asym_id_b] = asym_b_is_interface_atom_map
+            is_atom_in_interface = is_atom_in_a_interface_stucture | is_atom_in_b_interface_stucture
 
+            if is_atom_in_interface.sum() > 0:
                 interfaces[interface_key] = {
                     "asym_id_a": asym_id_a,
                     "asym_id_b": asym_id_b,
@@ -403,34 +407,49 @@ def calculate_pocket_rmsd(
     predicted_pos: Float["n_interface_atoms 3"], # type: ignore
     true_pos: Float["n_interface_atoms 3"],  # type: ignore
     atom_to_asym_id_map: Int["n_interface_atoms"],  # type: ignore
-    center_atom_idxs: Int["n_interface_tokens"] | None,  # type: ignore
+    is_center_atom: Int["n_interface_tokens"] | None,  # type: ignore
 ):
 
+    # Assert pocket rmsd is being calculated on a singular interface between two
+    # asym_ids.
+    unique_asym_ids = atom_to_asym_id_map.unique().tolist()
+    if len(unique_asym_ids) != 2:
+        raise ValueError(
+            "Something went wrong. Attempting to calculate pocket rmsd on atoms from "
+            f"the following asym_ids [{unique_asym_ids}] and pocket rmsd is an interface "
+            "metric that expects only two interfaces."
+        )
+
+
+    # Only 1 interface key can be returned since only two unique asym_ids are passed into
+    # the atom to asym_id map. Render the key for that interface
+    pocket_interface_key = tuple(sorted(atom_to_asym_id_map.unique().tolist()))
+
     # Find pocket atoms.
-    pocket_interface = find_interface_atoms_in_complex(
+    pocket_interfaces = find_interface_atoms_in_complex(
         atom_pos=true_pos,
         atom_to_asym_id_map=atom_to_asym_id_map,
         interface_threshold=10,
     )
+    pocket_interface = pocket_interfaces[pocket_interface_key]
 
-    if center_atom_idxs is not None:
-        # Build a mask for center atoms.
-        non_center_atomic_mask = torch.zeros(predicted_pos.size(0), dtype=torch.Bool)
-        non_center_atomic_mask[center_atom_idxs] = True
-
+    if is_center_atom is not None:
         # Apply the mask to the atoms in the pocket interface.
         pocket_interface["atom_in_interface"] = (
-            pocket_interface["atom_in_interface"] & non_center_atomic_mask
+            pocket_interface["atom_in_interface"] & is_center_atom
         )
 
-    predicted_pos = predicted_pos[pocket_interface["atom_in_interface"]]
+    if is_center_atom.sum() < 2:
+        logger.warning("Calculating pocket rmsd on pocket with fewer than two atoms.")
 
+    # TODO: Do we need this just cuz its a pytorch module?
     with torch.no_grad():
 
         # Perform least squares rigid alignment using the pocket atoms.
         aligned_predicted_pos = rigid_align_calc_module(
-            pred_coords=predicted_pos[pocket_interface["atom_in_interface"]].unsqueeze(0),
-            true_coords=true_pos[pocket_interface["atom_in_interface"]].unsqueeze(0),
+            pred_coords=predicted_pos.unsqueeze(0),
+            true_coords=true_pos.unsqueeze(0),
+            mask=pocket_interface["atom_in_interface"].unsqueeze(0),
         ).squeeze(0)
 
         # RMSD calculation.
@@ -576,7 +595,6 @@ if __name__ == "__main__":
             # Pull out tensorized mappings between tensor indices and parent entities
             # for a single complex.
             padded_atom_lens_per_token_idx = batched_atom_input.molecule_atom_lens[batch_idx]
-            padded_token_idx_to_center_atom_idx = batched_atom_input.molecule_atom_indices[batch_idx]
             padded_token_idx_to_is_molecule_types = batched_atom_input.is_molecule_types[batch_idx]
             _, _, padded_token_idx_to_asym_ids, padded_token_idx_to_entity_id, _= (
                 batched_atom_input.additional_molecule_feats[batch_idx].unbind(dim=-1)
@@ -588,7 +606,6 @@ if __name__ == "__main__":
             # Remove the padding from all the descriptive batched tensors.
             token_idx_to_asym_ids = padded_token_idx_to_asym_ids[unpadded_token_idxs]
             token_idx_to_entity_ids = padded_token_idx_to_entity_id[unpadded_token_idxs]
-            token_idx_to_center_atom_idx = padded_token_idx_to_center_atom_idx[unpadded_token_idxs]
             atom_lens_per_token_idx = padded_atom_lens_per_token_idx[unpadded_token_idxs]
             token_idx_to_is_molecule_types = padded_token_idx_to_is_molecule_types[
                 unpadded_token_idxs
@@ -605,7 +622,7 @@ if __name__ == "__main__":
                 atom_lens_per_token_idx,
                 dim=0,
             )
-
+           
             true_atom_pos = batched_atom_input.atom_pos[batch_idx][unpadded_atom_idxs, ...]
             predicted_atom_pos = batch_sampled_atom_pos[batch_idx][unpadded_atom_idxs, ...]
 
@@ -669,44 +686,58 @@ if __name__ == "__main__":
                 interface_threshold=inclusion_raidus,
             )
 
-            # TODO: Remove this? Turn into warning?
+            # debugging :)
             if len(interfaces) == 0:
                 print("sus...")
 
             # Compute interface level metrics for each interface.
             for interface_key in interfaces:
+                print(interface_key)
                 interface = interfaces[interface_key]
-                center_atom_idxs = None
+                print(interface["atom_in_interface"])
+                interface_indexed_center_atom_mask = None
+                n_atoms_in_interface = interface["atom_in_interface"].sum(0)
+                print(n_atoms_in_interface)
 
                 if complex_type_eval_mode == ComplexType.LIGAND_PROTEIN:
-                    center_atom_idxs = token_idx_to_center_atom_idx
+                    # Calculate a center atom mask that corresponds to the atomic position idxs
+                    # being passed into calc pocket rmsd.
+                    center_atom_mask = torch.zeros(true_atom_pos.size(0), dtype=torch.bool)
+                    center_atom_mask[
+                        batched_atom_input.molecule_atom_indices[batch_idx].unique()
+                    ] = True
+                    interface_indexed_center_atom_mask = center_atom_mask[
+                        interface["atom_in_interface"]
+                    ]
 
+                # Calculate some metrics!
                 pocket_rmsd = calculate_pocket_rmsd(
                     predicted_pos=best_predicted_atom_pos[interface["atom_in_interface"]],
                     true_pos=true_atom_pos[interface["atom_in_interface"]],
                     atom_to_asym_id_map=atom_to_asym_id_map[interface["atom_in_interface"]],
-                    center_atom_idxs=center_atom_idxs,
+                    is_center_atom=interface_indexed_center_atom_mask,
                 )
 
                 ilddt = lddt_calc_module.compute_lddt(
                     true_coords=true_atom_pos[interface["atom_in_interface"]].unsqueeze(0),
                     pred_coords=best_predicted_atom_pos[interface["atom_in_interface"]].unsqueeze(0),
-                    is_dna=is_molecule_types[interface["atom_in_interface"]][..., IS_DNA_INDEX].unsqueeze(0),
-                    is_rna=is_molecule_types[interface["atom_in_interface"]][..., IS_RNA_INDEX].unsqueeze(0),
-                    pairwise_mask=(torch.ones(len(interface["atom_in_interface"]), len(interface["atom_in_interface"])))
+                    is_dna=atom_to_is_molecule_types[interface["atom_in_interface"]][..., IS_DNA_INDEX].unsqueeze(0),
+                    is_rna=atom_to_is_molecule_types[interface["atom_in_interface"]][..., IS_RNA_INDEX].unsqueeze(0),
+                    pairwise_mask=torch.ones(n_atoms_in_interface, n_atoms_in_interface).unsqueeze(0)
                 )
 
-                # TODO: DockQ implementation?
+                # TODO: DockQ implementation? Lib?
 
             for asym_id in eligible_asym_ids:
-                # TODO: What does the paper mean by entity lddt radius of 30Å for nucleic
-                # acid entities?
+                # Which atoms are part of the asym_id? 
+                atom_in_asym = atom_to_asym_id_map == asym_id
+                # Compute lddt for atoms part of the asym id.
                 lddt = lddt_calc_module.compute_lddt(
-                    true_coords=true_atom_pos[interface["atom_in_interface"]].unsqueeze(0),
-                    pred_coords=best_predicted_atom_pos[interface["atom_in_interface"]].unsqueeze(0),
-                    is_dna=is_molecule_types[interface["atom_in_interface"]][..., IS_DNA_INDEX].unsqueeze(0),
-                    is_rna=is_molecule_types[interface["atom_in_interface"]][..., IS_RNA_INDEX].unsqueeze(0),
-                    pairwise_mask=(torch.ones(len(interface["atom_in_interface"]), len(interface["atom_in_interface"])))
+                    true_coords=true_atom_pos[atom_in_asym].unsqueeze(0),
+                    pred_coords=best_predicted_atom_pos[atom_in_asym].unsqueeze(0),
+                    is_dna=atom_to_is_molecule_types[atom_in_asym][..., IS_DNA_INDEX].unsqueeze(0),
+                    is_rna=atom_to_is_molecule_types[atom_in_asym][..., IS_RNA_INDEX].unsqueeze(0),
+                    pairwise_mask=(torch.ones(atom_in_asym.sum(), atom_in_asym.sum()))
                 )
 
 

@@ -3156,6 +3156,9 @@ class WeightedRigidAlign(Module):
             weights * true_coords_centered, pred_coords_centered, "b n i, b n j -> b i j"
         )
 
+        # Replace any nan values with a no correlation.
+        cov_matrix = torch.nan_to_num(cov_matrix, nan=0.0)
+
         # Compute the SVD of the covariance matrix
         U, S, V = torch.svd(cov_matrix)
         U_T = U.transpose(-2, -1)
@@ -5491,7 +5494,6 @@ class ComputeModelSelectionScore(Module):
         :param coords_mask: boolean tensor indicating valid atoms
         :return: lDDT
         """
-
         dtype = pred_coords.dtype
         atom_seq_len, device = pred_coords.shape[1], pred_coords.device
 
