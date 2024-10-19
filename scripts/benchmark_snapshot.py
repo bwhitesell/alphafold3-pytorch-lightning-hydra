@@ -120,6 +120,7 @@ def create_eligible_asym_id_to_polymer_type_map(
     for asym_id in distinct_asym_ids:
         is_token_in_asym_id = token_idx_to_asym_ids_map == asym_id
         polymer_types_by_token = is_molecule_types[is_token_in_asym_id].sum(axis=0)
+        print(polymer_types_by_token)
         polymer_type_mol_idx = torch.argmax(polymer_types_by_token.sum(axis=0)).item()
         asym_id_polymer_type = PolymerType.from_molecular_idx(idx=polymer_type_mol_idx)
         asym_id_to_polymer_type[asym_id] = asym_id_polymer_type
@@ -588,7 +589,7 @@ if __name__ == "__main__":
             #    return_confidence_head_logits=True,
             #    return_distogram_head_logits=True,
             #)
-            batch_sampled_atom_pos = torch.randn(2, 3009, 3)
+            batch_sampled_atom_pos = torch.randn(2, 2610, 3)
 
         for batch_idx in range(batched_atom_input.atom_inputs.size(0)):
 
@@ -664,7 +665,6 @@ if __name__ == "__main__":
                     )
 
             #TODO: Ligand symmetry resolution logic?
-
             # Create a map of each asym id to its polymer type.
             asym_id_to_polymer_type = create_eligible_asym_id_to_polymer_type_map(
                 token_idx_to_asym_ids_map=token_idx_to_asym_ids,
@@ -686,18 +686,11 @@ if __name__ == "__main__":
                 interface_threshold=inclusion_raidus,
             )
 
-            # debugging :)
-            if len(interfaces) == 0:
-                print("sus...")
-
             # Compute interface level metrics for each interface.
             for interface_key in interfaces:
-                print(interface_key)
                 interface = interfaces[interface_key]
-                print(interface["atom_in_interface"])
                 interface_indexed_center_atom_mask = None
                 n_atoms_in_interface = interface["atom_in_interface"].sum(0)
-                print(n_atoms_in_interface)
 
                 if complex_type_eval_mode == ComplexType.LIGAND_PROTEIN:
                     # Calculate a center atom mask that corresponds to the atomic position idxs
